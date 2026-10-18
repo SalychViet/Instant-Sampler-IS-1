@@ -11,6 +11,9 @@ class PadSampleInfo(
     val sampleRate: Int,
     val channels: Int,
     val peaks: FloatArray,
+    /** Где начинается/кончается звук (доля длины, с запасом) — для T-HEAD/T-TAIL без порчи семпла. */
+    val soundStart: Float = 0f,
+    val soundEnd: Float = 1f,
 )
 
 /** Наблюдаемый (Compose) список 64 пэдов: null — пэд пуст. */
@@ -21,12 +24,17 @@ object PadLibrary {
 
     fun set(pad: Int, name: String, clip: SampleClip) {
         if (pad !in 0 until 64) return
+        val frames = clip.frames.coerceAtLeast(1)
+        val ms = clip.sampleRate / 1000
+        val b = AutoTrim.detect(clip)
         infos[pad] = PadSampleInfo(
             name,
             clip.durationMs,
             clip.sampleRate,
             clip.channels,
             SampleOps.computePeaks(clip.data, clip.channels, PEAK_BINS),
+            soundStart = if (b == null) 0f else (b[0] - ms * AutoTrim.HEAD_MARGIN_MS).coerceAtLeast(0).toFloat() / frames,
+            soundEnd = if (b == null) 1f else (b[1] + ms * AutoTrim.TAIL_MARGIN_MS).coerceAtMost(frames).toFloat() / frames,
         )
     }
 

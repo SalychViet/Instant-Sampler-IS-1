@@ -18,8 +18,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.PPQ
+import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.sample.PadLibrary
 
 /** LCD: трек/паттерн и состояние сверху, waveform выбранного пэда, строка-подсказка снизу. */
@@ -33,6 +35,9 @@ fun Lcd(
 ) {
     val pad = app.selected
     val info = PadLibrary.infos[pad]
+    val stepEdit = Settings.pLock && app.mode == Mode.SEQ && app.stepView && app.heldStep >= 0
+    // Текущее состояние семпла: параметры пада или удерживаемого шага (P-LOCK).
+    val ui = (if (stepEdit) app.heldStepUi else null) ?: app.pads[pad]
     val shape = RoundedCornerShape(6.dp)
     Column(
         modifier
@@ -83,6 +88,11 @@ fun Lcd(
                     drawLine(Skin.LcdInk, Offset(x, top), Offset(x, maxOf(bottom, top + 1f)), strokeWidth = maxOf(bw, 1f))
                 }
             }
+            // Регион воспроизведения START..END: вне его — затемнение.
+            val sx = ui.start * w
+            val ex = ui.end * w
+            if (sx > 0f) drawRect(Skin.LcdInkDim, topLeft = Offset(0f, 0f), size = Size(sx, h))
+            if (ex < w) drawRect(Skin.LcdInkDim, topLeft = Offset(ex, 0f), size = Size(w - ex, h))
             if (app.mode == Mode.SEQ && app.seqPlaying) {
                 val total = (app.patternBars * PPQ * 4).toFloat()
                 val x = app.seqPos / total * w
@@ -93,7 +103,39 @@ fun Lcd(
                 drawRect(Skin.LcdInk, topLeft = Offset(0f, h - 4.dp.toPx()), size = Size(w * l, 4.dp.toPx()))
             }
         }
-        val bottom = app.readout ?: if (info != null) "SAMPLE: " + info.name else "SAMPLE: ---"
+        val small = Skin.Lcd.copy(fontSize = 9.sp)
+        val params = buildString {
+            if (stepEdit) append("ST${app.heldStep + 1} ")
+            append(String.format("V%.0f ", ui.volume * 100))
+            append(
+                when {
+                    kotlin.math.abs(ui.pan) < 0.01f -> "C"
+                    ui.pan < 0 -> String.format("L%.0f", -ui.pan * 100)
+                    else -> String.format("R%.0f", ui.pan * 100)
+                }
+            )
+            append(String.format(" P%+.0f A%.0f R%.0f ", ui.pitch, ui.attackMs, ui.releaseMs))
+            append(
+                when (ui.mode) {
+                    PlayMode.GATE -> "GATE"
+                    PlayMode.LOOP -> "LOOP"
+                    else -> "ONE"
+                }
+            )
+            if (ui.choke > 0) append(" CHK")
+        }
+        Text(params, Modifier.fillMaxWidth(), style = small, maxLines = 1, overflow = TextOverflow.Clip)
+        val flags = buildString {
+            if (Settings.trimStart || Settings.trimEnd) {
+                append(" T:")
+                append(listOfNotNull(if (Settings.trimStart) "H" else null, if (Settings.trimEnd) "T" else null).joinToString("+"))
+            }
+            if (Settings.pLock) append(" PL")
+            if (Settings.linkEnabled) append(" LNK")
+        }
+        val bottom = app.readout
+            ?: if (app.copySource >= 0) "COPY ${patternName(app.copySource)} → PAD?"
+            else (if (info != null) info.name.take(10) else "---") + flags
         Text(bottom, Modifier.fillMaxWidth(), style = Skin.Lcd, maxLines = 1, overflow = TextOverflow.Clip)
     }
 }

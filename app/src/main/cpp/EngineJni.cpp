@@ -1,6 +1,7 @@
 // Единственная точка входа из Kotlin. Здесь нет тайминга и DSP — только маршалинг.
 #include <jni.h>
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 
@@ -109,7 +110,7 @@ JNIEXPORT jint JNICALL JNI(nativeActiveVoices)(JNIEnv*, jobject, jlong h) {
 JNIEXPORT jboolean JNICALL JNI(nativeSeq)(JNIEnv*, jobject, jlong h, jint op, jint pat, jint pad,
                                           jint a, jint b, jfloat f) {
     auto* o = get(h);
-    if (!o || op < 0 || op > static_cast<jint>(mpc::SeqOp::SetLength)) return JNI_FALSE;
+    if (!o || op < 0 || op > static_cast<jint>(mpc::SeqOp::SetLocksEnabled)) return JNI_FALSE;
     const auto sop = static_cast<mpc::SeqOp>(op);
     if (o->link().enabled()) {
         // С Link старт/стоп и темп — общие для всей сессии: секвенсор подхватит их в аудио-потоке.
@@ -139,6 +140,21 @@ JNIEXPORT jint JNICALL JNI(nativeSeqCopyPattern)(JNIEnv* env, jobject, jlong h, 
     if (n < 0) return -1;
     static_assert(sizeof(jlong) == sizeof(uint64_t), "jlong must be 64-bit");
     env->SetLongArrayRegion(out, 0, n, reinterpret_cast<const jlong*>(buf));
+    return n;
+}
+
+// События + параметры шагов (P-LOCK) одним согласованным снимком.
+JNIEXPORT jint JNICALL JNI(nativeSeqCopyPatternLocks)(JNIEnv* env, jobject, jlong h, jint pat,
+                                                      jlongArray out, jlongArray locksOut) {
+    auto* o = get(h);
+    if (!o || !out || !locksOut) return -1;
+    const jsize cap = std::min(env->GetArrayLength(out), env->GetArrayLength(locksOut));
+    uint64_t buf[mpc::kMaxPatternEvents];
+    uint64_t lk[mpc::kMaxPatternEvents];
+    const int n = o->core().seqCopyPatternWithLocks(pat, buf, lk, std::min<int>(cap, mpc::kMaxPatternEvents));
+    if (n < 0) return -1;
+    env->SetLongArrayRegion(out, 0, n, reinterpret_cast<const jlong*>(buf));
+    env->SetLongArrayRegion(locksOut, 0, n, reinterpret_cast<const jlong*>(lk));
     return n;
 }
 

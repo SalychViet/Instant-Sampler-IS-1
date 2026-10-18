@@ -18,6 +18,7 @@ class MpcApp : Application() {
         AudioEngine.seqSetQuantize(Settings.quantize)
         AudioEngine.seqSetMetronome(Settings.metroMode, Settings.metroLevel)
         AudioEngine.seqSetCountIn(Settings.countInBars)
+        AudioEngine.seqSetLocksEnabled(Settings.pLock)
         LinkNetwork.apply(this)
         DefaultKit.load()
         // Сохранённые семплы пэдов грузим в фоне, чтобы не задерживать старт.

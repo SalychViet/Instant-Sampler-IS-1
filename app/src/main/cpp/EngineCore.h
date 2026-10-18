@@ -56,6 +56,9 @@ public:
     // ---- состояние секвенсора (любой поток) ----
     uint64_t seqState() const { return seq_.state(); }
     int seqCopyPattern(int pat, uint64_t* dst, int cap) const { return seq_.copyPattern(pat, dst, cap); }
+    int seqCopyPatternWithLocks(int pat, uint64_t* dst, uint64_t* locks, int cap) const {
+        return seq_.copyPatternWithLocks(pat, dst, locks, cap);
+    }
     int seqPatternBars(int pat) const { return seq_.patternBars(pat); }
     int seqPatternCount(int pat) const { return seq_.patternCount(pat); }
 

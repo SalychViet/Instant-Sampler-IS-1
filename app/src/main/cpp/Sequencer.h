@@ -28,7 +28,39 @@ enum class SeqOp : int {
     ClearPattern,   // pat
     ErasePad,       // pat, pad
     SetLength,      // pat; a: тактов
+    CopyPattern,    // pat: куда; a: откуда (ноты, параметры шагов и длина)
+    SetLock,        // pat, pad; a: начальный тик, b: ширина | (параметр << 16), f: значение
+    ClearLocks,     // pat, pad; a: начальный тик, b: ширина — снять параметры шагов
+    SetLocksEnabled,// a: 0/1 — играть ли параметры шагов (P-LOCK)
 };
+
+// Параметры, которые можно «закрепить» за шагом (P-LOCK). Индексы бит в маске.
+enum LockSlot : int { kLockVol = 0, kLockPan, kLockPitch, kLockStart, kLockEnd, kLockAttack, kLockRelease, kLockCount };
+
+// paramId (ParamId из Types.h) -> слот P-LOCK, -1 — параметр не закрепляется.
+inline int lockSlotOf(int paramId) {
+    switch (paramId) {
+        case kParamVolume: return kLockVol;
+        case kParamPan: return kLockPan;
+        case kParamPitch: return kLockPitch;
+        case kParamStart: return kLockStart;
+        case kParamEnd: return kLockEnd;
+        case kParamAttackMs: return kLockAttack;
+        case kParamReleaseMs: return kLockRelease;
+        default: return -1;
+    }
+}
+
+// Упаковка параметров шага в 63 бита: [0..6] маска, vol 7, pan 7, pitch 6, start 10, end 10, attack 8, release 8.
+// Значения квантуются — точности хватает для ручек на экране.
+struct ParamLocks {
+    uint32_t mask = 0;
+    float v[kLockCount] = {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 15.0f};
+};
+uint64_t packLocks(const ParamLocks& l);
+ParamLocks unpackLocks(uint64_t w);
+// Подставляет закреплённые значения в параметры пада.
+void applyLocks(const ParamLocks& l, PadParams& p);
 
 // Снимок Ableton Link на начало аудио-буфера (с учётом латентности вывода и ручного сдвига).
 struct LinkFrame {
@@ -89,6 +121,8 @@ public:
     uint64_t state() const { return state_.load(std::memory_order_acquire); }
     // Согласованный снимок событий (отсортированы по тику). -1 — снимок не получен (идёт правка).
     int copyPattern(int pat, uint64_t* dst, int cap) const;
+    // То же + параметры шагов (locks[i] — для события dst[i], 0 = нет).
+    int copyPatternWithLocks(int pat, uint64_t* dst, uint64_t* locks, int cap) const;
     int patternBars(int pat) const;
     int patternCount(int pat) const;
 
@@ -98,6 +132,7 @@ private:
         std::atomic<int> count{0};
         std::atomic<int> bars{1};
         std::atomic<uint64_t> ev[kMaxPatternEvents];
+        std::atomic<uint64_t> lk[kMaxPatternEvents];   // параметры шагов, выровнены с ev
     };
 
     // ---- правка паттернов (аудио-поток) ----
@@ -106,11 +141,14 @@ private:
     SeqEvent eventAt(const Pattern& p, int i) const { return unpackEvent(p.ev[i].load(std::memory_order_relaxed)); }
     int lowerBound(const Pattern& p, int tick) const;
     int findEvent(const Pattern& p, int tick, int pad) const;
-    void insertEvent(Pattern& p, const SeqEvent& e);
+    int insertEvent(Pattern& p, const SeqEvent& e, uint64_t locks = 0);
     void removeAt(Pattern& p, int i);
     void toggleStep(int pat, int pad, int tick, int width, float vel);
     void erasePad(int pat, int pad);
     void clearPattern(int pat);
+    void copyPatternTo(int dst, int src);
+    void setLock(int pat, int pad, int tick, int width, int paramId, float value);
+    void clearLocks(int pat, int pad, int tick, int width);
 
     // ---- транспорт ----
     void play();
@@ -137,6 +175,7 @@ private:
     int metroMode_ = 0;
     float metroLevel_ = 0.7f;
     int countInBars_ = 0;
+    bool locksEnabled_ = true;
 
     bool running_ = false;
     bool recording_ = false;

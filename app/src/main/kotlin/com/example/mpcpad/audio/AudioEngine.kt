@@ -35,13 +35,53 @@ object SeqOp {
     const val CLEAR_PATTERN = 9
     const val ERASE_PAD = 10
     const val SET_LENGTH = 11
+    const val COPY_PATTERN = 12
+    const val SET_LOCK = 13
+    const val CLEAR_LOCKS = 14
+    const val SET_LOCKS_ENABLED = 15
+}
+
+/**
+ * Параметры шага (P-LOCK), упакованные в 63 бита так же, как packLocks в Sequencer.cpp:
+ * [0..6] маска, vol 7, pan 7, pitch 6, start 10, end 10, attack 8, release 8.
+ */
+object StepLocks {
+    private val PARAMS = intArrayOf(
+        PadParam.VOLUME, PadParam.PAN, PadParam.PITCH, PadParam.START, PadParam.END, PadParam.ATTACK_MS, PadParam.RELEASE_MS,
+    )
+    private val BITS = intArrayOf(7, 7, 6, 10, 10, 8, 8)
+
+    /** paramId → значение для закреплённых параметров. */
+    fun decode(w: Long): Map<Int, Float> {
+        val mask = (w and 0x7F).toInt()
+        if (mask == 0) return emptyMap()
+        val out = HashMap<Int, Float>()
+        var shift = 7
+        for (i in PARAMS.indices) {
+            val bits = BITS[i]
+            val maxv = ((1 shl bits) - 1).toFloat()
+            val n = ((w ushr shift) and ((1L shl bits) - 1)).toFloat() / maxv
+            if (mask and (1 shl i) != 0) {
+                out[PARAMS[i]] = when (i) {
+                    0 -> n * 2f
+                    1 -> n * 2f - 1f
+                    2 -> Math.round(-24f + n * 63f).toFloat()
+                    3, 4 -> n
+                    5 -> n * 255f
+                    else -> 5f + n * n * 1995f
+                }
+            }
+            shift += bits
+        }
+        return out
+    }
 }
 
 const val PPQ = 96                 // тиков на четвертную (kPpq в C++)
 const val BAR_TICKS = PPQ * 4
 
 /** Одно событие паттерна. */
-data class SeqNote(val tick: Int, val pad: Int, val velocity: Int, val length: Int)
+data class SeqNote(val tick: Int, val pad: Int, val velocity: Int, val length: Int, val locks: Long = 0L)
 
 /** Снимок состояния транспорта (из упакованного слова нативного секвенсора). */
 data class SeqState(
@@ -120,6 +160,14 @@ object AudioEngine {
     fun seqClearPattern(pattern: Int) = seq(SeqOp.CLEAR_PATTERN, pat = pattern)
     fun seqErasePad(pattern: Int, pad: Int) = seq(SeqOp.ERASE_PAD, pat = pattern, pad = pad)
     fun seqSetLength(pattern: Int, bars: Int) = seq(SeqOp.SET_LENGTH, pat = pattern, a = bars)
+    /** Копия паттерна целиком (ноты, параметры шагов, длина). */
+    fun seqCopyPattern(from: Int, to: Int) = seq(SeqOp.COPY_PATTERN, pat = to, a = from)
+    /** P-LOCK: закрепить значение параметра за нотами пада в шаге [tick, tick+width). */
+    fun seqSetLock(pattern: Int, pad: Int, tick: Int, width: Int, paramId: Int, value: Float) =
+        seq(SeqOp.SET_LOCK, pat = pattern, pad = pad, a = tick, b = width or (paramId shl 16), f = value)
+    fun seqClearLocks(pattern: Int, pad: Int, tick: Int, width: Int) =
+        seq(SeqOp.CLEAR_LOCKS, pat = pattern, pad = pad, a = tick, b = width)
+    fun seqSetLocksEnabled(on: Boolean) = seq(SeqOp.SET_LOCKS_ENABLED, a = if (on) 1 else 0)
 
     fun seqState(): SeqState = if (handle != 0L) SeqState.from(nativeSeqState(handle)) else SeqState()
     fun seqPatternBars(pattern: Int): Int = if (handle != 0L) nativeSeqPatternBars(handle, pattern) else 1
@@ -132,10 +180,11 @@ object AudioEngine {
     }
 
     private val snapshotBuf = LongArray(768)
+    private val locksBuf = LongArray(768)
     /** Снимок паттерна; null — не удалось получить согласованный (повторить позже). Вызывать из одного потока. */
     @Synchronized fun seqReadPattern(pattern: Int): List<SeqNote>? {
         if (handle == 0L) return emptyList()
-        val n = nativeSeqCopyPattern(handle, pattern, snapshotBuf)
+        val n = nativeSeqCopyPatternLocks(handle, pattern, snapshotBuf, locksBuf)
         if (n < 0) return null
         return List(n) {
             val w = snapshotBuf[it]
@@ -144,6 +193,7 @@ object AudioEngine {
                 pad = ((w shr 16) and 0xFF).toInt(),
                 velocity = ((w shr 24) and 0xFF).toInt(),
                 length = ((w shr 32) and 0xFFFF).toInt(),
+                locks = locksBuf[it],
             )
         }
     }
@@ -179,6 +229,7 @@ object AudioEngine {
     private external fun nativeSeq(h: Long, op: Int, pat: Int, pad: Int, a: Int, b: Int, f: Float): Boolean
     private external fun nativeSeqState(h: Long): Long
     private external fun nativeSeqCopyPattern(h: Long, pat: Int, out: LongArray): Int
+    private external fun nativeSeqCopyPatternLocks(h: Long, pat: Int, out: LongArray, locks: LongArray): Int
     private external fun nativeSeqPatternBars(h: Long, pat: Int): Int
     private external fun nativeSeqPatternCounts(h: Long, out: IntArray)
     private external fun nativeLinkSetEnabled(h: Long, on: Boolean)

@@ -13,6 +13,7 @@ import com.example.mpcpad.audio.DefaultKit
 import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.capture.CaptureSource
+import com.example.mpcpad.sample.PadLibrary
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -64,8 +65,17 @@ class AppViewModel : ViewModel() {
     var eraseLatch by mutableStateOf(false)
     var sampleSource by mutableStateOf(CaptureSource.MIC)
 
+    /** CHOKE удерживается: касание пада включает/выключает у него глушение (группа 1). */
+    var chokeHold by mutableStateOf(false)
+    /** SEQ: паттерн, скопированный долгим нажатием (-1 — нет); касание другого пада вставляет копию. */
+    var copySource by mutableIntStateOf(-1)
+    /** STEP: удерживаемый шаг (-1 — нет) и его параметры с учётом P-LOCK — их показывают ручки. */
+    var heldStep by mutableIntStateOf(-1)
+    var heldStepUi by mutableStateOf<PadUi?>(null)
+    var heldStepEdited = false
+
     val pads = mutableStateListOf<PadUi>().apply {
-        repeat(64) { add(PadUi(mode = DefaultKit.initialMode(it))) }
+        repeat(64) { add(PadUi(mode = DefaultKit.initialMode(it), choke = if (it in DefaultKit.CHOKE_PADS) 1 else 0)) }
     }
 
     // ---- состояние секвенсора (опрашивается покадрово) ----
@@ -130,6 +140,26 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.START, 0f)
         AudioEngine.setParam(pad, PadParam.END, 1f)
         update(pad) { it.copy(start = 0f, end = 1f) }
+    }
+
+    /**
+     * T-HEAD / T-TAIL для уже загруженных семплов: без порчи файла сдвигают START/END к началу/концу звука.
+     * Трогаем только пады, где граница не менялась вручную.
+     */
+    fun applyTrim(head: Boolean, on: Boolean) {
+        for (p in 0 until 64) {
+            val info = PadLibrary.infos[p] ?: continue
+            val ui = pads[p]
+            if (head) {
+                val target = info.soundStart.coerceIn(0f, ui.end - 0.01f)
+                if (on && ui.start == 0f && target > 0f) setParam(p, PadParam.START, target) { it.copy(start = target) }
+                if (!on && ui.start != 0f && ui.start == target) setParam(p, PadParam.START, 0f) { it.copy(start = 0f) }
+            } else {
+                val target = info.soundEnd.coerceIn(ui.start + 0.01f, 1f)
+                if (on && ui.end == 1f && target < 1f) setParam(p, PadParam.END, target) { it.copy(end = target) }
+                if (!on && ui.end != 1f && ui.end == target) setParam(p, PadParam.END, 1f) { it.copy(end = 1f) }
+            }
+        }
     }
 
     fun setParam(pad: Int, id: Int, value: Float, ui: (PadUi) -> PadUi) {

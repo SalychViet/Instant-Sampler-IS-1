@@ -19,7 +19,77 @@ int velFrom01(float v) {
     return std::clamp(static_cast<int>(std::lround(v * 127.0f)), 1, 127);
 }
 
+// Линейное квантование x из [lo, hi] в bits бит.
+uint64_t q(float x, float lo, float hi, int bits) {
+    const float maxv = static_cast<float>((1u << bits) - 1);
+    const float n = std::clamp((x - lo) / (hi - lo), 0.0f, 1.0f);
+    return static_cast<uint64_t>(std::lround(n * maxv));
+}
+float dq(uint64_t v, float lo, float hi, int bits) {
+    const float maxv = static_cast<float>((1u << bits) - 1);
+    return lo + (hi - lo) * static_cast<float>(v) / maxv;
+}
+
+constexpr int kLockBits[kLockCount] = {7, 7, 6, 10, 10, 8, 8};
+
 }  // namespace
+
+uint64_t packLocks(const ParamLocks& l) {
+    uint64_t w = l.mask & 0x7Fu;
+    int shift = 7;
+    for (int i = 0; i < kLockCount; ++i) {
+        const int bits = kLockBits[i];
+        uint64_t f = 0;
+        switch (i) {
+            case kLockVol: f = q(l.v[i], 0.0f, 2.0f, bits); break;
+            case kLockPan: f = q(l.v[i], -1.0f, 1.0f, bits); break;
+            case kLockPitch: f = q(std::round(l.v[i]), -24.0f, 39.0f, bits); break;   // 64 значения: шаг 1 полутон
+            case kLockStart:
+            case kLockEnd: f = q(l.v[i], 0.0f, 1.0f, bits); break;
+            case kLockAttack: f = q(l.v[i], 0.0f, 255.0f, bits); break;                 // 1 мс
+            case kLockRelease: f = q(std::sqrt(std::max(0.0f, (l.v[i] - 5.0f) / 1995.0f)), 0.0f, 1.0f, bits); break;
+        }
+        w |= f << shift;
+        shift += bits;
+    }
+    return w;
+}
+
+ParamLocks unpackLocks(uint64_t w) {
+    ParamLocks l;
+    l.mask = static_cast<uint32_t>(w & 0x7Fu);
+    int shift = 7;
+    for (int i = 0; i < kLockCount; ++i) {
+        const int bits = kLockBits[i];
+        const uint64_t f = (w >> shift) & ((1ull << bits) - 1);
+        switch (i) {
+            case kLockVol: l.v[i] = dq(f, 0.0f, 2.0f, bits); break;
+            case kLockPan: l.v[i] = dq(f, -1.0f, 1.0f, bits); break;
+            case kLockPitch: l.v[i] = std::round(dq(f, -24.0f, 39.0f, bits)); break;
+            case kLockStart:
+            case kLockEnd: l.v[i] = dq(f, 0.0f, 1.0f, bits); break;
+            case kLockAttack: l.v[i] = dq(f, 0.0f, 255.0f, bits); break;
+            case kLockRelease: {
+                const float n = dq(f, 0.0f, 1.0f, bits);
+                l.v[i] = 5.0f + n * n * 1995.0f;
+                break;
+            }
+        }
+        shift += bits;
+    }
+    return l;
+}
+
+void applyLocks(const ParamLocks& l, PadParams& p) {
+    if (l.mask & (1u << kLockVol)) p.volume = l.v[kLockVol];
+    if (l.mask & (1u << kLockPan)) p.pan = l.v[kLockPan];
+    if (l.mask & (1u << kLockPitch)) p.pitch = l.v[kLockPitch];
+    if (l.mask & (1u << kLockStart)) p.start = l.v[kLockStart];
+    if (l.mask & (1u << kLockEnd)) p.end = l.v[kLockEnd];
+    if (l.mask & (1u << kLockAttack)) p.attackMs = l.v[kLockAttack];
+    if (l.mask & (1u << kLockRelease)) p.releaseMs = l.v[kLockRelease];
+    if (p.end <= p.start) p.end = std::min(1.0f, p.start + 0.01f);
+}
 
 Sequencer::Sequencer(VoicePool& voices, PadParams* pads) : voices_(voices), pads_(pads) {
     for (int i = 0; i < kNumPads; ++i) {
@@ -70,20 +140,26 @@ int Sequencer::findEvent(const Pattern& p, int tick, int pad) const {
 }
 
 // Вызывать между beginWrite/endWrite.
-void Sequencer::insertEvent(Pattern& p, const SeqEvent& e) {
+int Sequencer::insertEvent(Pattern& p, const SeqEvent& e, uint64_t locks) {
     const int n = p.count.load(std::memory_order_relaxed);
-    if (n >= kMaxPatternEvents) return;
+    if (n >= kMaxPatternEvents) return -1;
     const int at = lowerBound(p, e.tick + 1);   // после событий с тем же тиком
-    for (int i = n; i > at; --i)
+    for (int i = n; i > at; --i) {
         p.ev[i].store(p.ev[i - 1].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        p.lk[i].store(p.lk[i - 1].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
     p.ev[at].store(packEvent(e), std::memory_order_relaxed);
+    p.lk[at].store(locks, std::memory_order_relaxed);
     p.count.store(n + 1, std::memory_order_relaxed);
+    return at;
 }
 
 void Sequencer::removeAt(Pattern& p, int idx) {
     const int n = p.count.load(std::memory_order_relaxed);
-    for (int i = idx; i + 1 < n; ++i)
+    for (int i = idx; i + 1 < n; ++i) {
         p.ev[i].store(p.ev[i + 1].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        p.lk[i].store(p.lk[i + 1].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
     p.count.store(n - 1, std::memory_order_relaxed);
 }
 
@@ -126,7 +202,57 @@ void Sequencer::clearPattern(int pat) {
     endWrite(p);
 }
 
+void Sequencer::copyPatternTo(int dst, int src) {
+    if (dst == src) return;
+    const Pattern& s = patterns_[src];
+    Pattern& d = patterns_[dst];
+    beginWrite(d);
+    const int n = s.count.load(std::memory_order_relaxed);
+    for (int i = 0; i < n; ++i) {
+        d.ev[i].store(s.ev[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+        d.lk[i].store(s.lk[i].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
+    d.count.store(n, std::memory_order_relaxed);
+    d.bars.store(s.bars.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    endWrite(d);
+}
+
+// Закрепить значение параметра за нотами пада в шаге [tick, tick+width).
+void Sequencer::setLock(int pat, int pad, int tick, int width, int paramId, float value) {
+    const int slot = lockSlotOf(paramId);
+    if (slot < 0 || !std::isfinite(value)) return;
+    Pattern& p = patterns_[pat];
+    beginWrite(p);
+    const int n = p.count.load(std::memory_order_relaxed);
+    for (int i = lowerBound(p, tick); i < n; ++i) {
+        const SeqEvent e = eventAt(p, i);
+        if (e.tick >= tick + std::max(1, width)) break;
+        if (e.pad != pad) continue;
+        ParamLocks l = unpackLocks(p.lk[i].load(std::memory_order_relaxed));
+        l.mask |= 1u << slot;
+        l.v[slot] = value;
+        p.lk[i].store(packLocks(l), std::memory_order_relaxed);
+    }
+    endWrite(p);
+}
+
+void Sequencer::clearLocks(int pat, int pad, int tick, int width) {
+    Pattern& p = patterns_[pat];
+    beginWrite(p);
+    const int n = p.count.load(std::memory_order_relaxed);
+    for (int i = lowerBound(p, tick); i < n; ++i) {
+        const SeqEvent e = eventAt(p, i);
+        if (e.tick >= tick + std::max(1, width)) break;
+        if (e.pad == pad) p.lk[i].store(0, std::memory_order_relaxed);
+    }
+    endWrite(p);
+}
+
 int Sequencer::copyPattern(int pat, uint64_t* dst, int cap) const {
+    return copyPatternWithLocks(pat, dst, nullptr, cap);
+}
+
+int Sequencer::copyPatternWithLocks(int pat, uint64_t* dst, uint64_t* locks, int cap) const {
     if (pat < 0 || pat >= kNumPatterns || !dst || cap < 0) return -1;
     const Pattern& p = patterns_[pat];
     for (int attempt = 0; attempt < 8; ++attempt) {
@@ -134,6 +260,8 @@ int Sequencer::copyPattern(int pat, uint64_t* dst, int cap) const {
         if (v1 & 1u) continue;
         const int n = std::min(p.count.load(std::memory_order_relaxed), cap);
         for (int i = 0; i < n; ++i) dst[i] = p.ev[i].load(std::memory_order_relaxed);
+        if (locks)
+            for (int i = 0; i < n; ++i) locks[i] = p.lk[i].load(std::memory_order_relaxed);
         std::atomic_thread_fence(std::memory_order_acquire);
         if (p.ver.load(std::memory_order_relaxed) == v1) return n;
     }
@@ -186,6 +314,18 @@ void Sequencer::apply(SeqOp op, int pat, int pad, int a, int b, float f) {
             break;
         case SeqOp::SetLength:
             if (patOk) patterns_[pat].bars.store(std::clamp(a, 1, kMaxBars), std::memory_order_relaxed);
+            break;
+        case SeqOp::CopyPattern:
+            if (patOk && a >= 0 && a < kNumPatterns) copyPatternTo(pat, a);
+            break;
+        case SeqOp::SetLock:
+            if (patOk && padOk) setLock(pat, pad, a, b & 0xFFFF, (b >> 16) & 0xFF, f);
+            break;
+        case SeqOp::ClearLocks:
+            if (patOk && padOk) clearLocks(pat, pad, a, b);
+            break;
+        case SeqOp::SetLocksEnabled:
+            locksEnabled_ = a != 0;
             break;
     }
     publishState();
@@ -359,7 +499,11 @@ void Sequencer::processTick() {
             skipTick_[e.pad] = -1;
             continue;
         }
-        const PadParams& pp = pads_[e.pad];
+        PadParams pp = pads_[e.pad];
+        if (locksEnabled_) {
+            const uint64_t lw = p.lk[i].load(std::memory_order_relaxed);
+            if (lw) applyLocks(unpackLocks(lw), pp);
+        }
         voices_.noteOn(pp, e.pad, static_cast<float>(e.vel) / 127.0f);
         if (pp.mode == PlayMode::Gate || pp.mode == PlayMode::Loop)
             noteOffAt_[e.pad] = now + std::max(1, e.len);

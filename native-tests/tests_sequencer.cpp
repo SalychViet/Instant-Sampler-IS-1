@@ -638,6 +638,81 @@ TEST(SequencerTest, PatternSnapshotIsConsistentWhileEditing) {
     EXPECT_GT(okSnapshots.load(), 0);
 }
 
+// ---------------------------------------------------------------- копия паттерна и параметры шагов (P-LOCK)
+
+TEST(SequencerTest, CopyPatternCopiesNotesLengthAndLocks) {
+    Rig r;
+    r.step(0, 1, 0);
+    r.step(0, 2, 96);
+    r.seq.apply(SeqOp::SetLength, 0, 0, 3, 0, 0);
+    r.seq.apply(SeqOp::SetLock, 0, 1, 0, 24 | (kParamVolume << 16), 0.5f);
+    r.seq.apply(SeqOp::CopyPattern, 5, 0, 0, 0, 0);
+    EXPECT_EQ(r.seq.patternCount(5), 2);
+    EXPECT_EQ(r.seq.patternBars(5), 3);
+    uint64_t ev[kMaxPatternEvents], lk[kMaxPatternEvents];
+    ASSERT_EQ(r.seq.copyPatternWithLocks(5, ev, lk, kMaxPatternEvents), 2);
+    const ParamLocks l = unpackLocks(lk[0]);
+    EXPECT_TRUE(l.mask & (1u << kLockVol));
+    EXPECT_NEAR(l.v[kLockVol], 0.5f, 0.02f);
+    // правка копии не трогает оригинал
+    r.step(5, 3, 48);
+    EXPECT_EQ(r.seq.patternCount(0), 2);
+}
+
+TEST(SequencerTest, LocksPackRoundTrip) {
+    ParamLocks l;
+    l.mask = 0x7F;
+    l.v[kLockVol] = 1.3f; l.v[kLockPan] = -0.4f; l.v[kLockPitch] = -7.0f;
+    l.v[kLockStart] = 0.25f; l.v[kLockEnd] = 0.75f; l.v[kLockAttack] = 40.0f; l.v[kLockRelease] = 300.0f;
+    const ParamLocks r = unpackLocks(packLocks(l));
+    EXPECT_EQ(r.mask, 0x7Fu);
+    EXPECT_NEAR(r.v[kLockVol], 1.3f, 0.02f);
+    EXPECT_NEAR(r.v[kLockPan], -0.4f, 0.02f);
+    EXPECT_EQ(r.v[kLockPitch], -7.0f);
+    EXPECT_NEAR(r.v[kLockStart], 0.25f, 0.002f);
+    EXPECT_NEAR(r.v[kLockEnd], 0.75f, 0.002f);
+    EXPECT_NEAR(r.v[kLockAttack], 40.0f, 1.0f);
+    EXPECT_NEAR(r.v[kLockRelease], 300.0f, 25.0f);
+}
+
+TEST(SequencerTest, LockedVolumeChangesOnlyThatStep) {
+    Rig r;
+    r.give(0, 1.0f);
+    r.step(0, 0, 0);
+    r.step(0, 0, 96);
+    r.seq.apply(SeqOp::SetLock, 0, 0, 96, 24 | (kParamVolume << 16), 0.5f);
+    r.seq.apply(SeqOp::Play, 0, 0, 0, 0, 0);
+    const auto x = r.render(30000);
+    const auto o = onsets(x);
+    ASSERT_GE(o.size(), 2u);
+    EXPECT_NEAR(x[o[1] + 50] / x[o[0] + 50], 0.5f, 0.03f);
+}
+
+TEST(SequencerTest, LocksIgnoredWhenDisabled) {
+    Rig r;
+    r.give(0, 1.0f);
+    r.step(0, 0, 0);
+    r.step(0, 0, 96);
+    r.seq.apply(SeqOp::SetLock, 0, 0, 96, 24 | (kParamVolume << 16), 0.5f);
+    r.seq.apply(SeqOp::SetLocksEnabled, 0, 0, 0, 0, 0);
+    r.seq.apply(SeqOp::Play, 0, 0, 0, 0, 0);
+    const auto x = r.render(30000);
+    const auto o = onsets(x);
+    ASSERT_GE(o.size(), 2u);
+    EXPECT_NEAR(x[o[1] + 50] / x[o[0] + 50], 1.0f, 0.01f);
+}
+
+TEST(SequencerTest, ToggleOffRemovesLocksWithNote) {
+    Rig r;
+    r.step(0, 0, 0);
+    r.seq.apply(SeqOp::SetLock, 0, 0, 0, 24 | (kParamPan << 16), 1.0f);
+    r.step(0, 0, 0);   // снять ноту
+    r.step(0, 0, 0);   // поставить заново — без старых параметров
+    uint64_t ev[kMaxPatternEvents], lk[kMaxPatternEvents];
+    ASSERT_EQ(r.seq.copyPatternWithLocks(0, ev, lk, kMaxPatternEvents), 1);
+    EXPECT_EQ(lk[0], 0u);
+}
+
 // ---------------------------------------------------------------- Ableton Link
 
 namespace {

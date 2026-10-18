@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -206,10 +207,13 @@ internal fun HwButton(
     glyph: Glyph = Glyph.NONE,
     enabled: Boolean = true,
     height: Dp = 30.dp,
+    /** Нажата/отпущена — для кнопок-модификаторов, которые держат (CHOKE). */
+    onPress: ((Boolean) -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
+    if (onPress != null) LaunchedEffect(pressed) { onPress(pressed) }
     val shape = RoundedCornerShape(5.dp)
     val face = if (pressed) listOf(Skin.CapDark, Color(0xFFA2A5AA)) else listOf(Skin.CapLight, Skin.CapDark)
 

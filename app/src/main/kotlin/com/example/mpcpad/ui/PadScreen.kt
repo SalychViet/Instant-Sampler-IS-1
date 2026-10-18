@@ -26,14 +26,13 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +41,7 @@ import com.example.mpcpad.R
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.PadParam
+import com.example.mpcpad.audio.StepLocks
 import com.example.mpcpad.capture.CaptureController
 import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.capture.PadCapture
@@ -52,6 +52,9 @@ import com.example.mpcpad.sample.SamplerEvent
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private fun norm(v: Float, lo: Float, hi: Float) = ((v - lo) / (hi - lo)).coerceIn(0f, 1f)
 private fun denorm(n: Float, lo: Float, hi: Float) = lo + n * (hi - lo)
@@ -64,14 +67,18 @@ private val CHROME_BG = Color(0xFF0E0F11)
 fun MpcRoot(actions: SampleActions) {
     val app: AppViewModel = viewModel()
     val sampleVm: SampleViewModel = viewModel()
-    val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    /** Таймеры долгого нажатия (SEQ: копия паттерна). */
+    val longPress = remember { arrayOfNulls<Job>(64) }
+    /** STEP: шаг был поставлен этим же нажатием (тогда отпускание его не снимает). */
+    val stepAdded = remember { BooleanArray(64) }
 
     val pressedMask = remember { mutableLongStateOf(0L) }
     val engineMask = remember { mutableLongStateOf(0L) }
     val peak = remember { mutableFloatStateOf(0f) }
     val recLevel = remember { mutableFloatStateOf(0f) }
     val holdPad = remember { mutableIntStateOf(-1) }
-    /** Как был нажат каждый пад: 0 — никак, 1 — нота, 2 — запись семпла. */
+    /** Как был нажат каждый пад: 0 — никак, 1 — нота, 2 — запись семпла, 3 — удержание шага. */
     val route = remember { IntArray(64) }
     val cap by PadCapture.state.collectAsState()
 
@@ -153,10 +160,39 @@ fun MpcRoot(actions: SampleActions) {
     fun flash(t: String) = app.flash(t, 1100)
 
     // ---- обработка падов ----
+    /** Параметры шага с учётом P-LOCK: значения пада, поверх — закреплённые за шагом. */
+    fun stepUi(step: Int): PadUi {
+        var u = app.pads[app.selected]
+        val from = step * STEP_TICKS
+        val note = AudioEngine.seqReadPattern(app.seqPattern)
+            ?.firstOrNull { it.pad == app.selected && it.tick >= from && it.tick < from + STEP_TICKS }
+        if (note != null) {
+            for ((id, v) in StepLocks.decode(note.locks)) {
+                u = when (id) {
+                    PadParam.VOLUME -> u.copy(volume = v)
+                    PadParam.PAN -> u.copy(pan = v)
+                    PadParam.PITCH -> u.copy(pitch = v)
+                    PadParam.START -> u.copy(start = v)
+                    PadParam.END -> u.copy(end = v)
+                    PadParam.ATTACK_MS -> u.copy(attackMs = v)
+                    PadParam.RELEASE_MS -> u.copy(releaseMs = v)
+                    else -> u
+                }
+            }
+        }
+        return u
+    }
+
     fun padDown(global: Int, vel: Float) {
         pressedMask.longValue = pressedMask.longValue or (1L shl global)
-        if (Settings.haptic) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         route[global] = 0
+        if (app.chokeHold) {
+            // CHOKE удерживается: пад входит/выходит из группы глушения.
+            val on = app.pads[global].choke == 0
+            app.setParam(global, PadParam.CHOKE, if (on) 1f else 0f) { it.copy(choke = if (on) 1 else 0) }
+            flash("CHOKE ${padName(global)} " + if (on) "ON" else "OFF")
+            return
+        }
         when {
             app.mode == Mode.PAD -> {
                 app.selected = global
@@ -180,13 +216,32 @@ fun MpcRoot(actions: SampleActions) {
             }
             !app.stepView -> {
                 // SEQ: пад = паттерн
-                if (app.eraseLatch) {
-                    app.eraseLatch = false
-                    AudioEngine.seqClearPattern(global)
-                    flash("CLEARED ${patternName(global)}")
-                } else {
-                    AudioEngine.seqSelect(global, immediate = !app.seqPlaying)
-                    flash("PATTERN ${patternName(global)}" + if (app.seqPlaying) " NEXT" else "")
+                val src = app.copySource
+                when {
+                    src >= 0 -> {
+                        app.copySource = -1
+                        if (src == global) {
+                            flash("COPY CANCELLED")
+                        } else {
+                            AudioEngine.seqCopyPattern(src, global)
+                            app.flash("COPIED ${patternName(src)} → ${patternName(global)}", 1800)
+                        }
+                    }
+                    app.eraseLatch -> {
+                        app.eraseLatch = false
+                        AudioEngine.seqClearPattern(global)
+                        flash("CLEARED ${patternName(global)}")
+                    }
+                    else -> {
+                        AudioEngine.seqSelect(global, immediate = !app.seqPlaying)
+                        flash("PATTERN ${patternName(global)}" + if (app.seqPlaying) " NEXT" else "")
+                        // Долгое нажатие — скопировать этот паттерн, следующее касание пада вставит копию.
+                        longPress[global] = scope.launch {
+                            delay(600)
+                            app.copySource = global
+                            app.flash("COPY ${patternName(global)} → TOUCH A PAD", 4000)
+                        }
+                    }
                 }
             }
             app.soundPick -> {
@@ -197,29 +252,61 @@ fun MpcRoot(actions: SampleActions) {
                 flash("SOUND ${padName(global)}")
             }
             else -> {
+                // STEP: пустой шаг ставится сразу; занятый снимается на отпускании, если его не правили (P-LOCK).
                 val step = app.stepBar * STEPS_PER_BAR + global % 16
-                AudioEngine.seqToggleStep(app.seqPattern, app.selected, step * STEP_TICKS, STEP_TICKS, Settings.stepVelocity)
-                // мгновенный отклик: опрос подтвердит через ~100 мс
-                app.stepMask = app.stepMask xor (1L shl step)
+                val has = (app.stepMask shr step) and 1L != 0L
+                if (!has) {
+                    AudioEngine.seqToggleStep(app.seqPattern, app.selected, step * STEP_TICKS, STEP_TICKS, Settings.stepVelocity)
+                    app.stepMask = app.stepMask or (1L shl step)   // мгновенный отклик: опрос подтвердит через ~100 мс
+                }
+                stepAdded[global] = !has
+                route[global] = 3
+                app.heldStep = step
+                app.heldStepEdited = false
+                app.heldStepUi = if (Settings.pLock) stepUi(step) else null
+                if (Settings.pLock) flash("STEP ${step + 1}: TURN A KNOB")
             }
         }
     }
 
     fun padUp(global: Int) {
         pressedMask.longValue = pressedMask.longValue and (1L shl global).inv()
+        longPress[global]?.cancel()
+        longPress[global] = null
         when (route[global]) {
             1 -> AudioEngine.noteOff(global)
             2 -> PadCapture.end()
+            3 -> {
+                val step = app.stepBar * STEPS_PER_BAR + global % 16
+                if (!stepAdded[global] && !app.heldStepEdited) {
+                    AudioEngine.seqToggleStep(app.seqPattern, app.selected, step * STEP_TICKS, STEP_TICKS, Settings.stepVelocity)
+                    app.stepMask = app.stepMask and (1L shl step).inv()
+                }
+                if (app.heldStep == step) {
+                    app.heldStep = -1
+                    app.heldStepUi = null
+                }
+            }
         }
         route[global] = 0
     }
 
     // ---- ручки выбранного пада ----
     val pad = app.selected
-    val ui = app.pads[pad]
+    val inStepEdit = Settings.pLock && app.mode == Mode.SEQ && app.stepView && app.heldStep >= 0
+    val ui = (if (inStepEdit) app.heldStepUi else null) ?: app.pads[pad]
     fun setPad(id: Int, label: String, text: String, v: Float, f: (PadUi) -> PadUi) {
-        app.setParam(pad, id, v, f)
-        app.flash("$label $text", 900)
+        val step = app.heldStep
+        if (inStepEdit && step >= 0) {
+            // P-LOCK: значение только для этого шага.
+            AudioEngine.seqSetLock(app.seqPattern, pad, step * STEP_TICKS, STEP_TICKS, id, v)
+            app.heldStepUi = f(app.heldStepUi ?: app.pads[pad])
+            app.heldStepEdited = true
+            app.flash("STEP ${step + 1} $label $text", 900)
+        } else {
+            app.setParam(pad, id, v, f)
+            app.flash("$label $text", 900)
+        }
     }
 
     Box(
@@ -257,17 +344,17 @@ fun MpcRoot(actions: SampleActions) {
                 // --- софт-клавиши ---
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     SoftKey(1, "PAD", Modifier.weight(1f), active = app.mode == Mode.PAD) {
-                        app.mode = Mode.PAD; app.stepView = false; app.soundPick = false; app.eraseLatch = false
+                        app.mode = Mode.PAD; app.stepView = false; app.soundPick = false; app.eraseLatch = false; app.copySource = -1
                     }
                     SoftKey(2, "SEQ", Modifier.weight(1f), active = app.mode == Mode.SEQ && !app.stepView) {
-                        app.mode = Mode.SEQ; app.stepView = false; app.soundPick = false; app.eraseLatch = false
+                        app.mode = Mode.SEQ; app.stepView = false; app.soundPick = false; app.eraseLatch = false; app.copySource = -1
                     }
                     SoftKey(3, if (app.stepView) "SOUND" else "STEP", Modifier.weight(1f), active = app.stepView && app.soundPick) {
                         if (app.stepView) {
                             app.soundPick = !app.soundPick
                             flash(if (app.soundPick) "TOUCH A PAD: SOUND" else "STEP INPUT")
                         } else {
-                            app.mode = Mode.SEQ; app.stepView = true; app.eraseLatch = false
+                            app.mode = Mode.SEQ; app.stepView = true; app.eraseLatch = false; app.copySource = -1
                             flash("STEP: ${padName(app.selected)}")
                         }
                     }
@@ -296,11 +383,11 @@ fun MpcRoot(actions: SampleActions) {
                         setPad(PadParam.PITCH, "PITCH", "%+.0f ST".format(v), v) { it.copy(pitch = v) }
                     }, diameter = 34.dp, defaultValue = 0.5f)
                     Knob("START", ui.start, { n ->
-                        val v = n.coerceAtMost(app.pads[pad].end - 0.01f).coerceAtLeast(0f)
+                        val v = n.coerceAtMost(ui.end - 0.01f).coerceAtLeast(0f)
                         setPad(PadParam.START, "START", "%.1f%%".format(v * 100), v) { it.copy(start = v) }
                     }, diameter = 34.dp, brass = true, defaultValue = 0f)
                     Knob("END", ui.end, { n ->
-                        val v = n.coerceAtLeast(app.pads[pad].start + 0.01f).coerceAtMost(1f)
+                        val v = n.coerceAtLeast(ui.start + 0.01f).coerceAtMost(1f)
                         setPad(PadParam.END, "END", "%.1f%%".format(v * 100), v) { it.copy(end = v) }
                     }, diameter = 34.dp, brass = true, defaultValue = 1f)
                     Knob("ATK", norm(ui.attackMs, 0f, 200f), { n ->
@@ -393,7 +480,13 @@ fun MpcRoot(actions: SampleActions) {
                 // --- ряд C: ввод семплов ---
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HwButton("ERASE", Modifier.weight(1f), led = app.eraseLatch, ledColor = Skin.LedRed, height = 28.dp) {
-                        if (app.mode == Mode.SEQ && app.stepView) {
+                        if (inStepEdit) {
+                            val step = app.heldStep
+                            AudioEngine.seqClearLocks(app.seqPattern, app.selected, step * STEP_TICKS, STEP_TICKS)
+                            app.heldStepUi = app.pads[app.selected]
+                            app.heldStepEdited = true
+                            flash("STEP ${step + 1}: P-LOCKS CLEARED")
+                        } else if (app.mode == Mode.SEQ && app.stepView) {
                             AudioEngine.seqErasePad(app.seqPattern, app.selected)
                             app.stepMask = 0L
                             flash("ERASED ${padName(app.selected)}")
@@ -425,10 +518,12 @@ fun MpcRoot(actions: SampleActions) {
                     }
                     HwButton("T-HEAD", Modifier.weight(1f), led = Settings.trimStart, height = 28.dp) {
                         Settings.trimStart = !Settings.trimStart
+                        app.applyTrim(head = true, on = Settings.trimStart)
                         flash("TRIM HEAD " + if (Settings.trimStart) "ON" else "OFF")
                     }
                     HwButton("T-TAIL", Modifier.weight(1f), led = Settings.trimEnd, height = 28.dp) {
                         Settings.trimEnd = !Settings.trimEnd
+                        app.applyTrim(head = false, on = Settings.trimEnd)
                         flash("TRIM TAIL " + if (Settings.trimEnd) "ON" else "OFF")
                     }
                 }
@@ -458,6 +553,7 @@ fun MpcRoot(actions: SampleActions) {
                 marked = {
                     var m = 0L
                     when {
+                        app.chokeHold -> for (i in 0 until 64) if (app.pads[i].choke > 0) m = m or (1L shl i)
                         inPatterns -> for (i in 0 until 64) if (app.patternCounts[i] > 0) m = m or (1L shl i)
                         inStep -> m = ((app.stepMask shr (app.stepBar * STEPS_PER_BAR)) and 0xFFFFL) shl (app.bank * 16)
                         else -> for (i in 0 until 64) if (PadLibrary.infos[i] != null) m = m or (1L shl i)
@@ -466,7 +562,7 @@ fun MpcRoot(actions: SampleActions) {
                 },
                 cursor = {
                     when {
-                        inPatterns -> app.seqPattern
+                        inPatterns -> if (app.copySource >= 0) app.copySource else app.seqPattern
                         inStep && app.seqPlaying && app.seqPos / BAR_TICKS_PAGE == app.stepBar ->
                             app.bank * 16 + (app.seqPos % BAR_TICKS_PAGE) / STEP_TICKS
                         else -> -1
@@ -533,13 +629,23 @@ fun MpcRoot(actions: SampleActions) {
                 }
                 PeakMeter(level = { peak.floatValue }, modifier = Modifier.fillMaxWidth().height(7.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    HwButton(
+                        "CHOKE", Modifier.weight(1f), led = app.chokeHold, ledColor = Skin.LedRed, height = 24.dp,
+                        onPress = { held ->
+                            app.chokeHold = held
+                            if (held) app.flash("CHOKE: TOUCH PADS", 1500)
+                        },
+                    ) {}
+                    HwButton("P-LOCK", Modifier.weight(1f), led = Settings.pLock, height = 24.dp) {
+                        Settings.pLock = !Settings.pLock
+                        AudioEngine.seqSetLocksEnabled(Settings.pLock)
+                        app.flash(if (Settings.pLock) "P-LOCK ON: STEP + HOLD + KNOB" else "P-LOCK OFF", 1800)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HwButton("FULL", Modifier.weight(1f), led = Settings.fullLevel, height = 24.dp) {
                         Settings.fullLevel = !Settings.fullLevel
                         flash("FULL LEVEL " + if (Settings.fullLevel) "ON" else "OFF")
-                    }
-                    HwButton("HAPT", Modifier.weight(1f), led = Settings.haptic, height = 24.dp) {
-                        Settings.haptic = !Settings.haptic
-                        flash("HAPTIC " + if (Settings.haptic) "ON" else "OFF")
                     }
                     HwButton("SETUP", Modifier.weight(1f), led = Settings.linkEnabled, height = 24.dp) {
                         app.setupOpen = true
