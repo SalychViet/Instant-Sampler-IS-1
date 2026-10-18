@@ -10,6 +10,20 @@ object PadStore {
     private fun dir(context: Context): File = File(context.filesDir, "pads").apply { mkdirs() }
     private fun file(context: Context, pad: Int) = File(dir(context), String.format("pad_%02d.wav", pad))
     private fun nameFile(context: Context, pad: Int) = File(dir(context), String.format("pad_%02d.txt", pad))
+    /** Метка «пад очищен вручную»: стартовый кит не возвращает на него свой звук. */
+    private fun emptyFile(context: Context, pad: Int) = File(dir(context), String.format("pad_%02d.empty", pad))
+
+    /** Убирает семпл с пада: из движка, с диска и из библиотеки. */
+    fun delete(context: Context, pad: Int) {
+        AudioEngine.clearSample(pad)
+        PadLibrary.clear(pad)
+        file(context, pad).delete()
+        nameFile(context, pad).delete()
+        try {
+            emptyFile(context, pad).writeText("")
+        } catch (_: Exception) {
+        }
+    }
 
     /** Атомарно: пишем во временный файл и переименовываем. */
     fun save(context: Context, pad: Int, clip: SampleClip, name: String? = null): Boolean {
@@ -19,6 +33,7 @@ object PadStore {
         return try {
             tmp.writeBytes(bytes)
             val ok = tmp.renameTo(target)
+            if (ok) emptyFile(context, pad).delete()
             if (ok && name != null) nameFile(context, pad).writeText(name)
             ok
         } catch (e: Exception) {
@@ -37,6 +52,11 @@ object PadStore {
     fun loadAll(context: Context): Int {
         var loaded = 0
         for (pad in 0 until 64) {
+            if (emptyFile(context, pad).isFile) {
+                AudioEngine.clearSample(pad)
+                PadLibrary.clear(pad)
+                continue
+            }
             val f = file(context, pad)
             if (!f.isFile) continue
             val clip = try {

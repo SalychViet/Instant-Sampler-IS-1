@@ -118,7 +118,7 @@ fun Lcd(
             append(
                 when (ui.mode) {
                     PlayMode.GATE -> "GATE"
-                    PlayMode.LOOP -> "LOOP"
+                    PlayMode.LOOP -> if (ui.loopDiv >= 0) "LOOP " + LOOP_DIVS[ui.loopDiv].first else "LOOP"
                     else -> "ONE"
                 }
             )

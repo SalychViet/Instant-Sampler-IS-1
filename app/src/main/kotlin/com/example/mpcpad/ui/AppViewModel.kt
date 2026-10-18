@@ -33,6 +33,14 @@ data class PadUi(
     val choke: Int = 0,
     val releaseMs: Float = 15f,
     val attackMs: Float = 0f,
+    /** LOOP: длина петли по темпу (индекс в [LOOP_DIVS]), -1 — свободная (END вручную). */
+    val loopDiv: Int = -1,
+)
+
+/** Длины петли в долях (четвертях): 1/32 … 1/4. T — триоль. */
+val LOOP_DIVS = listOf(
+    "1/32" to 0.125f, "1/16T" to 1f / 6f, "1/16" to 0.25f, "1/8T" to 1f / 3f,
+    "1/8" to 0.5f, "1/4T" to 2f / 3f, "1/4" to 1f,
 )
 
 /** «A1»…«D16» по глобальному номеру пада 0..63. */
@@ -162,8 +170,44 @@ class AppViewModel : ViewModel() {
         }
     }
 
+    /** ONE SHOT → GATE → LOOP по кругу для пада. */
+    fun cyclePlayMode(pad: Int): Int {
+        val next = (pads[pad].mode + 1) % 3
+        setParam(pad, PadParam.MODE, next.toFloat()) { it.copy(mode = next) }
+        if (next != PlayMode.LOOP && pads[pad].loopDiv >= 0) {
+            // уходим из LOOP — петля по темпу больше не нужна, END снова весь семпл
+            setParam(pad, PadParam.END, 1f) { it.copy(end = 1f, loopDiv = -1) }
+        }
+        return next
+    }
+
+    /** Петля по темпу: END = START + длина ноты при текущем BPM. div = -1 — свободная петля. */
+    fun setLoopDiv(pad: Int, div: Int, bpm: Float) {
+        update(pad) { it.copy(loopDiv = div) }
+        applyLoopDiv(pad, bpm)
+    }
+
+    fun applyLoopDiv(pad: Int, bpm: Float) {
+        val ui = pads[pad]
+        val info = PadLibrary.infos[pad] ?: return
+        if (ui.loopDiv < 0 || info.durationMs <= 0) return
+        val beats = LOOP_DIVS[ui.loopDiv.coerceIn(0, LOOP_DIVS.size - 1)].second
+        val ms = beats * 60_000f / bpm
+        val end = (ui.start + ms / info.durationMs).coerceIn(ui.start + 0.001f, 1f)
+        setParam(pad, PadParam.END, end) { it.copy(end = end) }
+    }
+
+    /** Темп изменился — подогнать все петли, привязанные к темпу. */
+    fun resyncLoops(bpm: Float) {
+        for (p in 0 until 64) if (pads[p].mode == PlayMode.LOOP && pads[p].loopDiv >= 0) applyLoopDiv(p, bpm)
+    }
+
     fun setParam(pad: Int, id: Int, value: Float, ui: (PadUi) -> PadUi) {
         update(pad, ui)
         AudioEngine.setParam(pad, id, value)
+        // Сдвинули START у петли по темпу — END едет следом, длина петли сохраняется.
+        if (id == PadParam.START && pads[pad].mode == PlayMode.LOOP && pads[pad].loopDiv >= 0) {
+            applyLoopDiv(pad, com.example.mpcpad.Settings.bpm)
+        }
     }
 }

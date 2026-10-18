@@ -134,6 +134,9 @@ object AudioEngine {
     fun setParam(pad: Int, id: Int, value: Float) { if (handle != 0L) nativeSetParam(handle, pad, id, value) }
     fun setMasterVolume(v: Float) { if (handle != 0L) nativeSetMaster(handle, v) }
 
+    /** Пад становится пустым. */
+    fun clearSample(pad: Int): Boolean = handle != 0L && nativeClearSample(handle, pad)
+
     /** data: interleaved float PCM [-1..1], channels = 1 или 2. */
     fun loadSample(pad: Int, data: FloatArray, channels: Int, sampleRate: Int): Boolean =
         handle != 0L && nativeLoadSample(handle, pad, data, channels, sampleRate)
@@ -223,6 +226,7 @@ object AudioEngine {
     private external fun nativeSetParam(h: Long, pad: Int, id: Int, value: Float): Boolean
     private external fun nativeSetMaster(h: Long, v: Float): Boolean
     private external fun nativeLoadSample(h: Long, pad: Int, data: FloatArray, channels: Int, rate: Int): Boolean
+    private external fun nativeClearSample(h: Long, pad: Int): Boolean
     private external fun nativeActiveMask(h: Long): Long
     private external fun nativeMasterPeak(h: Long): Float
     private external fun nativeActiveVoices(h: Long): Int

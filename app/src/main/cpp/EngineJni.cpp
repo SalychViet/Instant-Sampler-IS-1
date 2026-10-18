@@ -86,6 +86,12 @@ JNIEXPORT jboolean JNICALL JNI(nativeLoadSample)(JNIEnv* env, jobject, jlong h, 
     return o->core().loadSample(pad, std::move(s));
 }
 
+// Убрать семпл с пада (старый освободится вне аудио-потока).
+JNIEXPORT jboolean JNICALL JNI(nativeClearSample)(JNIEnv*, jobject, jlong h, jint pad) {
+    auto* o = get(h);
+    return o && o->core().loadSample(pad, nullptr);
+}
+
 JNIEXPORT void JNICALL JNI(nativeAllNotesOff)(JNIEnv*, jobject, jlong h) {
     if (auto* o = get(h)) o->core().allNotesOff();
 }

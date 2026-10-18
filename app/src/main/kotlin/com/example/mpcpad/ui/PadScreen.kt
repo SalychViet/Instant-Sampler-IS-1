@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,12 +42,14 @@ import com.example.mpcpad.R
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.PadParam
+import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.audio.StepLocks
 import com.example.mpcpad.capture.CaptureController
 import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.capture.PadCapture
 import com.example.mpcpad.sample.PadLibrary
 import com.example.mpcpad.sample.PadSampler
+import com.example.mpcpad.sample.PadStore
 import com.example.mpcpad.sample.SampleViewModel
 import com.example.mpcpad.sample.SamplerEvent
 import kotlin.math.max
@@ -68,6 +71,7 @@ fun MpcRoot(actions: SampleActions) {
     val app: AppViewModel = viewModel()
     val sampleVm: SampleViewModel = viewModel()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     /** Таймеры долгого нажатия (SEQ: копия паттерна). */
     val longPress = remember { arrayOfNulls<Job>(64) }
     /** STEP: шаг был поставлен этим же нажатием (тогда отпускание его не снимает). */
@@ -159,6 +163,9 @@ fun MpcRoot(actions: SampleActions) {
 
     fun flash(t: String) = app.flash(t, 1100)
 
+    // Петли, привязанные к темпу, подстраиваются под новый BPM.
+    LaunchedEffect(Settings.bpm) { app.resyncLoops(Settings.bpm) }
+
     // ---- обработка падов ----
     /** Параметры шага с учётом P-LOCK: значения пада, поверх — закреплённые за шагом. */
     fun stepUi(step: Int): PadUi {
@@ -199,8 +206,9 @@ fun MpcRoot(actions: SampleActions) {
                 when {
                     app.eraseLatch -> {
                         app.eraseLatch = false
-                        AudioEngine.seqErasePad(app.seqPattern, global)
-                        flash("ERASED ${padName(global)} IN ${patternName(app.seqPattern)}")
+                        PadStore.delete(context, global)
+                        app.update(global) { PadUi() }
+                        flash("SAMPLE ${padName(global)} DELETED")
                     }
                     PadCapture.isArmed -> {
                         if (PadCapture.holdingPad < 0) {
@@ -463,17 +471,19 @@ fun MpcRoot(actions: SampleActions) {
                         if (app.stepBar >= bars) app.stepBar = 0
                         flash("LENGTH $bars BAR")
                     }
-                    var clearArmedAt by remember { mutableLongStateOf(0L) }
-                    HwButton("CLEAR", Modifier.weight(1f), led = clearArmedAt != 0L, ledColor = Skin.LedRed, height = 28.dp) {
-                        val now = System.currentTimeMillis()
-                        if (clearArmedAt != 0L && now - clearArmedAt < 2500) {
-                            AudioEngine.seqClearPattern(app.seqPattern)
-                            clearArmedAt = 0L
-                            flash("CLEARED ${patternName(app.seqPattern)}")
-                        } else {
-                            clearArmedAt = now
-                            app.flash("CLEAR ${patternName(app.seqPattern)}? PRESS AGAIN", 2500)
-                        }
+                    val padMode = app.pads[app.selected].mode
+                    HwButton(
+                        when (padMode) { PlayMode.GATE -> "GATE"; PlayMode.LOOP -> "LOOP"; else -> "ONE" },
+                        Modifier.weight(1f), led = padMode != PlayMode.ONE_SHOT, height = 28.dp,
+                    ) {
+                        val next = app.cyclePlayMode(app.selected)
+                        flash(
+                            "${padName(app.selected)} " + when (next) {
+                                PlayMode.GATE -> "GATE"
+                                PlayMode.LOOP -> "LOOP: GAIN = LOOP LENGTH"
+                                else -> "ONE SHOT"
+                            }
+                        )
                     }
                 }
 
@@ -492,7 +502,8 @@ fun MpcRoot(actions: SampleActions) {
                             flash("ERASED ${padName(app.selected)}")
                         } else {
                             app.eraseLatch = !app.eraseLatch
-                            if (app.eraseLatch) flash(if (app.mode == Mode.PAD) "TOUCH PAD TO ERASE" else "TOUCH PATTERN TO CLEAR")
+                            if (app.eraseLatch) app.flash(if (app.mode == Mode.PAD) "TOUCH PAD: DELETE SAMPLE" else "TOUCH PATTERN TO CLEAR", 3000)
+                            else flash("ERASE OFF")
                         }
                     }
                     HwButton(
@@ -616,11 +627,25 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.seqSetMetronome(Settings.metroMode, n)
                         app.flash("CLICK %.0f%%".format(n * 100), 900)
                     }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = 0.7f)
-                    Fader("GAIN", norm(Settings.recGainDb, -12f, 24f), { n ->
-                        val v = denorm(n, -12f, 24f).roundToInt().toFloat()
-                        Settings.recGainDb = v
-                        app.flash("REC GAIN %+.0f DB".format(v), 900)
-                    }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = norm(0f, -12f, 24f))
+                    val loopPad = app.pads[app.selected].mode == PlayMode.LOOP
+                    if (loopPad) {
+                        // LOOP: фейдер выбирает длину петли по темпу; внизу — FREE (END вручную).
+                        val steps = LOOP_DIVS.size
+                        val div = app.pads[app.selected].loopDiv
+                        Fader("LOOP", (div + 1).toFloat() / steps, { n ->
+                            val d = (n * steps).roundToInt() - 1
+                            if (d != app.pads[app.selected].loopDiv) {
+                                app.setLoopDiv(app.selected, d, Settings.bpm)
+                                app.flash("LOOP " + if (d < 0) "FREE" else LOOP_DIVS[d].first, 900)
+                            }
+                        }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = 0f)
+                    } else {
+                        Fader("GAIN", norm(Settings.recGainDb, -12f, 24f), { n ->
+                            val v = denorm(n, -12f, 24f).roundToInt().toFloat()
+                            Settings.recGainDb = v
+                            app.flash("REC GAIN %+.0f DB".format(v), 900)
+                        }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = norm(0f, -12f, 24f))
+                    }
                     Fader("TRIM", norm(Settings.trimDb, -72f, -20f), { n ->
                         val v = denorm(n, -72f, -20f).roundToInt().toFloat()
                         Settings.trimDb = v
