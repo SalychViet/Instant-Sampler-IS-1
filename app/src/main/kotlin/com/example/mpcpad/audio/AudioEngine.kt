@@ -39,6 +39,11 @@ object SeqOp {
     const val SET_LOCK = 13
     const val CLEAR_LOCKS = 14
     const val SET_LOCKS_ENABLED = 15
+    const val SNAPSHOT_PATTERN = 16
+    const val RESTORE_PATTERN = 17
+    const val SONG_CLEAR = 18
+    const val SONG_APPEND = 19
+    const val SONG_ENABLE = 20
 }
 
 /**
@@ -93,6 +98,7 @@ data class SeqState(
     val queued: Int = -1,         // -1 = нет очереди
     val countInTicksLeft: Int = 0,
     val linkWaiting: Boolean = false,   // Link: ждём границу такта сессии
+    val songIndex: Int = -1,            // позиция в цепочке паттернов, -1 — цепочка выключена
 ) {
     companion object {
         fun from(w: Long) = SeqState(
@@ -104,6 +110,7 @@ data class SeqState(
             queued = ((w shr 32) and 0xFF).toInt() - 1,
             countInTicksLeft = ((w shr 40) and 0xFFFF).toInt(),
             linkWaiting = (w shr 19) and 1L != 0L,
+            songIndex = ((w ushr 56) and 0xFF).toInt() - 1,
         )
     }
 }
@@ -171,6 +178,25 @@ object AudioEngine {
     fun seqClearLocks(pattern: Int, pad: Int, tick: Int, width: Int) =
         seq(SeqOp.CLEAR_LOCKS, pat = pattern, pad = pad, a = tick, b = width)
     fun seqSetLocksEnabled(on: Boolean) = seq(SeqOp.SET_LOCKS_ENABLED, a = if (on) 1 else 0)
+    /** UNDO: копия паттерна в скрытый слот 0..7 и обратно. */
+    fun seqSnapshot(pattern: Int, slot: Int) = seq(SeqOp.SNAPSHOT_PATTERN, pat = pattern, a = slot)
+    fun seqRestore(pattern: Int, slot: Int) = seq(SeqOp.RESTORE_PATTERN, pat = pattern, a = slot)
+
+    // ---- цепочка паттернов (song) ----
+    fun songClear() = seq(SeqOp.SONG_CLEAR)
+    fun songAppend(pattern: Int) = seq(SeqOp.SONG_APPEND, pat = pattern)
+    fun songEnable(on: Boolean) = seq(SeqOp.SONG_ENABLE, a = if (on) 1 else 0)
+    fun songList(): List<Int> {
+        if (handle == 0L) return emptyList()
+        val n = nativeSeqSongLength(handle)
+        return List(n) { nativeSeqSongAt(handle, it) }
+    }
+
+    // ---- KAOSS ----
+    /** Программа эффекта, X/Y 0..1 и касание (эффект включён, пока касаются). */
+    fun kaoss(program: Int, x: Float, y: Float, touch: Boolean) {
+        if (handle != 0L) nativeKaoss(handle, program, x, y, touch)
+    }
 
     fun seqState(): SeqState = if (handle != 0L) SeqState.from(nativeSeqState(handle)) else SeqState()
     fun seqPatternBars(pattern: Int): Int = if (handle != 0L) nativeSeqPatternBars(handle, pattern) else 1
@@ -236,6 +262,9 @@ object AudioEngine {
     private external fun nativeSeqCopyPatternLocks(h: Long, pat: Int, out: LongArray, locks: LongArray): Int
     private external fun nativeSeqPatternBars(h: Long, pat: Int): Int
     private external fun nativeSeqPatternCounts(h: Long, out: IntArray)
+    private external fun nativeKaoss(h: Long, program: Int, x: Float, y: Float, touch: Boolean)
+    private external fun nativeSeqSongLength(h: Long): Int
+    private external fun nativeSeqSongAt(h: Long, i: Int): Int
     private external fun nativeLinkSetEnabled(h: Long, on: Boolean)
     private external fun nativeLinkSetLatency(h: Long, ms: Float)
     private external fun nativeLinkPeers(h: Long): Int

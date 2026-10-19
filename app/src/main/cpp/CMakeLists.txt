@@ -11,6 +11,7 @@ add_library(mpcengine SHARED
     VoicePool.cpp
     EngineCore.cpp
     Sequencer.cpp
+    KaossFx.cpp
     LinkSync.cpp
     AudioOutput.cpp
     WavCodec.cpp

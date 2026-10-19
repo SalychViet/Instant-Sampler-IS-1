@@ -3,6 +3,7 @@
 #include <memory>
 #include <mutex>
 
+#include "KaossFx.h"
 #include "Limiter.h"
 #include "Sample.h"
 #include "Sequencer.h"
@@ -61,10 +62,15 @@ public:
     }
     int seqPatternBars(int pat) const { return seq_.patternBars(pat); }
     int seqPatternCount(int pat) const { return seq_.patternCount(pat); }
+    int seqSongLength() const { return seq_.songLength(); }
+    int seqSongAt(int i) const { return seq_.songAt(i); }
 
     // ---- аудио-поток ----
     // out: interleaved stereo float. link — снимок Ableton Link на начало буфера (nullptr = без Link).
     void render(float* out, int numFrames, const LinkFrame* link = nullptr);
+
+    // ---- KAOSS (любой поток: атомики внутри) ----
+    KaossFx& fx() { return fx_; }
 
     // ---- метры (чтение откуда угодно) ----
     uint64_t activePadMask() const { return activeMask_.load(std::memory_order_relaxed); }
@@ -84,6 +90,7 @@ private:
     PadParams pads_[kNumPads];
     VoicePool voices_;
     Sequencer seq_{voices_, pads_};   // объявлен после pads_/voices_: держит ссылки на них
+    KaossFx fx_;
     Limiter limiter_;
     float master_ = 0.8f;
     bool ftzDone_ = false;

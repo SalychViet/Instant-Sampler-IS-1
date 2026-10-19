@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.withFrameNanos
@@ -41,6 +42,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mpcpad.R
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
+import com.example.mpcpad.audio.Kaoss
+import com.example.mpcpad.audio.DefaultKit
+import com.example.mpcpad.audio.SampleOps
 import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.audio.StepLocks
@@ -62,7 +66,6 @@ import kotlinx.coroutines.launch
 private fun norm(v: Float, lo: Float, hi: Float) = ((v - lo) / (hi - lo)).coerceIn(0f, 1f)
 private fun denorm(n: Float, lo: Float, hi: Float) = lo + n * (hi - lo)
 
-private val COUNT_IN_OPTIONS = listOf(0, 1, 2, 4)
 private val CHROME_BG = Color(0xFF0E0F11)
 
 /** Корневой экран: «железо» IS-1 — LCD, ручки, кнопки секвенсора, пады, фейдеры и логотипы. */
@@ -108,6 +111,7 @@ fun MpcRoot(actions: SampleActions) {
                 app.seqPattern = st.pattern
                 app.seqQueued = st.queued
                 app.seqLinkWaiting = st.linkWaiting
+                app.songIndex = st.songIndex
 
                 if (now - lastSlow > 120_000_000L) {
                     lastSlow = now
@@ -122,6 +126,10 @@ fun MpcRoot(actions: SampleActions) {
                     val counts = AudioEngine.seqPatternCounts()
                     if (!counts.contentEquals(app.patternCounts)) app.patternCounts = counts
                     app.patternBars = AudioEngine.seqPatternBars(st.pattern)
+                    if (!app.songRec) {
+                        val s = AudioEngine.songList()
+                        if (s != app.song) app.song = s
+                    }
                     val notes = AudioEngine.seqReadPattern(st.pattern)
                     if (notes != null) {
                         var m = 0L
@@ -163,6 +171,110 @@ fun MpcRoot(actions: SampleActions) {
 
     fun flash(t: String) = app.flash(t, 1100)
 
+    /** Конец записи цепочки паттернов: пустая цепочка выключает режим SONG. */
+    fun finishSongRec() {
+        if (!app.songRec) return
+        app.songRec = false
+        val draft = app.songDraft
+        AudioEngine.songEnable(draft.isNotEmpty())
+        app.song = draft
+        app.flash(if (draft.isEmpty()) "SONG OFF" else "SONG: ${draft.size} PATTERNS · PLAY", 2500)
+    }
+
+    // ---- KAOSS ----
+    /** Что сейчас управляет эффектом (для экрана): X, Y, касание (1/0). */
+    val kShown = remember { mutableStateListOf(0.5f, 0.5f, 0f) }
+    val kaossLast = remember { IntArray(Kaoss.BANKS.size) }
+    val motionPressAt = remember { LongArray(4) }
+    val motionHold = remember { arrayOfNulls<Job>(4) }
+
+    /** A–D в KAOSS: удержание — запись движения пальца, короткое нажатие — включить/выключить петлю. */
+    fun motionButton(b: Int, down: Boolean) {
+        val label = 'A' + b
+        if (down) {
+            motionPressAt[b] = System.nanoTime()
+            motionHold[b] = scope.launch {
+                delay(350)
+                app.motionPlaying = -1
+                app.recordBuf.clear()
+                app.motionStartNanos = System.nanoTime()
+                app.motionRecording = b
+                app.flash("REC MOTION $label: MOVE ON SCREEN", 2000)
+            }
+            return
+        }
+        if (motionPressAt[b] == 0L) return
+        motionPressAt[b] = 0L
+        motionHold[b]?.cancel()
+        if (app.motionRecording == b) {
+            val len = (System.nanoTime() - app.motionStartNanos) / 1_000_000
+            val pts = ArrayList(app.recordBuf)
+            app.motionRecording = -1
+            if (len > 200 && pts.any { it.touch }) {
+                app.motions[b] = Motion(pts, len)
+                app.motionStartNanos = System.nanoTime()
+                app.motionPlaying = b
+                flash("MOTION $label ▶")
+            } else {
+                flash("MOTION $label: NOTHING RECORDED")
+            }
+        } else {
+            when {
+                app.motions[b] == null -> app.flash("MOTION $label EMPTY: HOLD $label + MOVE", 2000)
+                app.motionPlaying == b -> { app.motionPlaying = -1; flash("MOTION $label ■") }
+                else -> {
+                    app.motionStartNanos = System.nanoTime()
+                    app.motionPlaying = b
+                    flash("MOTION $label ▶")
+                }
+            }
+        }
+    }
+
+    // KAOSS: каждый кадр — палец или записанное движение → эффект.
+    LaunchedEffect(app.kaossMode) {
+        if (!app.kaossMode) {
+            AudioEngine.kaoss(app.kaossProgram, app.kx, app.ky, false)
+            kShown[2] = 0f
+            return@LaunchedEffect
+        }
+        var sent = Triple(-1f, -1f, false)
+        var sentProg = -1
+        while (true) {
+            withFrameNanos { now ->
+                var x = app.kx
+                var y = app.ky
+                var t = app.kTouch
+                val rec = app.motionRecording
+                val play = app.motionPlaying
+                if (rec >= 0) {
+                    app.recordBuf.add(MotionPoint((now - app.motionStartNanos) / 1_000_000, x, y, t))
+                } else if (!t && play >= 0) {
+                    val m = app.motions[play]
+                    if (m != null && m.lengthMs > 0) {
+                        val ms = ((now - app.motionStartNanos) / 1_000_000).mod(m.lengthMs)
+                        val pts = m.points
+                        var lo = 0
+                        var hi = pts.size - 1
+                        while (lo < hi) {
+                            val mid = (lo + hi + 1) / 2
+                            if (pts[mid].t <= ms) lo = mid else hi = mid - 1
+                        }
+                        val pt = pts[lo]
+                        x = pt.x; y = pt.y; t = pt.touch
+                    }
+                }
+                kShown[0] = x; kShown[1] = y; kShown[2] = if (t) 1f else 0f
+                val cur = Triple(x, y, t)
+                if (cur != sent || sentProg != app.kaossProgram) {
+                    AudioEngine.kaoss(app.kaossProgram, x, y, t)
+                    sent = cur
+                    sentProg = app.kaossProgram
+                }
+            }
+        }
+    }
+
     // Петли, привязанные к темпу, подстраиваются под новый BPM.
     LaunchedEffect(Settings.bpm) { app.resyncLoops(Settings.bpm) }
 
@@ -196,6 +308,8 @@ fun MpcRoot(actions: SampleActions) {
         if (app.chokeHold) {
             // CHOKE удерживается: пад входит/выходит из группы глушения.
             val on = app.pads[global].choke == 0
+            val prev = app.pads[global]
+            app.pushUndo("CHOKE ${padName(global)}") { app.applyPadUi(global, prev) }
             app.setParam(global, PadParam.CHOKE, if (on) 1f else 0f) { it.copy(choke = if (on) 1 else 0) }
             flash("CHOKE ${padName(global)} " + if (on) "ON" else "OFF")
             return
@@ -206,6 +320,14 @@ fun MpcRoot(actions: SampleActions) {
                 when {
                     app.eraseLatch -> {
                         app.eraseLatch = false
+                        val bytes = PadStore.readWav(context, global)
+                        val name = PadLibrary.infos[global]?.name ?: "SAMPLE"
+                        val prev = app.pads[global]
+                        app.pushUndo("DELETE ${padName(global)}") {
+                            val clip = bytes?.let { SampleOps.parseWav(it) } ?: DefaultKit.clipFor(global)
+                            if (clip != null) PadSampler.assignToPad(global, clip, name)
+                            app.applyPadUi(global, prev)
+                        }
                         PadStore.delete(context, global)
                         app.update(global) { PadUi() }
                         flash("SAMPLE ${padName(global)} DELETED")
@@ -226,17 +348,29 @@ fun MpcRoot(actions: SampleActions) {
                 // SEQ: пад = паттерн
                 val src = app.copySource
                 when {
+                    app.songRec -> {
+                        // Запись цепочки: паттерны идут в том порядке, в каком их касаются.
+                        AudioEngine.songAppend(global)
+                        app.songDraft = app.songDraft + global
+                        if (!app.seqPlaying) AudioEngine.seqSelect(global, immediate = true)
+                        app.flash(
+                            "SONG ${app.songDraft.size}: " + app.songDraft.takeLast(4).joinToString(" ") { patternName(it) },
+                            2500,
+                        )
+                    }
                     src >= 0 -> {
                         app.copySource = -1
                         if (src == global) {
                             flash("COPY CANCELLED")
                         } else {
+                            app.undoPattern(global, "COPY ${patternName(global)}")
                             AudioEngine.seqCopyPattern(src, global)
                             app.flash("COPIED ${patternName(src)} → ${patternName(global)}", 1800)
                         }
                     }
                     app.eraseLatch -> {
                         app.eraseLatch = false
+                        app.undoPattern(global, "CLEAR ${patternName(global)}")
                         AudioEngine.seqClearPattern(global)
                         flash("CLEARED ${patternName(global)}")
                     }
@@ -263,6 +397,7 @@ fun MpcRoot(actions: SampleActions) {
                 // STEP: пустой шаг ставится сразу; занятый снимается на отпускании, если его не правили (P-LOCK).
                 val step = app.stepBar * STEPS_PER_BAR + global % 16
                 val has = (app.stepMask shr step) and 1L != 0L
+                app.undoPattern(app.seqPattern, "STEP ${step + 1}")
                 if (!has) {
                     AudioEngine.seqToggleStep(app.seqPattern, app.selected, step * STEP_TICKS, STEP_TICKS, Settings.stepVelocity)
                     app.stepMask = app.stepMask or (1L shl step)   // мгновенный отклик: опрос подтвердит через ~100 мс
@@ -337,7 +472,13 @@ fun MpcRoot(actions: SampleActions) {
                 Modifier.weight(1f).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Lcd(
+                if (app.kaossMode) KaossPad(
+                    app = app,
+                    shownX = { kShown[0] },
+                    shownY = { kShown[1] },
+                    shownTouch = { kShown[2] > 0.5f },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                ) else Lcd(
                     app = app,
                     recording = holdPad.intValue >= 0,
                     armedLabel = when {
@@ -350,11 +491,27 @@ fun MpcRoot(actions: SampleActions) {
                 )
 
                 // --- софт-клавиши ---
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (app.kaossMode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // KAOSS: 1–5 — наборы эффектов; повторное нажатие листает программы набора.
+                    for (b in Kaoss.BANKS.indices) {
+                        val cur = app.kaossProgram / Kaoss.PER_BANK
+                        SoftKey(b + 1, Kaoss.BANKS[b], Modifier.weight(1f), active = cur == b) {
+                            app.kaossProgram = if (cur == b) {
+                                b * Kaoss.PER_BANK + (app.kaossProgram % Kaoss.PER_BANK + 1) % Kaoss.PER_BANK
+                            } else {
+                                b * Kaoss.PER_BANK + kaossLast[b]
+                            }
+                            kaossLast[b] = app.kaossProgram % Kaoss.PER_BANK
+                            flash(Kaoss.PROGRAMS[app.kaossProgram].name)
+                        }
+                    }
+                } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     SoftKey(1, "PAD", Modifier.weight(1f), active = app.mode == Mode.PAD) {
+                        finishSongRec()
                         app.mode = Mode.PAD; app.stepView = false; app.soundPick = false; app.eraseLatch = false; app.copySource = -1
                     }
                     SoftKey(2, "SEQ", Modifier.weight(1f), active = app.mode == Mode.SEQ && !app.stepView) {
+                        finishSongRec()
                         app.mode = Mode.SEQ; app.stepView = false; app.soundPick = false; app.eraseLatch = false; app.copySource = -1
                     }
                     SoftKey(3, if (app.stepView) "SOUND" else "STEP", Modifier.weight(1f), active = app.stepView && app.soundPick) {
@@ -362,6 +519,7 @@ fun MpcRoot(actions: SampleActions) {
                             app.soundPick = !app.soundPick
                             flash(if (app.soundPick) "TOUCH A PAD: SOUND" else "STEP INPUT")
                         } else {
+                            finishSongRec()
                             app.mode = Mode.SEQ; app.stepView = true; app.eraseLatch = false; app.copySource = -1
                             flash("STEP: ${padName(app.selected)}")
                         }
@@ -418,13 +576,28 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.seqSetRecording(false)
                         AudioEngine.allNotesOff()
                     }
-                    HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
-                        if (app.seqRecording || app.seqCountIn) {
+                    HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn || app.songRec, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
+                        if (app.songRec) {
+                            finishSongRec()
+                        } else if (app.mode == Mode.SEQ && !app.stepView && !app.seqRecording && !app.seqCountIn) {
+                            // SEQ: REC пишет цепочку паттернов — касайся паттернов по порядку, REC — готово.
+                            val prev = app.song
+                            app.pushUndo("SONG") {
+                                AudioEngine.songClear()
+                                prev.forEach { AudioEngine.songAppend(it) }
+                                AudioEngine.songEnable(prev.isNotEmpty())
+                                app.song = prev
+                            }
+                            app.copySource = -1
+                            app.songRec = true
+                            app.songDraft = emptyList()
+                            AudioEngine.songClear()
+                            app.flash("SONG REC: TOUCH PATTERNS IN ORDER", 3000)
+                        } else if (app.seqRecording || app.seqCountIn) {
                             AudioEngine.seqSetRecording(false)
                             if (app.seqCountIn) AudioEngine.seqStop()
                         } else {
-                            // запись нот делается с падов, играющих звуки
-                            if (app.mode == Mode.SEQ && !app.stepView) { app.mode = Mode.PAD; flash("PAD MODE: RECORD") }
+                            app.undoPattern(app.seqPattern, "REC ${patternName(app.seqPattern)}")
                             AudioEngine.seqSetRecording(true)
                             if (!app.seqPlaying) AudioEngine.seqPlay()
                         }
@@ -437,9 +610,9 @@ fun MpcRoot(actions: SampleActions) {
                             flash("TEMPO %.1f".format(v))
                         }
                     }
-                    HwButton("PAGE", Modifier.weight(1f), enabled = app.stepView, height = 28.dp) {
-                        app.stepBar = (app.stepBar + 1) % app.patternBars.coerceIn(1, MAX_UI_BARS)
-                        flash("PAGE ${app.stepBar + 1}/${app.patternBars}")
+                    HwButton("UNDO", Modifier.weight(1f), enabled = app.canUndo, height = 28.dp) {
+                        val what = app.undo()
+                        flash(if (what != null) "UNDO: $what" else "NOTHING TO UNDO")
                     }
                 }
 
@@ -458,14 +631,20 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.seqSetMetronome(next, Settings.metroLevel)
                         flash("METRONOME " + when (next) { 0 -> "OFF"; 2 -> "REC ONLY"; else -> "ON" })
                     }
-                    HwButton("COUNT", Modifier.weight(1f), led = Settings.countInBars != 0, height = 28.dp) {
-                        val next = COUNT_IN_OPTIONS[(COUNT_IN_OPTIONS.indexOf(Settings.countInBars) + 1) % COUNT_IN_OPTIONS.size]
-                        Settings.countInBars = next
-                        AudioEngine.seqSetCountIn(next)
-                        flash(if (next == 0) "COUNT-IN OFF" else "COUNT-IN $next BAR")
+                    HwButton("KAOSS", Modifier.weight(1f), led = app.kaossMode, ledColor = Skin.LedRed, height = 28.dp) {
+                        app.kaossMode = !app.kaossMode
+                        if (!app.kaossMode) {
+                            app.motionPlaying = -1
+                            app.motionRecording = -1
+                            app.kTouch = false
+                        }
+                        flash(if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
                     }
                     HwButton("LEN", Modifier.weight(1f), height = 28.dp) {
                         val bars = app.patternBars % MAX_UI_BARS + 1
+                        val pat = app.seqPattern
+                        val old = app.patternBars
+                        app.pushUndo("LENGTH") { AudioEngine.seqSetLength(pat, old) }
                         AudioEngine.seqSetLength(app.seqPattern, bars)
                         app.patternBars = bars
                         if (app.stepBar >= bars) app.stepBar = 0
@@ -476,6 +655,9 @@ fun MpcRoot(actions: SampleActions) {
                         when (padMode) { PlayMode.GATE -> "GATE"; PlayMode.LOOP -> "LOOP"; else -> "ONE" },
                         Modifier.weight(1f), led = padMode != PlayMode.ONE_SHOT, height = 28.dp,
                     ) {
+                        val prev = app.pads[app.selected]
+                        val sel = app.selected
+                        app.pushUndo("MODE ${padName(sel)}") { app.applyPadUi(sel, prev) }
                         val next = app.cyclePlayMode(app.selected)
                         flash(
                             "${padName(app.selected)} " + when (next) {
@@ -497,6 +679,7 @@ fun MpcRoot(actions: SampleActions) {
                             app.heldStepEdited = true
                             flash("STEP ${step + 1}: P-LOCKS CLEARED")
                         } else if (app.mode == Mode.SEQ && app.stepView) {
+                            app.undoPattern(app.seqPattern, "ERASE ${padName(app.selected)}")
                             AudioEngine.seqErasePad(app.seqPattern, app.selected)
                             app.stepMask = 0L
                             flash("ERASED ${padName(app.selected)}")
@@ -546,10 +729,34 @@ fun MpcRoot(actions: SampleActions) {
                 verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             ) {
                 for (b in 3 downTo 0) {
+                    val kaoss = app.kaossMode
+                    val pageMode = !kaoss && app.mode == Mode.SEQ && app.stepView
                     HwButton(
-                        ('A' + b).toString(), Modifier.fillMaxWidth(), led = app.bank == b,
+                        ('A' + b).toString(), Modifier.fillMaxWidth(),
+                        led = when {
+                            kaoss -> app.motions[b] != null || app.motionRecording == b
+                            pageMode -> app.stepBar == b
+                            else -> app.bank == b
+                        },
+                        ledColor = when {
+                            kaoss && app.motionRecording == b -> Skin.LedRed
+                            kaoss && app.motionPlaying == b -> Skin.LedGreen
+                            else -> Skin.LedAmber
+                        },
+                        enabled = !pageMode || b < app.patternBars,
                         height = 44.dp,
-                    ) { app.bank = b }
+                        onPress = { down -> if (app.kaossMode) motionButton(b, down) },
+                    ) {
+                        when {
+                            app.kaossMode -> {}   // MOTION: обрабатывается в onPress
+                            pageMode -> {
+                                // STEP: A–D — такты паттерна (страницы шагов)
+                                app.stepBar = b
+                                flash("PAGE ${b + 1}/${app.patternBars}")
+                            }
+                            else -> app.bank = b
+                        }
+                    }
                 }
             }
 

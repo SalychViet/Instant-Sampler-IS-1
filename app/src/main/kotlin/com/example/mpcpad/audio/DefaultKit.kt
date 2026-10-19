@@ -12,7 +12,7 @@ import kotlin.math.tanh
 /** Синтезированный стартовый кит банка A: чтобы пэды звучали сразу после установки. */
 object DefaultKit {
     private const val SR = 44100
-    private val rnd = Random(42)
+    private var rnd = Random(42)
 
     /** Хэты: закрытый глушит открытый. */
     val CHOKE_PADS = listOf(3, 4)
@@ -32,7 +32,24 @@ object DefaultKit {
     fun initialMode(globalPad: Int): Int = if (globalPad in LOOP_PADS) PlayMode.LOOP else PlayMode.ONE_SHOT
 
     fun load() {
-        val kit = listOf(
+        val kit = build()
+        kit.forEachIndexed { pad, data ->
+            AudioEngine.loadSample(pad, data, 1, SR)
+            PadLibrary.set(pad, "S_" + PadLibrary.displayName(names[pad]), SampleClip(data, 1, SR))
+        }
+        for (pad in CHOKE_PADS) AudioEngine.setParam(pad, PadParam.CHOKE, 1f)
+        for (pad in LOOP_PADS) {
+            AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
+            AudioEngine.setParam(pad, PadParam.RELEASE_MS, 120f)
+        }
+    }
+
+    /** Звук стартового кита для пада 0..15 (например, чтобы вернуть его через UNDO). */
+    fun clipFor(pad: Int): SampleClip? = build().getOrNull(pad)?.let { SampleClip(it, 1, SR) }
+
+    private fun build(): List<FloatArray> {
+        rnd = Random(42)   // один и тот же шум при каждой сборке
+        return listOf(
             kick(),
             snare(),
             clap(),
@@ -50,15 +67,6 @@ object DefaultKit {
             tone(196.0),
             tone(261.63),
         )
-        kit.forEachIndexed { pad, data ->
-            AudioEngine.loadSample(pad, data, 1, SR)
-            PadLibrary.set(pad, "S_" + PadLibrary.displayName(names[pad]), SampleClip(data, 1, SR))
-        }
-        for (pad in CHOKE_PADS) AudioEngine.setParam(pad, PadParam.CHOKE, 1f)
-        for (pad in LOOP_PADS) {
-            AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
-            AudioEngine.setParam(pad, PadParam.RELEASE_MS, 120f)
-        }
     }
 
     private fun buf(sec: Double) = FloatArray((SR * sec).toInt())

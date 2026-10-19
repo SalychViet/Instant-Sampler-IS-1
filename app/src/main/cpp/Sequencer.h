@@ -13,6 +13,8 @@ constexpr int kBarTicks = kPpq * 4;         // такт 4/4
 constexpr int kNumPatterns = 64;            // 4 банка x 16
 constexpr int kMaxPatternEvents = 768;
 constexpr int kMaxBars = 16;
+constexpr int kUndoSlots = 8;               // скрытые копии паттернов для UNDO
+constexpr int kMaxSong = 128;               // длина цепочки паттернов
 
 // Значения ДОЛЖНЫ совпадать с SeqOp в Kotlin. Смысл аргументов (pat, pad, a, b, f):
 enum class SeqOp : int {
@@ -32,6 +34,11 @@ enum class SeqOp : int {
     SetLock,        // pat, pad; a: начальный тик, b: ширина | (параметр << 16), f: значение
     ClearLocks,     // pat, pad; a: начальный тик, b: ширина — снять параметры шагов
     SetLocksEnabled,// a: 0/1 — играть ли параметры шагов (P-LOCK)
+    SnapshotPattern,// pat -> скрытый слот a (UNDO)
+    RestorePattern, // скрытый слот a -> pat
+    SongClear,      // очистить цепочку паттернов
+    SongAppend,     // pat — добавить в конец цепочки
+    SongEnable,     // a: 0/1 — играть цепочку вместо одного паттерна
 };
 
 // Параметры, которые можно «закрепить» за шагом (P-LOCK). Индексы бит в маске.
@@ -117,7 +124,7 @@ public:
     void linkSync(const LinkFrame& lf, int numFrames);
 
     // [0..15] позиция (следующий тик), 16 играет, 17 запись, 18 отсчёт, 19 ждём такт Link,
-    // [24..31] паттерн, [32..39] очередь+1, [40..55] осталось тиков отсчёта.
+    // [24..31] паттерн, [32..39] очередь+1, [40..55] осталось тиков отсчёта, [56..63] номер в цепочке+1.
     uint64_t state() const { return state_.load(std::memory_order_acquire); }
     // Согласованный снимок событий (отсортированы по тику). -1 — снимок не получен (идёт правка).
     int copyPattern(int pat, uint64_t* dst, int cap) const;
@@ -125,6 +132,10 @@ public:
     int copyPatternWithLocks(int pat, uint64_t* dst, uint64_t* locks, int cap) const;
     int patternBars(int pat) const;
     int patternCount(int pat) const;
+    // Цепочка паттернов (любой поток): длина и элементы.
+    int songLength() const { return songLenPub_.load(std::memory_order_relaxed); }
+    int songAt(int i) const { return i >= 0 && i < kMaxSong ? songPub_[i].load(std::memory_order_relaxed) : -1; }
+    float bpm() const { return bpm_; }   // аудио-поток
 
 private:
     struct Pattern {
@@ -166,7 +177,16 @@ private:
 
     VoicePool& voices_;
     PadParams* pads_;
-    Pattern patterns_[kNumPatterns];
+    Pattern patterns_[kNumPatterns + kUndoSlots];
+
+    // Цепочка паттернов (song): пишет аудио-поток, копия для чтения — songPub_.
+    int song_[kMaxSong] = {};
+    int songLen_ = 0;
+    bool songOn_ = false;
+    int songIdx_ = 0;
+    std::atomic<int> songPub_[kMaxSong];
+    std::atomic<int> songLenPub_{0};
+    void songStart();
 
     int sampleRate_ = 48000;
     float bpm_ = 120.0f;

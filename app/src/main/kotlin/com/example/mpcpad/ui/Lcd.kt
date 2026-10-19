@@ -49,7 +49,11 @@ fun Lcd(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            val head = if (app.mode == Mode.SEQ) {
+            val head = if (app.songRec) {
+                "SONG REC ${app.songDraft.size}"
+            } else if (app.mode == Mode.SEQ && app.songIndex >= 0 && app.song.isNotEmpty()) {
+                "SONG ${app.songIndex + 1}/${app.song.size} " + patternName(app.seqPattern)
+            } else if (app.mode == Mode.SEQ) {
                 val queued = if (app.seqQueued >= 0) ">" + patternName(app.seqQueued) else ""
                 "PTN " + patternName(app.seqPattern) + queued
             } else {

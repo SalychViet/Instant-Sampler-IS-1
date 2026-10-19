@@ -100,6 +100,7 @@ Sequencer::Sequencer(VoicePool& voices, PadParams* pads) : voices_(voices), pads
         heldTick_[i] = 0;
         heldPressAbs_[i] = 0.0;
     }
+    for (auto& s : songPub_) s.store(-1, std::memory_order_relaxed);
     setSampleRate(sampleRate_);
     publishState();
 }
@@ -327,6 +328,30 @@ void Sequencer::apply(SeqOp op, int pat, int pad, int a, int b, float f) {
         case SeqOp::SetLocksEnabled:
             locksEnabled_ = a != 0;
             break;
+        case SeqOp::SnapshotPattern:
+            if (patOk && a >= 0 && a < kUndoSlots) copyPatternTo(kNumPatterns + a, pat);
+            break;
+        case SeqOp::RestorePattern:
+            if (patOk && a >= 0 && a < kUndoSlots) copyPatternTo(pat, kNumPatterns + a);
+            break;
+        case SeqOp::SongClear:
+            songLen_ = 0;
+            songOn_ = false;
+            songIdx_ = 0;
+            songLenPub_.store(0, std::memory_order_relaxed);
+            break;
+        case SeqOp::SongAppend:
+            if (patOk && songLen_ < kMaxSong) {
+                song_[songLen_] = pat;
+                songPub_[songLen_].store(pat, std::memory_order_relaxed);
+                ++songLen_;
+                songLenPub_.store(songLen_, std::memory_order_relaxed);
+            }
+            break;
+        case SeqOp::SongEnable:
+            songOn_ = a != 0 && songLen_ > 0;
+            if (songOn_ && !running_) songStart();
+            break;
     }
     publishState();
 }
@@ -348,9 +373,18 @@ double Sequencer::exactAbsTick() const {
     return static_cast<double>(absTick_) - static_cast<double>(nextTickFrame_ - absFrame_) / framesPerTick_;
 }
 
+// Цепочка играет с первого паттерна.
+void Sequencer::songStart() {
+    if (!songOn_ || songLen_ <= 0) return;
+    songIdx_ = 0;
+    current_ = song_[0];
+    queued_ = -1;
+}
+
 void Sequencer::play() {
     if (running_) return;
     running_ = true;
+    songStart();
     pos_ = 0;
     pass_ = 0;
     absTick_ = 0;
@@ -517,6 +551,9 @@ void Sequencer::processTick() {
         if (queued_ >= 0) {
             current_ = queued_;
             queued_ = -1;
+        } else if (songOn_ && songLen_ > 0) {
+            songIdx_ = (songIdx_ + 1) % songLen_;
+            current_ = song_[songIdx_];
         }
     }
 }
@@ -597,6 +634,7 @@ void Sequencer::linkSync(const LinkFrame& lf, int numFrames) {
         if (framesUntil < numFrames) {
             linkWaiting_ = false;
             running_ = true;
+            songStart();
             countingIn_ = false;   // с Link отсчёт не нужен: старт и так по такту
             countInLeft_ = 0;
             pos_ = 0;
@@ -640,6 +678,7 @@ void Sequencer::publishState() {
     s |= (static_cast<uint64_t>(current_) & 0xFF) << 24;
     s |= (static_cast<uint64_t>(queued_ + 1) & 0xFF) << 32;
     s |= (static_cast<uint64_t>(countingIn_ ? countInLeft_ : 0) & 0xFFFF) << 40;
+    if (songOn_) s |= (static_cast<uint64_t>(songIdx_ + 1) & 0xFF) << 56;
     state_.store(s, std::memory_order_release);
 }
 

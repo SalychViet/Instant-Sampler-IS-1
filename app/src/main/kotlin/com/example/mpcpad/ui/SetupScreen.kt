@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mpcpad.Settings
+import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.LinkNetwork
 import kotlin.math.roundToInt
 
@@ -91,6 +92,25 @@ fun SetupScreen(app: AppViewModel, modifier: Modifier = Modifier) {
                 color = TextDim,
                 fontSize = 12.sp,
             )
+        }
+
+        Column(
+            Modifier
+                .widthIn(max = 560.dp)
+                .background(Panel, RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("Отсчёт перед записью (REC)", color = TextMain, fontSize = 14.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (bars in listOf(0, 1, 2, 4)) {
+                    Chip(if (bars == 0) "ВЫКЛ" else "$bars ТАКТ", active = Settings.countInBars == bars, compact = true) {
+                        Settings.countInBars = bars
+                        AudioEngine.seqSetCountIn(bars)
+                    }
+                }
+            }
+            Text("С Ableton Link отсчёт не нужен: старт идёт по такту сессии.", color = TextDim, fontSize = 12.sp)
         }
     }
 }

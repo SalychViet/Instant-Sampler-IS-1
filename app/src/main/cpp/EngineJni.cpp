@@ -116,7 +116,7 @@ JNIEXPORT jint JNICALL JNI(nativeActiveVoices)(JNIEnv*, jobject, jlong h) {
 JNIEXPORT jboolean JNICALL JNI(nativeSeq)(JNIEnv*, jobject, jlong h, jint op, jint pat, jint pad,
                                           jint a, jint b, jfloat f) {
     auto* o = get(h);
-    if (!o || op < 0 || op > static_cast<jint>(mpc::SeqOp::SetLocksEnabled)) return JNI_FALSE;
+    if (!o || op < 0 || op > static_cast<jint>(mpc::SeqOp::SongEnable)) return JNI_FALSE;
     const auto sop = static_cast<mpc::SeqOp>(op);
     if (o->link().enabled()) {
         // С Link старт/стоп и темп — общие для всей сессии: секвенсор подхватит их в аудио-потоке.
@@ -176,6 +176,28 @@ JNIEXPORT void JNICALL JNI(nativeSeqPatternCounts)(JNIEnv* env, jobject, jlong h
 JNIEXPORT jint JNICALL JNI(nativeSeqPatternBars)(JNIEnv*, jobject, jlong h, jint pat) {
     auto* o = get(h);
     return o ? o->core().seqPatternBars(pat) : 1;
+}
+
+// ---- KAOSS ----
+
+JNIEXPORT void JNICALL JNI(nativeKaoss)(JNIEnv*, jobject, jlong h, jint program, jfloat x, jfloat y,
+                                        jboolean touch) {
+    auto* o = get(h);
+    if (!o) return;
+    auto& fx = o->core().fx();
+    fx.setProgram(program);
+    fx.setXY(x, y);
+    fx.setTouch(touch);
+}
+
+JNIEXPORT jint JNICALL JNI(nativeSeqSongLength)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->core().seqSongLength() : 0;
+}
+
+JNIEXPORT jint JNICALL JNI(nativeSeqSongAt)(JNIEnv*, jobject, jlong h, jint i) {
+    auto* o = get(h);
+    return o ? o->core().seqSongAt(i) : -1;
 }
 
 // ---- Ableton Link ----

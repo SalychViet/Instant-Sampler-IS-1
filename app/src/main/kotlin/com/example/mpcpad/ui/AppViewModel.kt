@@ -1,6 +1,7 @@
 package com.example.mpcpad.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -43,6 +44,10 @@ val LOOP_DIVS = listOf(
     "1/8" to 0.5f, "1/4T" to 2f / 3f, "1/4" to 1f,
 )
 
+/** Точка записанного движения KAOSS: время от начала (мс), X/Y и было ли касание. */
+class MotionPoint(val t: Long, val x: Float, val y: Float, val touch: Boolean)
+class Motion(val points: List<MotionPoint>, val lengthMs: Long)
+
 /** «A1»…«D16» по глобальному номеру пада 0..63. */
 fun padName(global: Int): String = "${'A' + global / 16}${global % 16 + 1}"
 
@@ -81,6 +86,56 @@ class AppViewModel : ViewModel() {
     var heldStep by mutableIntStateOf(-1)
     var heldStepUi by mutableStateOf<PadUi?>(null)
     var heldStepEdited = false
+
+    // ---- цепочка паттернов (song) ----
+    /** SEQ + REC: касания паттернов записываются в цепочку. */
+    var songRec by mutableStateOf(false)
+    var songDraft by mutableStateOf<List<Int>>(emptyList())
+    var song by mutableStateOf<List<Int>>(emptyList())
+    var songIndex by mutableIntStateOf(-1)
+
+    // ---- KAOSS ----
+    var kaossMode by mutableStateOf(false)
+    var kaossProgram by mutableIntStateOf(0)
+    /** Ручное касание XY (0..1; Y вверх = 1). */
+    var kx by mutableFloatStateOf(0.5f)
+    var ky by mutableFloatStateOf(0.5f)
+    var kTouch by mutableStateOf(false)
+    /** Записанные движения A–D и что сейчас играет/пишется. */
+    val motions = mutableStateListOf<Motion?>(null, null, null, null)
+    var motionPlaying by mutableIntStateOf(-1)
+    var motionRecording by mutableIntStateOf(-1)
+    var motionStartNanos = 0L
+    val recordBuf = ArrayList<MotionPoint>()
+
+    // ---- UNDO: до 3 последних действий ----
+    private class UndoEntry(val label: String, val restore: () -> Unit)
+    private val undoStack = ArrayDeque<UndoEntry>()
+    private var undoSlot = 0
+    var canUndo by mutableStateOf(false)
+        private set
+
+    fun pushUndo(label: String, restore: () -> Unit) {
+        undoStack.addLast(UndoEntry(label, restore))
+        while (undoStack.size > 3) undoStack.removeFirst()
+        canUndo = true
+    }
+
+    /** Запомнить паттерн до правки (копия живёт в движке, в скрытом слоте). */
+    fun undoPattern(pattern: Int, label: String) {
+        val slot = undoSlot
+        undoSlot = (undoSlot + 1) % 8
+        AudioEngine.seqSnapshot(pattern, slot)
+        pushUndo(label) { AudioEngine.seqRestore(pattern, slot) }
+    }
+
+    /** Отменяет последнее действие; возвращает его название. */
+    fun undo(): String? {
+        val e = undoStack.removeLastOrNull() ?: return null
+        canUndo = undoStack.isNotEmpty()
+        e.restore()
+        return e.label
+    }
 
     val pads = mutableStateListOf<PadUi>().apply {
         repeat(64) { add(PadUi(mode = DefaultKit.initialMode(it), choke = if (it in DefaultKit.CHOKE_PADS) 1 else 0)) }
@@ -168,6 +223,21 @@ class AppViewModel : ViewModel() {
                 if (!on && ui.end != 1f && ui.end == target) setParam(p, PadParam.END, 1f) { it.copy(end = 1f) }
             }
         }
+    }
+
+    /** Вернуть все параметры пада (UNDO): и в UI, и в движок. */
+    fun applyPadUi(pad: Int, u: PadUi) {
+        update(pad) { u }
+        AudioEngine.setParam(pad, PadParam.VOLUME, u.volume)
+        AudioEngine.setParam(pad, PadParam.PAN, u.pan)
+        AudioEngine.setParam(pad, PadParam.PITCH, u.pitch)
+        AudioEngine.setParam(pad, PadParam.START, u.start)
+        AudioEngine.setParam(pad, PadParam.END, u.end)
+        AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
+        AudioEngine.setParam(pad, PadParam.REVERSE, if (u.reverse) 1f else 0f)
+        AudioEngine.setParam(pad, PadParam.CHOKE, u.choke.toFloat())
+        AudioEngine.setParam(pad, PadParam.ATTACK_MS, u.attackMs)
+        AudioEngine.setParam(pad, PadParam.RELEASE_MS, u.releaseMs)
     }
 
     /** ONE SHOT → GATE → LOOP по кругу для пада. */

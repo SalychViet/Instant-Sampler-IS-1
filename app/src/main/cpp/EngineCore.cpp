@@ -24,6 +24,7 @@ void EngineCore::setSampleRate(int sr) {
     sampleRate_ = sr > 0 ? sr : 48000;
     voices_.setSampleRate(sampleRate_);
     seq_.setSampleRate(sampleRate_);
+    fx_.setSampleRate(sampleRate_);
     limiter_.setSampleRate(static_cast<float>(sampleRate_));
 }
 
@@ -176,6 +177,7 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
     if (link) seq_.linkSync(*link, numFrames);
     std::memset(out, 0, sizeof(float) * 2 * static_cast<size_t>(numFrames));
     seq_.render(out, numFrames);   // голоса + метроном, с разбивкой по тикам секвенсора
+    fx_.process(out, numFrames, seq_.bpm());   // KAOSS — на весь микс, до лимитера
     const float peak = limiter_.process(out, numFrames, master_);
 
     peak_.store(peak, std::memory_order_relaxed);

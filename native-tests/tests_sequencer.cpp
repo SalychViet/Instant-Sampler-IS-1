@@ -713,6 +713,41 @@ TEST(SequencerTest, ToggleOffRemovesLocksWithNote) {
     EXPECT_EQ(lk[0], 0u);
 }
 
+// ---------------------------------------------------------------- цепочка паттернов и UNDO
+
+TEST(SequencerTest, SongPlaysPatternsInOrderAndLoops) {
+    Rig r;
+    r.give(0, 1.0f);
+    r.give(1, 0.5f);
+    r.step(0, 0, 0);
+    r.step(1, 1, 0);
+    r.seq.apply(SeqOp::SongClear, 0, 0, 0, 0, 0);
+    for (int p : {0, 1, 1}) r.seq.apply(SeqOp::SongAppend, p, 0, 0, 0, 0);
+    r.seq.apply(SeqOp::SongEnable, 0, 0, 1, 0, 0);
+    EXPECT_EQ(r.seq.songLength(), 3);
+    r.seq.apply(SeqOp::Play, 0, 0, 0, 0, 0);
+    const auto x = r.render(4 * 96000 + 500, 480);
+    const auto o = onsets(x);
+    ASSERT_GE(o.size(), 4u);
+    const float a0 = x[o[0] + 100];
+    EXPECT_NEAR(x[o[1] + 100] / a0, 0.5f, 0.02f);   // паттерн 1
+    EXPECT_NEAR(x[o[2] + 100] / a0, 0.5f, 0.02f);   // снова 1
+    EXPECT_NEAR(x[o[3] + 100] / a0, 1.0f, 0.02f);   // цепочка по кругу: 0
+}
+
+TEST(SequencerTest, SnapshotRestoreUndoesEdits) {
+    Rig r;
+    r.step(2, 1, 0);
+    r.step(2, 2, 48);
+    r.seq.apply(SeqOp::SnapshotPattern, 2, 0, 3, 0, 0);
+    r.seq.apply(SeqOp::ClearPattern, 2, 0, 0, 0, 0);
+    r.seq.apply(SeqOp::SetLength, 2, 0, 4, 0, 0);
+    EXPECT_EQ(r.seq.patternCount(2), 0);
+    r.seq.apply(SeqOp::RestorePattern, 2, 0, 3, 0, 0);
+    EXPECT_EQ(r.seq.patternCount(2), 2);
+    EXPECT_EQ(r.seq.patternBars(2), 1);
+}
+
 // ---------------------------------------------------------------- Ableton Link
 
 namespace {

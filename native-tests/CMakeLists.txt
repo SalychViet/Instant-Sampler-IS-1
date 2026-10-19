@@ -10,10 +10,12 @@ set(ENGINE ${CMAKE_CURRENT_SOURCE_DIR}/../app/src/main/cpp)
 add_executable(mpc_tests
     tests_sequencer.cpp
     tests_aiff.cpp
+    tests_kaoss.cpp
     ${ENGINE}/Voice.cpp
     ${ENGINE}/VoicePool.cpp
     ${ENGINE}/EngineCore.cpp
     ${ENGINE}/Sequencer.cpp
+    ${ENGINE}/KaossFx.cpp
     ${ENGINE}/WavCodec.cpp
     ${ENGINE}/SampleOps.cpp)
 target_include_directories(mpc_tests PRIVATE ${ENGINE} ${CMAKE_CURRENT_SOURCE_DIR})
