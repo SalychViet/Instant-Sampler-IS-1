@@ -10,7 +10,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mpcpad.audio.AudioEngine
+import com.example.mpcpad.audio.BAR_TICKS
 import com.example.mpcpad.audio.DefaultKit
+import com.example.mpcpad.audio.FxAutomation
 import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.capture.CaptureSource
@@ -107,6 +109,32 @@ class AppViewModel : ViewModel() {
     var motionRecording by mutableIntStateOf(-1)
     var motionStartNanos = 0L
     val recordBuf = ArrayList<MotionPoint>()
+
+    /** Запись манипуляций KAOSS на длину Song (REC в KAOSS) и её воспроизведение. */
+    var fxAuto by mutableStateOf<FxAutomation?>(null)
+    var fxRecording by mutableStateOf(false)
+    var fxRecProgress by mutableFloatStateOf(0f)
+    /** Программа, которая сейчас реально звучит (может вести запись автоматизации). */
+    var shownProgram by mutableIntStateOf(0)
+    /** Такты каждого паттерна цепочки — чтобы считать позицию в Song. */
+    var songBars by mutableStateOf<List<Int>>(emptyList())
+
+    /** Позиция в Song (тики от начала цепочки) и её длина; без цепочки — текущий паттерн. */
+    fun songTick(): Int {
+        val s = song
+        if (songIndex >= 0 && s.isNotEmpty() && songBars.size == s.size) {
+            var off = 0
+            for (i in 0 until songIndex.coerceAtMost(s.size - 1)) off += songBars[i] * BAR_TICKS
+            return off + seqPos
+        }
+        return seqPos
+    }
+
+    fun songLengthTicks(): Int {
+        val s = song
+        if (songIndex >= 0 && s.isNotEmpty() && songBars.size == s.size) return songBars.sum().coerceAtLeast(1) * BAR_TICKS
+        return patternBars.coerceAtLeast(1) * BAR_TICKS
+    }
 
     // ---- UNDO: до 3 последних действий ----
     private class UndoEntry(val label: String, val restore: () -> Unit)

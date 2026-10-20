@@ -47,8 +47,8 @@ fun KaossPad(
     shownTouch: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val prog = Kaoss.PROGRAMS[app.kaossProgram]
-    val bank = app.kaossProgram / Kaoss.PER_BANK
+    val prog = Kaoss.PROGRAMS[app.shownProgram.coerceIn(0, Kaoss.PROGRAMS.size - 1)]
+    val bank = app.shownProgram / Kaoss.PER_BANK
     val shape = RoundedCornerShape(6.dp)
     Box(
         modifier
@@ -112,12 +112,14 @@ fun KaossPad(
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp)) {
             Row(Modifier.fillMaxWidth()) {
                 Text(
-                    "${bank + 1}·${Kaoss.BANKS[bank]}",
+                    "${bank + 1}·${Kaoss.BANKS[bank]}  ${app.shownProgram % Kaoss.PER_BANK + 1}/${Kaoss.PER_BANK}",
                     color = KpLed, fontSize = 10.sp, fontFamily = mono, modifier = Modifier.weight(1f),
                 )
                 val motion = when {
+                    app.fxRecording -> "● FX REC ${(app.fxRecProgress * 100).toInt()}%"
                     app.motionRecording >= 0 -> "● REC MOTION ${'A' + app.motionRecording}"
                     app.motionPlaying >= 0 -> "▶ MOTION ${'A' + app.motionPlaying}"
+                    app.fxAuto != null -> "▶ FX AUTO"
                     else -> ""
                 }
                 Text(motion, color = KpHot, fontSize = 10.sp, fontFamily = mono)
@@ -129,6 +131,7 @@ fun KaossPad(
             color = KpText.copy(alpha = 0.75f),
             fontSize = 9.sp,
             fontFamily = mono,
+            maxLines = 1,
             modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 8.dp, vertical = 4.dp),
         )
     }

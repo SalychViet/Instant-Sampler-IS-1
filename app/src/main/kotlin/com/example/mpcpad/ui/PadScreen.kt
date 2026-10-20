@@ -44,6 +44,7 @@ import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.Kaoss
 import com.example.mpcpad.audio.DefaultKit
+import com.example.mpcpad.audio.FxAutomation
 import com.example.mpcpad.audio.SampleOps
 import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.audio.PlayMode
@@ -129,6 +130,8 @@ fun MpcRoot(actions: SampleActions) {
                     if (!app.songRec) {
                         val s = AudioEngine.songList()
                         if (s != app.song) app.song = s
+                        val bars = s.map { AudioEngine.seqPatternBars(it) }
+                        if (bars != app.songBars) app.songBars = bars
                     }
                     val notes = AudioEngine.seqReadPattern(st.pattern)
                     if (notes != null) {
@@ -231,45 +234,95 @@ fun MpcRoot(actions: SampleActions) {
         }
     }
 
-    // KAOSS: каждый кадр — палец или записанное движение → эффект.
-    LaunchedEffect(app.kaossMode) {
-        if (!app.kaossMode) {
-            AudioEngine.kaoss(app.kaossProgram, app.kx, app.ky, false)
-            kShown[2] = 0f
-            return@LaunchedEffect
+    /** Закончить запись автоматизации: точки по тикам Song, отсортированные. */
+    fun finishFxRec(buf: List<IntArray>, fx: List<FloatArray>, len: Int) {
+        app.fxRecording = false
+        if (buf.isEmpty()) {
+            flash("FX REC: NOTHING")
+            return
         }
-        var sent = Triple(-1f, -1f, false)
+        val order = buf.indices.sortedBy { buf[it][0] }
+        app.fxAuto = FxAutomation(
+            ticks = IntArray(order.size) { buf[order[it]][0] },
+            program = IntArray(order.size) { buf[order[it]][1] },
+            x = FloatArray(order.size) { fx[order[it]][0] },
+            y = FloatArray(order.size) { fx[order[it]][1] },
+            touch = BooleanArray(order.size) { buf[order[it]][2] == 1 },
+            lengthTicks = len,
+        )
+        app.flash("FX AUTOMATION ▶ (ERASE IN KAOSS = DELETE)", 2500)
+    }
+
+    // KAOSS: каждый кадр — палец, запись эффектов, движение MOTION → эффект.
+    // Работает и вне экрана KAOSS: записанная автоматизация играет вместе с секвенсором.
+    LaunchedEffect(Unit) {
+        var sentX = -1f
+        var sentY = -1f
+        var sentT = false
         var sentProg = -1
+        val recTicks = ArrayList<IntArray>()     // tick, program, touch
+        val recXY = ArrayList<FloatArray>()
+        var recLast = -1
+        var recElapsed = 0
+        var wasRecording = false
         while (true) {
             withFrameNanos { now ->
+                var prog = app.kaossProgram
                 var x = app.kx
                 var y = app.ky
-                var t = app.kTouch
-                val rec = app.motionRecording
-                val play = app.motionPlaying
-                if (rec >= 0) {
-                    app.recordBuf.add(MotionPoint((now - app.motionStartNanos) / 1_000_000, x, y, t))
-                } else if (!t && play >= 0) {
-                    val m = app.motions[play]
-                    if (m != null && m.lengthMs > 0) {
-                        val ms = ((now - app.motionStartNanos) / 1_000_000).mod(m.lengthMs)
-                        val pts = m.points
-                        var lo = 0
-                        var hi = pts.size - 1
-                        while (lo < hi) {
-                            val mid = (lo + hi + 1) / 2
-                            if (pts[mid].t <= ms) lo = mid else hi = mid - 1
+                var t = app.kaossMode && app.kTouch
+                if (app.kaossMode) {
+                    val rec = app.motionRecording
+                    val play = app.motionPlaying
+                    if (rec >= 0) {
+                        app.recordBuf.add(MotionPoint((now - app.motionStartNanos) / 1_000_000, x, y, t))
+                    } else if (!t && play >= 0) {
+                        val m = app.motions[play]
+                        if (m != null && m.lengthMs > 0) {
+                            val ms = ((now - app.motionStartNanos) / 1_000_000).mod(m.lengthMs)
+                            val pts = m.points
+                            var lo = 0
+                            var hi = pts.size - 1
+                            while (lo < hi) {
+                                val mid = (lo + hi + 1) / 2
+                                if (pts[mid].t <= ms) lo = mid else hi = mid - 1
+                            }
+                            val pt = pts[lo]
+                            x = pt.x; y = pt.y; t = pt.touch
                         }
-                        val pt = pts[lo]
-                        x = pt.x; y = pt.y; t = pt.touch
                     }
                 }
+
+                // ---- запись автоматизации: ровно одна длина Song ----
+                if (app.fxRecording && !wasRecording) {
+                    recTicks.clear(); recXY.clear(); recLast = -1; recElapsed = 0
+                }
+                wasRecording = app.fxRecording
+                if (app.fxRecording && app.seqPlaying) {
+                    val len = app.songLengthTicks()
+                    val tick = app.songTick().mod(len)
+                    if (recLast >= 0) recElapsed += (tick - recLast).mod(len)
+                    recLast = tick
+                    recTicks.add(intArrayOf(tick, prog, if (t) 1 else 0))
+                    recXY.add(floatArrayOf(x, y))
+                    app.fxRecProgress = (recElapsed.toFloat() / len).coerceIn(0f, 1f)
+                    if (recElapsed >= len) finishFxRec(ArrayList(recTicks), ArrayList(recXY), len)
+                } else if (!t && app.seqPlaying && !app.fxRecording) {
+                    // ---- воспроизведение автоматизации (палец её перекрывает) ----
+                    val a = app.fxAuto
+                    if (a != null) {
+                        val i = a.indexAt(app.songTick())
+                        if (i >= 0) {
+                            prog = a.program[i]; x = a.x[i]; y = a.y[i]; t = a.touch[i]
+                        }
+                    }
+                }
+
                 kShown[0] = x; kShown[1] = y; kShown[2] = if (t) 1f else 0f
-                val cur = Triple(x, y, t)
-                if (cur != sent || sentProg != app.kaossProgram) {
-                    AudioEngine.kaoss(app.kaossProgram, x, y, t)
-                    sent = cur
-                    sentProg = app.kaossProgram
+                app.shownProgram = prog
+                if (x != sentX || y != sentY || t != sentT || prog != sentProg) {
+                    AudioEngine.kaoss(prog, x, y, t)
+                    sentX = x; sentY = y; sentT = t; sentProg = prog
                 }
             }
         }
@@ -576,8 +629,21 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.seqSetRecording(false)
                         AudioEngine.allNotesOff()
                     }
-                    HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn || app.songRec, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
-                        if (app.songRec) {
+                    HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn || app.songRec || app.fxRecording, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
+                        if (app.kaossMode) {
+                            // KAOSS: REC пишет все манипуляции с эффектами на одну длину Song.
+                            if (app.fxRecording) {
+                                app.fxRecording = false
+                                flash("FX REC STOPPED")
+                            } else {
+                                val prev = app.fxAuto
+                                app.pushUndo("FX REC") { app.fxAuto = prev }
+                                app.fxRecProgress = 0f
+                                app.fxRecording = true
+                                if (!app.seqPlaying) AudioEngine.seqPlay()
+                                app.flash("FX REC: PLAY WITH EFFECTS", 2500)
+                            }
+                        } else if (app.songRec) {
                             finishSongRec()
                         } else if (app.mode == Mode.SEQ && !app.stepView && !app.seqRecording && !app.seqCountIn) {
                             // SEQ: REC пишет цепочку паттернов — касайся паттернов по порядку, REC — готово.
@@ -672,7 +738,16 @@ fun MpcRoot(actions: SampleActions) {
                 // --- ряд C: ввод семплов ---
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     HwButton("ERASE", Modifier.weight(1f), led = app.eraseLatch, ledColor = Skin.LedRed, height = 28.dp) {
-                        if (inStepEdit) {
+                        if (app.kaossMode) {
+                            val prev = app.fxAuto
+                            if (prev == null) {
+                                flash("NO FX AUTOMATION")
+                            } else {
+                                app.pushUndo("FX AUTOMATION") { app.fxAuto = prev }
+                                app.fxAuto = null
+                                flash("FX AUTOMATION DELETED")
+                            }
+                        } else if (inStepEdit) {
                             val step = app.heldStep
                             AudioEngine.seqClearLocks(app.seqPattern, app.selected, step * STEP_TICKS, STEP_TICKS)
                             app.heldStepUi = app.pads[app.selected]

@@ -136,6 +136,7 @@ fun Lcd(
             }
             if (Settings.pLock) append(" PL")
             if (Settings.linkEnabled) append(" LNK")
+            if (app.fxAuto != null) append(" FXA")
         }
         val bottom = app.readout
             ?: if (app.copySource >= 0) "COPY ${patternName(app.copySource)} → PAD?"

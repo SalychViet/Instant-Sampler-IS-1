@@ -52,7 +52,7 @@ TEST(KaossTest, EveryProgramIsStableAndBounded) {
 
 TEST(KaossTest, NoTouchIsBitExactPassthrough) {
     for (int p = 0; p < kKpCount; ++p) {
-        if (p == kKpDelay || p == kKpPingPong || p == kKpReverb || p == kKpDubEcho) continue;   // хвосты
+        if (KaossFx::hasTails(p)) continue;   // хвосты дилеев/ревербов
         KaossFx fx;
         fx.setSampleRate(kSr);
         fx.setProgram(p);
@@ -110,4 +110,35 @@ TEST(KaossTest, LowpassCutsHighs) {
     float m = 0;
     for (int i = kSr / 2; i < kSr; ++i) m = std::max(m, std::fabs(buf[2 * i]));
     EXPECT_LT(m, 0.01f);
+}
+
+TEST(KaossTest, DistortionKeepsLoudnessAtFullDrive) {
+    for (int p : {kKpDistortion, kKpFuzz, kKpWavefolder}) {
+        KaossFx fx;
+        fx.setSampleRate(kSr);
+        fx.setProgram(p);
+        fx.setXY(1.0f, 0.8f);
+        fx.setTouch(true);
+        auto buf = sine(kSr, 220.0f, 0.3f);
+        const auto in = buf;
+        run(fx, buf);
+        double ein = 0, eout = 0;
+        for (int i = kSr / 2; i < kSr; ++i) { ein += in[2 * i] * in[2 * i]; eout += buf[2 * i] * buf[2 * i]; }
+        const double db = 10.0 * std::log10(eout / ein);
+        EXPECT_LT(std::fabs(db), 3.0);   // ±3 дБ от исходной громкости
+    }
+}
+
+TEST(KaossTest, SweepNoiseAddsNoiseOverSilence) {
+    KaossFx fx;
+    fx.setSampleRate(kSr);
+    fx.setProgram(kKpSweepNoise);
+    fx.setXY(0.7f, 0.8f);
+    fx.setTouch(true);
+    std::vector<float> buf(2 * kSr / 2, 0.0f);
+    run(fx, buf);
+    float m = 0;
+    for (float v : buf) m = std::max(m, std::fabs(v));
+    EXPECT_GT(m, 0.05f);
+    EXPECT_LT(m, 2.0f);
 }
