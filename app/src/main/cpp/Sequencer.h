@@ -130,6 +130,9 @@ public:
     int copyPattern(int pat, uint64_t* dst, int cap) const;
     // То же + параметры шагов (locks[i] — для события dst[i], 0 = нет).
     int copyPatternWithLocks(int pat, uint64_t* dst, uint64_t* locks, int cap) const;
+    // Восстановление проекта: записать паттерн целиком. Только пока аудио-поток не работает
+    // (иначе писателей будет два).
+    void loadPatternDirect(int pat, const uint64_t* ev, const uint64_t* locks, int n, int bars);
     int patternBars(int pat) const;
     int patternCount(int pat) const;
     // Цепочка паттернов (любой поток): длина и элементы.

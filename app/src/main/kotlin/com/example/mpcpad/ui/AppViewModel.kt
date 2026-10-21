@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mpcpad.ProjectStore
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.BAR_TICKS
 import com.example.mpcpad.audio.DefaultKit
@@ -17,6 +18,7 @@ import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.sample.PadLibrary
+import com.example.mpcpad.sample.SampleClip
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -45,6 +47,9 @@ val LOOP_DIVS = listOf(
     "1/32" to 0.125f, "1/16T" to 1f / 6f, "1/16" to 0.25f, "1/8T" to 1f / 3f,
     "1/8" to 0.5f, "1/4T" to 2f / 3f, "1/4" to 1f,
 )
+
+/** Что лежит в буфере копирования семпла. */
+class SampleClipboard(val clip: SampleClip, val name: String, val ui: PadUi?, val fromResample: Boolean, val sourcePad: Int)
 
 /** Точка записанного движения KAOSS: время от начала (мс), X/Y и было ли касание. */
 class MotionPoint(val t: Long, val x: Float, val y: Float, val touch: Boolean)
@@ -98,20 +103,20 @@ class AppViewModel : ViewModel() {
 
     // ---- KAOSS ----
     var kaossMode by mutableStateOf(false)
-    var kaossProgram by mutableIntStateOf(0)
+    var kaossProgram by mutableIntStateOf(ProjectStore.kaossProgram.coerceIn(0, 49))
     /** Ручное касание XY (0..1; Y вверх = 1). */
     var kx by mutableFloatStateOf(0.5f)
     var ky by mutableFloatStateOf(0.5f)
     var kTouch by mutableStateOf(false)
     /** Записанные движения A–D и что сейчас играет/пишется. */
-    val motions = mutableStateListOf<Motion?>(null, null, null, null)
+    val motions = mutableStateListOf<Motion?>().apply { addAll(ProjectStore.motions) }
     var motionPlaying by mutableIntStateOf(-1)
     var motionRecording by mutableIntStateOf(-1)
     var motionStartNanos = 0L
     val recordBuf = ArrayList<MotionPoint>()
 
     /** Запись манипуляций KAOSS на длину Song (REC в KAOSS) и её воспроизведение. */
-    var fxAuto by mutableStateOf<FxAutomation?>(null)
+    var fxAuto by mutableStateOf<FxAutomation?>(ProjectStore.fxAuto)
     var fxRecording by mutableStateOf(false)
     var fxRecProgress by mutableFloatStateOf(0f)
     /** Программа, которая сейчас реально звучит (может вести запись автоматизации). */
@@ -135,6 +140,15 @@ class AppViewModel : ViewModel() {
         if (songIndex >= 0 && s.isNotEmpty() && songBars.size == s.size) return songBars.sum().coerceAtLeast(1) * BAR_TICKS
         return patternBars.coerceAtLeast(1) * BAR_TICKS
     }
+
+    // ---- буфер семпла (копия с пада или ресемпл) ----
+    var clipboard by mutableStateOf<SampleClipboard?>(null)
+    /** Следующее касание пада (PAD) вставит семпл из буфера. */
+    var pasteArmed by mutableStateOf(false)
+    var resampling by mutableStateOf(false)
+    var resampleClip by mutableStateOf<SampleClip?>(null)
+    /** Окно ввода темпа цифрами (долгое нажатие на BPM на экране). */
+    var tempoEntry by mutableStateOf(false)
 
     // ---- UNDO: до 3 последних действий ----
     private class UndoEntry(val label: String, val restore: () -> Unit)
@@ -166,7 +180,10 @@ class AppViewModel : ViewModel() {
     }
 
     val pads = mutableStateListOf<PadUi>().apply {
-        repeat(64) { add(PadUi(mode = DefaultKit.initialMode(it), choke = if (it in DefaultKit.CHOKE_PADS) 1 else 0)) }
+        val saved = ProjectStore.pads
+        repeat(64) {
+            add(saved?.getOrNull(it) ?: PadUi(mode = DefaultKit.initialMode(it), choke = if (it in DefaultKit.CHOKE_PADS) 1 else 0))
+        }
     }
 
     // ---- состояние секвенсора (опрашивается покадрово) ----

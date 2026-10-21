@@ -249,6 +249,20 @@ void Sequencer::clearLocks(int pat, int pad, int tick, int width) {
     endWrite(p);
 }
 
+void Sequencer::loadPatternDirect(int pat, const uint64_t* ev, const uint64_t* locks, int n, int bars) {
+    if (pat < 0 || pat >= kNumPatterns) return;
+    Pattern& p = patterns_[pat];
+    beginWrite(p);
+    p.count.store(0, std::memory_order_relaxed);
+    for (int i = 0; i < n; ++i) {
+        SeqEvent e = unpackEvent(ev[i]);
+        if (e.pad < 0 || e.pad >= kNumPads || e.tick >= kMaxBars * kBarTicks) continue;
+        insertEvent(p, e, locks ? locks[i] : 0);
+    }
+    p.bars.store(std::clamp(bars, 1, kMaxBars), std::memory_order_relaxed);
+    endWrite(p);
+}
+
 int Sequencer::copyPattern(int pat, uint64_t* dst, int cap) const {
     return copyPatternWithLocks(pat, dst, nullptr, cap);
 }

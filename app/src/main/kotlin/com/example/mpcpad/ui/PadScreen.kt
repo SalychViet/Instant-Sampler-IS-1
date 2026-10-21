@@ -55,14 +55,17 @@ import com.example.mpcpad.capture.PadCapture
 import com.example.mpcpad.sample.PadLibrary
 import com.example.mpcpad.sample.PadSampler
 import com.example.mpcpad.sample.PadStore
+import com.example.mpcpad.sample.SampleClip
 import com.example.mpcpad.sample.SampleViewModel
 import com.example.mpcpad.sample.SamplerEvent
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private fun norm(v: Float, lo: Float, hi: Float) = ((v - lo) / (hi - lo)).coerceIn(0f, 1f)
 private fun denorm(n: Float, lo: Float, hi: Float) = lo + n * (hi - lo)
@@ -90,6 +93,21 @@ fun MpcRoot(actions: SampleActions) {
     val route = remember { IntArray(64) }
     val cap by PadCapture.state.collectAsState()
 
+    // ---- RESAMPLE ----
+    var resampleHold: Job? = null
+    var resampleHeld = false
+    fun finishResample() {
+        val n = AudioEngine.resampleStop()
+        app.resampling = false
+        val data = AudioEngine.resampleRead()
+        if (n > 0 && data.isNotEmpty()) {
+            app.resampleClip = SampleClip(data, 2, AudioEngine.sampleRate())
+            app.flash(String.format("RESAMPLE %.1f S · HOLD = COPY", n.toFloat() / AudioEngine.sampleRate()), 3000)
+        } else {
+            app.flash("RESAMPLE: EMPTY", 1100)
+        }
+    }
+
     // ---- опрос движка раз в кадр (значения читаются только при рисовании) ----
     LaunchedEffect(Unit) {
         var p = 0f
@@ -113,6 +131,7 @@ fun MpcRoot(actions: SampleActions) {
                 app.seqQueued = st.queued
                 app.seqLinkWaiting = st.linkWaiting
                 app.songIndex = st.songIndex
+                if (app.resampling && !AudioEngine.resampling()) finishResample()   // 30 с набралось
 
                 if (now - lastSlow > 120_000_000L) {
                     lastSlow = now
@@ -355,6 +374,47 @@ fun MpcRoot(actions: SampleActions) {
         return u
     }
 
+    /** Семпл пада как SampleClip: с диска или (для стартового кита) заново синтезированный. */
+    fun padClip(pad: Int): SampleClip? {
+        if (PadLibrary.infos[pad] == null) return null
+        return PadStore.readWav(context, pad)?.let { SampleOps.parseWav(it) } ?: if (pad < 16) DefaultKit.clipFor(pad) else null
+    }
+
+    /** UNDO для изменения семпла на паде: вернуть прежний звук и параметры (или снова очистить). */
+    fun undoPadSample(pad: Int, label: String) {
+        val had = PadLibrary.infos[pad] != null
+        val clip = if (had) padClip(pad) else null
+        val name = PadLibrary.infos[pad]?.name ?: "SAMPLE"
+        val prev = app.pads[pad]
+        app.pushUndo(label) {
+            if (clip != null) PadSampler.assignToPad(pad, clip, name) else if (!had) PadStore.delete(context, pad)
+            app.applyPadUi(pad, prev)
+        }
+    }
+
+    /** Вставка из буфера: копия пада — только на пустой пад, ресемпл — на любой. */
+    fun tryPaste(global: Int): Boolean {
+        val cb = app.clipboard ?: return false
+        if (!app.pasteArmed) return false
+        val free = PadLibrary.infos[global] == null
+        if (global == cb.sourcePad || (!cb.fromResample && !free)) {
+            app.pasteArmed = false
+            flash(if (global == cb.sourcePad) "PASTE CANCELLED" else "PAD BUSY: PASTE CANCELLED")
+            return global == cb.sourcePad
+        }
+        undoPadSample(global, "PASTE ${padName(global)}")
+        if (cb.fromResample) {
+            PadSampler.importClip(global, cb.clip, cb.name, false)   // с автообрезкой тишины
+        } else {
+            PadSampler.assignToPad(global, cb.clip, cb.name)
+            cb.ui?.let { app.applyPadUi(global, it) }
+        }
+        app.pasteArmed = false
+        app.selected = global
+        app.flash("PASTED → ${padName(global)}", 1500)
+        return true
+    }
+
     fun padDown(global: Int, vel: Float) {
         pressedMask.longValue = pressedMask.longValue or (1L shl global)
         route[global] = 0
@@ -369,18 +429,12 @@ fun MpcRoot(actions: SampleActions) {
         }
         when {
             app.mode == Mode.PAD -> {
+                if (tryPaste(global)) return
                 app.selected = global
                 when {
                     app.eraseLatch -> {
                         app.eraseLatch = false
-                        val bytes = PadStore.readWav(context, global)
-                        val name = PadLibrary.infos[global]?.name ?: "SAMPLE"
-                        val prev = app.pads[global]
-                        app.pushUndo("DELETE ${padName(global)}") {
-                            val clip = bytes?.let { SampleOps.parseWav(it) } ?: DefaultKit.clipFor(global)
-                            if (clip != null) PadSampler.assignToPad(global, clip, name)
-                            app.applyPadUi(global, prev)
-                        }
+                        undoPadSample(global, "DELETE ${padName(global)}")
                         PadStore.delete(context, global)
                         app.update(global) { PadUi() }
                         flash("SAMPLE ${padName(global)} DELETED")
@@ -394,6 +448,16 @@ fun MpcRoot(actions: SampleActions) {
                     else -> {
                         route[global] = 1
                         AudioEngine.noteOn(global, vel)
+                        // Долгое нажатие — скопировать семпл; касание пустого пада вставит копию.
+                        if (PadLibrary.infos[global] != null) {
+                            longPress[global] = scope.launch {
+                                delay(700)
+                                val clip = withContext(Dispatchers.Default) { padClip(global) } ?: return@launch
+                                app.clipboard = SampleClipboard(clip, PadLibrary.infos[global]?.name ?: "SAMPLE", app.pads[global], false, global)
+                                app.pasteArmed = true
+                                app.flash("COPY ${padName(global)} → TOUCH EMPTY PAD", 4000)
+                            }
+                        }
                     }
                 }
             }
@@ -764,7 +828,40 @@ fun MpcRoot(actions: SampleActions) {
                             else flash("ERASE OFF")
                         }
                     }
-                    HwButton(
+                    if (app.kaossMode) HwButton(
+                        "RESMPL", Modifier.weight(1f),
+                        led = app.resampling || app.resampleClip != null,
+                        ledColor = if (app.resampling) Skin.LedRed else Skin.LedAmber,
+                        height = 28.dp,
+                        onPress = { down ->
+                            if (down) {
+                                resampleHold?.cancel()
+                                resampleHold = scope.launch {
+                                    delay(600)
+                                    val clip = app.resampleClip
+                                    if (clip != null && !app.resampling) {
+                                        resampleHeld = true
+                                        app.clipboard = SampleClipboard(clip, "RESAMPLE", null, true, -1)
+                                        app.pasteArmed = true
+                                        app.mode = Mode.PAD; app.stepView = false
+                                        app.flash("RESAMPLE COPIED → TOUCH A PAD", 4000)
+                                    }
+                                }
+                            } else {
+                                resampleHold?.cancel()
+                            }
+                        },
+                    ) {
+                        if (resampleHeld) {
+                            resampleHeld = false
+                        } else if (app.resampling) {
+                            finishResample()
+                        } else {
+                            AudioEngine.resampleStart()
+                            app.resampling = true
+                            app.flash("● RESAMPLING (MAX 30 S) · PRESS TO STOP", 3000)
+                        }
+                    } else HwButton(
                         "SAMPLE", Modifier.weight(1f),
                         led = cap.armed || cap.arming, ledColor = if (cap.armed) Skin.LedRed else Skin.LedAmber,
                         height = 28.dp,
@@ -974,6 +1071,9 @@ fun MpcRoot(actions: SampleActions) {
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             )
         }
+
+        // ---- ввод темпа цифрами ----
+        if (app.tempoEntry) TempoEntry(app, Modifier.fillMaxSize())
 
         // ---- настройки (Ableton Link, latency) ----
         if (app.setupOpen) {

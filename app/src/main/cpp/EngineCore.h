@@ -2,6 +2,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "KaossFx.h"
 #include "Limiter.h"
@@ -63,6 +64,23 @@ public:
     int seqPatternBars(int pat) const { return seq_.patternBars(pat); }
     int seqPatternCount(int pat) const { return seq_.patternCount(pat); }
     int seqSongLength() const { return seq_.songLength(); }
+    void seqLoadPatternDirect(int pat, const uint64_t* ev, const uint64_t* lk, int n, int bars) {
+        seq_.loadPatternDirect(pat, ev, lk, n, bars);
+    }
+
+    // ---- ресемплинг: запись выхода (после эффектов и лимитера) ----
+    void resampleStart() {
+        resLen_.store(0, std::memory_order_relaxed);
+        resOn_.store(true, std::memory_order_release);
+    }
+    int resampleStop() {
+        resOn_.store(false, std::memory_order_release);
+        return resLen_.load(std::memory_order_acquire);
+    }
+    bool resampling() const { return resOn_.load(std::memory_order_relaxed); }
+    int resampleFrames() const { return resLen_.load(std::memory_order_acquire); }
+    // Копия записанного (interleaved stereo). Вызывать после resampleStop.
+    int resampleRead(float* dst, int maxFrames) const;
     int seqSongAt(int i) const { return seq_.songAt(i); }
 
     // ---- аудио-поток ----
@@ -95,6 +113,10 @@ private:
     float master_ = 0.8f;
     bool ftzDone_ = false;
     int sampleRate_ = 48000;
+
+    std::vector<float> resBuf_;
+    std::atomic<bool> resOn_{false};
+    std::atomic<int> resLen_{0};
 
     std::atomic<uint64_t> activeMask_{0};
     std::atomic<float> peak_{0.0f};

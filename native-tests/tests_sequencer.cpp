@@ -872,3 +872,38 @@ TEST(SequencerEngineTest, RejectsOutOfRangeArguments) {
     EXPECT_FALSE(core.seq(SeqOp::ToggleStep, 0, 64, 0, 24, 1.0f));
     EXPECT_TRUE(core.seq(SeqOp::Select, 63, 63));
 }
+
+TEST(SequencerEngineTest, LoadPatternDirectRestoresSavedPattern) {
+    Rig r;
+    r.step(3, 1, 0);
+    r.step(3, 2, 96, 48);
+    r.seq.apply(SeqOp::SetLock, 3, 1, 0, 24 | (kParamPan << 16), -1.0f);
+    r.seq.apply(SeqOp::SetLength, 3, 0, 2, 0, 0);
+    uint64_t ev[kMaxPatternEvents], lk[kMaxPatternEvents];
+    const int n = r.seq.copyPatternWithLocks(3, ev, lk, kMaxPatternEvents);
+    Rig r2;
+    r2.seq.loadPatternDirect(3, ev, lk, n, r.seq.patternBars(3));
+    uint64_t ev2[kMaxPatternEvents], lk2[kMaxPatternEvents];
+    ASSERT_EQ(r2.seq.copyPatternWithLocks(3, ev2, lk2, kMaxPatternEvents), n);
+    for (int i = 0; i < n; ++i) { EXPECT_EQ(ev2[i], ev[i]); EXPECT_EQ(lk2[i], lk[i]); }
+    EXPECT_EQ(r2.seq.patternBars(3), 2);
+}
+
+TEST(SequencerEngineTest, ResampleCapturesOutput) {
+    EngineCore core;
+    core.setSampleRate(kSr);
+    ASSERT_TRUE(core.loadSample(0, constSample(5000, 0.5f)));
+    core.resampleStart();
+    core.noteOn(0, 1.0f);
+    std::vector<float> buf(2 * 256);
+    for (int i = 0; i < 20; ++i) core.render(buf.data(), 256);
+    const int n = core.resampleStop();
+    EXPECT_EQ(n, 20 * 256);
+    std::vector<float> got(static_cast<size_t>(n) * 2);
+    EXPECT_EQ(core.resampleRead(got.data(), n), n);
+    float m = 0;
+    for (float v : got) m = std::max(m, std::fabs(v));
+    EXPECT_GT(m, 0.1f);
+    core.render(buf.data(), 256);   // после стопа больше не пишет
+    EXPECT_EQ(core.resampleFrames(), n);
+}

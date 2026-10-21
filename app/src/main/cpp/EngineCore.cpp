@@ -25,6 +25,7 @@ void EngineCore::setSampleRate(int sr) {
     voices_.setSampleRate(sampleRate_);
     seq_.setSampleRate(sampleRate_);
     fx_.setSampleRate(sampleRate_);
+    resBuf_.assign(static_cast<size_t>(sampleRate_) * 30 * 2, 0.0f);   // до 30 с
     limiter_.setSampleRate(static_cast<float>(sampleRate_));
 }
 
@@ -180,9 +181,26 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
     fx_.process(out, numFrames, seq_.bpm());   // KAOSS — на весь микс, до лимитера
     const float peak = limiter_.process(out, numFrames, master_);
 
+    if (resOn_.load(std::memory_order_acquire)) {
+        const int cap = static_cast<int>(resBuf_.size() / 2);
+        const int len = resLen_.load(std::memory_order_relaxed);
+        const int k = std::min(numFrames, cap - len);
+        if (k > 0) {
+            std::memcpy(resBuf_.data() + 2 * static_cast<size_t>(len), out, sizeof(float) * 2 * static_cast<size_t>(k));
+            resLen_.store(len + k, std::memory_order_release);
+        }
+        if (len + k >= cap) resOn_.store(false, std::memory_order_release);   // буфер полон
+    }
+
     peak_.store(peak, std::memory_order_relaxed);
     activeMask_.store(voices_.activePadMask(), std::memory_order_relaxed);
     activeVoices_.store(voices_.activeCount(), std::memory_order_relaxed);
+}
+
+int EngineCore::resampleRead(float* dst, int maxFrames) const {
+    const int n = std::min(maxFrames, resLen_.load(std::memory_order_acquire));
+    if (n > 0) std::memcpy(dst, resBuf_.data(), sizeof(float) * 2 * static_cast<size_t>(n));
+    return n;
 }
 
 }  // namespace mpc

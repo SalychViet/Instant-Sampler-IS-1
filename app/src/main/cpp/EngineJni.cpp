@@ -178,6 +178,53 @@ JNIEXPORT jint JNICALL JNI(nativeSeqPatternBars)(JNIEnv*, jobject, jlong h, jint
     return o ? o->core().seqPatternBars(pat) : 1;
 }
 
+// ---- сохранение проекта и ресемплинг ----
+
+JNIEXPORT void JNICALL JNI(nativeSeqLoadPattern)(JNIEnv* env, jobject, jlong h, jint pat, jlongArray events,
+                                                 jlongArray locks, jint bars) {
+    auto* o = get(h);
+    if (!o || !events) return;
+    const jsize n = std::min<jsize>(env->GetArrayLength(events), mpc::kMaxPatternEvents);
+    std::vector<uint64_t> ev(static_cast<size_t>(n)), lk(static_cast<size_t>(n), 0);
+    env->GetLongArrayRegion(events, 0, n, reinterpret_cast<jlong*>(ev.data()));
+    if (locks && env->GetArrayLength(locks) >= n) env->GetLongArrayRegion(locks, 0, n, reinterpret_cast<jlong*>(lk.data()));
+    o->core().seqLoadPatternDirect(pat, ev.data(), lk.data(), n, bars);
+}
+
+JNIEXPORT void JNICALL JNI(nativeResampleStart)(JNIEnv*, jobject, jlong h) {
+    if (auto* o = get(h)) o->core().resampleStart();
+}
+
+JNIEXPORT jint JNICALL JNI(nativeResampleStop)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->core().resampleStop() : 0;
+}
+
+JNIEXPORT jint JNICALL JNI(nativeResampleFrames)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->core().resampleFrames() : 0;
+}
+
+JNIEXPORT jboolean JNICALL JNI(nativeResampling)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o && o->core().resampling();
+}
+
+JNIEXPORT jint JNICALL JNI(nativeResampleRead)(JNIEnv* env, jobject, jlong h, jfloatArray out) {
+    auto* o = get(h);
+    if (!o || !out) return 0;
+    const int maxFrames = env->GetArrayLength(out) / 2;
+    std::vector<float> tmp(static_cast<size_t>(maxFrames) * 2);
+    const int n = o->core().resampleRead(tmp.data(), maxFrames);
+    env->SetFloatArrayRegion(out, 0, n * 2, tmp.data());
+    return n;
+}
+
+JNIEXPORT jint JNICALL JNI(nativeSampleRate)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->core().sampleRate() : 48000;
+}
+
 // ---- KAOSS ----
 
 JNIEXPORT void JNICALL JNI(nativeKaoss)(JNIEnv*, jobject, jlong h, jint program, jfloat x, jfloat y,

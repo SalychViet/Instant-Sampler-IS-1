@@ -1,6 +1,7 @@
 package com.example.mpcpad.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,7 +71,13 @@ fun Lcd(
                 app.seqPlaying -> "▶"
                 else -> ""
             }
-            Text(String.format("$state  %.1f", Settings.bpm), style = Skin.Lcd, maxLines = 1)
+            // Долгое нажатие на темп — ввести BPM цифрами.
+            Text(
+                String.format("$state  %.1f", Settings.bpm),
+                style = Skin.Lcd,
+                maxLines = 1,
+                modifier = Modifier.pointerInput(Unit) { detectTapGestures(onLongPress = { app.tempoEntry = true }) },
+            )
         }
         Canvas(
             Modifier

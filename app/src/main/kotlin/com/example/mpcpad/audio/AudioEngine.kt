@@ -192,6 +192,27 @@ object AudioEngine {
         return List(n) { nativeSeqSongAt(handle, it) }
     }
 
+    // ---- сохранение проекта ----
+    /** Записать паттерн целиком — только до старта звука (MpcApp.onCreate). */
+    fun seqLoadPattern(pattern: Int, events: LongArray, locks: LongArray, bars: Int) {
+        if (handle != 0L) nativeSeqLoadPattern(handle, pattern, events, locks, bars)
+    }
+
+    // ---- ресемплинг: запись выхода вместе с эффектами (до 30 с) ----
+    fun resampleStart() { if (handle != 0L) nativeResampleStart(handle) }
+    fun resampleStop(): Int = if (handle != 0L) nativeResampleStop(handle) else 0
+    fun resampleFrames(): Int = if (handle != 0L) nativeResampleFrames(handle) else 0
+    fun resampling(): Boolean = handle != 0L && nativeResampling(handle)
+    /** Записанный фрагмент: interleaved stereo при частоте движка. */
+    fun resampleRead(): FloatArray {
+        val n = resampleFrames()
+        if (handle == 0L || n <= 0) return FloatArray(0)
+        val out = FloatArray(n * 2)
+        val got = nativeResampleRead(handle, out)
+        return if (got == n) out else out.copyOf(got * 2)
+    }
+    fun sampleRate(): Int = if (handle != 0L) nativeSampleRate(handle) else 48000
+
     // ---- KAOSS ----
     /** Программа эффекта, X/Y 0..1 и касание (эффект включён, пока касаются). */
     fun kaoss(program: Int, x: Float, y: Float, touch: Boolean) {
@@ -262,6 +283,13 @@ object AudioEngine {
     private external fun nativeSeqCopyPatternLocks(h: Long, pat: Int, out: LongArray, locks: LongArray): Int
     private external fun nativeSeqPatternBars(h: Long, pat: Int): Int
     private external fun nativeSeqPatternCounts(h: Long, out: IntArray)
+    private external fun nativeSeqLoadPattern(h: Long, pat: Int, events: LongArray, locks: LongArray, bars: Int)
+    private external fun nativeResampleStart(h: Long)
+    private external fun nativeResampleStop(h: Long): Int
+    private external fun nativeResampleFrames(h: Long): Int
+    private external fun nativeResampling(h: Long): Boolean
+    private external fun nativeResampleRead(h: Long, out: FloatArray): Int
+    private external fun nativeSampleRate(h: Long): Int
     private external fun nativeKaoss(h: Long, program: Int, x: Float, y: Float, touch: Boolean)
     private external fun nativeSeqSongLength(h: Long): Int
     private external fun nativeSeqSongAt(h: Long, i: Int): Int

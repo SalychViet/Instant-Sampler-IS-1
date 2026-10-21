@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity(), SampleActions {
             afterMicPermission = null
             if (granted) next?.invoke()
             else sampleVm.showMessage(
-                "Нет разрешения на микрофон. Разрешите его в Настройки → Приложения → MPC Pad → Разрешения."
+                "Нет разрешения на микрофон. Разрешите его в Настройки → Приложения → IS-1 → Разрешения."
             )
         }
 
@@ -103,6 +103,7 @@ class MainActivity : ComponentActivity(), SampleActions {
     }
 
     override fun onStop() {
+        ProjectStore.save(this, appVm)   // проект переживает выход из приложения
         AudioEngine.allNotesOff()   // чтобы Gate/Loop-голоса не «залипали» после возврата
         AudioEngine.seqStop()
         // Микрофон в фоне не держим. Внутренний звук оставляем взведённым: музыка в другом приложении

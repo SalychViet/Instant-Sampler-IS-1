@@ -21,6 +21,7 @@ class MpcApp : Application() {
         AudioEngine.seqSetLocksEnabled(Settings.pLock)
         LinkNetwork.apply(this)
         DefaultKit.load()
+        ProjectStore.load(this)   // паттерны, цепочка и параметры падов с прошлого раза
         // Сохранённые семплы пэдов грузим в фоне, чтобы не задерживать старт.
         Thread({ PadStore.loadAll(this) }, "mpc-padstore").start()
     }
