@@ -930,15 +930,15 @@ fun MpcRoot(actions: SampleActions) {
 
             // ================= банки =================
             Column(
-                Modifier.width(34.dp).fillMaxHeight(),
+                Modifier.width(44.dp).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             ) {
                 // DRY/WET эффекта KAOSS: своё значение у каждой программы, 3 тапа — все на 100%.
                 val mixProg = app.shownProgram.coerceIn(0, app.kaossMix.size - 1)
-                Knob("MIX", app.kaossMix[mixProg], { n ->
+                Knob("DRY/WET", app.kaossMix[mixProg], { n ->
                     app.kaossMix[mixProg] = n
                     app.flash("${Kaoss.PROGRAMS[mixProg].name} MIX %.0f%%".format(n * 100), 900)
-                }, diameter = 30.dp, onTripleTap = {
+                }, diameter = 42.dp, accent = Color(0xFFFF6A00), onTripleTap = {
                     for (i in app.kaossMix.indices) app.kaossMix[i] = 1f
                     app.flash("ALL FX MIX 100%", 1500)
                 })
@@ -1008,7 +1008,7 @@ fun MpcRoot(actions: SampleActions) {
 
             // ================= правая колонка =================
             Column(
-                Modifier.width(138.dp).fillMaxHeight(),
+                Modifier.width(122.dp).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Row(

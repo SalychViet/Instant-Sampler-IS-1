@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -37,6 +38,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
@@ -62,6 +65,8 @@ internal fun Knob(
     onTouch: (Boolean) -> Unit = {},
     /** Тройной тап (например, сброс всех значений). Если задан — двойной тап не сбрасывает. */
     onTripleTap: (() -> Unit)? = null,
+    /** Особая ручка: тёмный корпус и светящееся кольцо значения этого цвета. */
+    accent: Color? = null,
 ) {
     val v by rememberUpdatedState(value)
     val set by rememberUpdatedState(onChange)
@@ -70,7 +75,13 @@ internal fun Knob(
     val triple by rememberUpdatedState(onTripleTap)
 
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
-        Text(label, style = Skin.Silk, maxLines = 1)
+        Text(
+            label,
+            style = if (accent != null) Skin.Silk.copy(fontSize = 9.sp, color = lerp(accent, Color.Black, 0.35f)) else Skin.Silk,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.wrapContentWidth(unbounded = true),
+        )
         Canvas(
             Modifier
                 .size(diameter)
@@ -101,6 +112,31 @@ internal fun Knob(
         ) {
             val r = size.minDimension / 2f
             val c = center
+            if (accent != null) {
+                // кольцо: тёмная дорожка и светящаяся дуга значения
+                val sw = r * 0.16f
+                val tl = Offset(c.x - r + sw / 2f, c.y - r + sw / 2f)
+                val arcSize = Size(2f * r - sw, 2f * r - sw)
+                drawArc(Color(0xFF2A2C30), 135f, 270f, false, tl, arcSize, style = Stroke(sw, cap = StrokeCap.Round))
+                drawArc(accent.copy(alpha = 0.35f), 135f, 270f * v, false, tl, arcSize, style = Stroke(sw * 1.8f, cap = StrokeCap.Round))
+                drawArc(accent, 135f, 270f * v, false, tl, arcSize, style = Stroke(sw, cap = StrokeCap.Round))
+                drawCircle(Color(0x66000000), radius = r * 0.64f, center = c + Offset(0f, r * 0.05f))
+                drawCircle(
+                    Brush.radialGradient(listOf(Color(0xFF4A4D53), Color(0xFF141518)), center = c - Offset(r * 0.18f, r * 0.22f), radius = r * 0.9f),
+                    radius = r * 0.6f,
+                    center = c,
+                )
+                drawCircle(accent.copy(alpha = 0.8f), radius = r * 0.6f, center = c, style = Stroke(1.6f))
+                val a = Math.toRadians(135.0 + 270.0 * v.toDouble()).toFloat()
+                drawLine(
+                    accent,
+                    c + Offset(cos(a) * r * 0.12f, sin(a) * r * 0.12f),
+                    c + Offset(cos(a) * r * 0.52f, sin(a) * r * 0.52f),
+                    strokeWidth = 3.2f,
+                    cap = StrokeCap.Round,
+                )
+                return@Canvas
+            }
             // шкала
             for (i in 0..10) {
                 val a = Math.toRadians(135.0 + 270.0 * i / 10.0).toFloat()
@@ -205,7 +241,7 @@ internal fun Fader(
             )
             drawLine(Color(0xFF2B1F08), Offset(cx - capW / 2f + 2f, y + capH / 2f), Offset(cx + capW / 2f - 2f, y + capH / 2f), 2f)
         }
-        Text(label, style = Skin.Silk, maxLines = 1, textAlign = TextAlign.Center)
+        Text(label, style = Skin.Silk.copy(fontSize = 7.sp, letterSpacing = 0.sp), maxLines = 1, softWrap = false, textAlign = TextAlign.Center, modifier = Modifier.wrapContentWidth(unbounded = true))
     }
 }
 
@@ -232,7 +268,15 @@ internal fun HwButton(
     val pressed by source.collectIsPressedAsState()
     if (onPress != null) LaunchedEffect(pressed) { onPress(pressed) }
     val shape = RoundedCornerShape(5.dp)
-    val face = if (pressed) listOf(Skin.CapDark, Color(0xFFA2A5AA)) else listOf(Skin.CapLight, Skin.CapDark)
+    // Активная кнопка целиком окрашивается в свой цвет — видно издалека (вместо маленькой лампочки).
+    val lit = led && enabled
+    val face = when {
+        lit && pressed -> listOf(ledColor.copy(red = ledColor.red * 0.8f, green = ledColor.green * 0.8f, blue = ledColor.blue * 0.8f), ledColor)
+        lit -> listOf(lerp(ledColor, Color.White, 0.35f), ledColor)
+        pressed -> listOf(Skin.CapDark, Color(0xFFA2A5AA))
+        else -> listOf(Skin.CapLight, Skin.CapDark)
+    }
+    val ink = if (lit && ledColor == Skin.LedRed) Color.White else Skin.Ink
 
     Box(
         modifier = modifier
@@ -241,7 +285,7 @@ internal fun HwButton(
             .background(Color(0x55000000), shape)
             .padding(top = if (pressed) 1.5.dp else 0.dp, bottom = if (pressed) 0.dp else 1.5.dp)
             .background(Brush.verticalGradient(face), shape)
-            .border(1.dp, Skin.Ink.copy(alpha = 0.55f), shape)
+            .border(if (lit) 1.5.dp else 1.dp, if (lit) lerp(ledColor, Color.Black, 0.45f) else Skin.Ink.copy(alpha = 0.55f), shape)
             .clickable(interactionSource = source, indication = null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -253,23 +297,16 @@ internal fun HwButton(
                             Path().apply {
                                 moveTo(0f, 0f); lineTo(size.width, size.height / 2f); lineTo(0f, size.height); close()
                             },
-                            Skin.Ink,
+                            ink,
                         )
-                        Glyph.STOP -> drawRect(Skin.Ink, Offset(size.width * 0.1f, size.height * 0.1f), Size(size.width * 0.8f, size.height * 0.8f))
-                        Glyph.REC -> drawCircle(Color(0xFFB3141A), radius = size.minDimension / 2f)
+                        Glyph.STOP -> drawRect(ink, Offset(size.width * 0.1f, size.height * 0.1f), Size(size.width * 0.8f, size.height * 0.8f))
+                        Glyph.REC -> drawCircle(if (lit) Color.White else Color(0xFFB3141A), radius = size.minDimension / 2f)
                         Glyph.NONE -> {}
                     }
                 }
             }
-            Text(label, style = Skin.Silk.copy(fontSize = 9.sp), maxLines = 1)
+            Text(label, style = Skin.Silk.copy(fontSize = 9.sp, color = ink), maxLines = 1)
         }
-        Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 3.dp, end = 4.dp)
-                .size(5.dp)
-                .background(if (led) ledColor else Color(0x40000000), CircleShape)
-        )
     }
 }
 
