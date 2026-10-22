@@ -142,7 +142,6 @@ fun Lcd(
                 append(" T:")
                 append(listOfNotNull(if (Settings.trimStart) "H" else null, if (Settings.trimEnd) "T" else null).joinToString("+"))
             }
-            if (Settings.pLock) append(" PL")
             if (Settings.linkEnabled) append(" LNK")
             if (app.fxAuto != null) append(" FXA")
         }

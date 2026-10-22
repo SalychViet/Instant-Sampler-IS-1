@@ -82,6 +82,7 @@ class AppViewModel : ViewModel() {
     var stepBar by mutableIntStateOf(0)            // страница шагов: такт 0..3
     var editorOpen by mutableStateOf(false)
     var setupOpen by mutableStateOf(false)
+    var exportOpen by mutableStateOf(false)
     var bank by mutableIntStateOf(0)
     /** Выбранный «звук» (пад 0..63): его параметры правят ручки, его шаги видны в STEP. */
     var selected by mutableIntStateOf(0)

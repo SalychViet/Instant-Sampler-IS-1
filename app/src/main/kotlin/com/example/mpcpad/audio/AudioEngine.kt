@@ -213,6 +213,19 @@ object AudioEngine {
     }
     fun sampleRate(): Int = if (handle != 0L) nativeSampleRate(handle) else 48000
 
+    // ---- EXPORT: мастер ровно на длину Song/паттерна с начала ----
+    /** 0 — нет, 1 — ждём старта, 2 — идёт запись, 3 — готово. */
+    fun exportStart(lengthTicks: Int, bpm: Float): Boolean = handle != 0L && nativeExportStart(handle, lengthTicks, bpm)
+    fun exportCancel() { if (handle != 0L) nativeExportCancel(handle) }
+    fun exportState(): Int = if (handle != 0L) nativeExportState(handle) else 0
+    fun exportFrames(): Int = if (handle != 0L) nativeExportFrames(handle) else 0
+    fun exportTarget(): Int = if (handle != 0L) nativeExportTarget(handle) else 0
+    /** [mp3] = false — WAV 16 бит. */
+    fun exportWrite(path: String, mp3: Boolean, kbps: Int = 320): Boolean =
+        handle != 0L && nativeExportWrite(handle, path, if (mp3) 1 else 0, kbps)
+    fun exportRead(): FloatArray? = if (handle != 0L) nativeExportRead(handle) else null
+    fun exportFree() { if (handle != 0L) nativeExportFree(handle) }
+
     // ---- KAOSS ----
     /** Программа эффекта, X/Y 0..1 и касание (эффект включён, пока касаются). */
     fun kaoss(program: Int, x: Float, y: Float, touch: Boolean, mix: Float = 1f) {
@@ -290,6 +303,14 @@ object AudioEngine {
     private external fun nativeResampling(h: Long): Boolean
     private external fun nativeResampleRead(h: Long, out: FloatArray): Int
     private external fun nativeSampleRate(h: Long): Int
+    private external fun nativeExportStart(h: Long, ticks: Int, bpm: Float): Boolean
+    private external fun nativeExportCancel(h: Long)
+    private external fun nativeExportState(h: Long): Int
+    private external fun nativeExportFrames(h: Long): Int
+    private external fun nativeExportTarget(h: Long): Int
+    private external fun nativeExportWrite(h: Long, path: String, format: Int, kbps: Int): Boolean
+    private external fun nativeExportRead(h: Long): FloatArray?
+    private external fun nativeExportFree(h: Long)
     private external fun nativeKaoss(h: Long, program: Int, x: Float, y: Float, touch: Boolean, mix: Float)
     private external fun nativeSeqSongLength(h: Long): Int
     private external fun nativeSeqSongAt(h: Long, i: Int): Int

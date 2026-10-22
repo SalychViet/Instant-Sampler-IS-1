@@ -568,11 +568,6 @@ fun MpcRoot(actions: SampleActions) {
         if (inStepEdit && step >= 0) {
             // P-LOCK: значение только для этого шага.
             AudioEngine.seqSetLock(app.seqPattern, pad, step * STEP_TICKS, STEP_TICKS, id, v)
-            if (!Settings.pLock) {
-                // Параметры шагов должны звучать — включаем их воспроизведение.
-                Settings.pLock = true
-                AudioEngine.seqSetLocksEnabled(true)
-            }
             app.heldStepUi = f(app.heldStepUi ?: app.pads[pad])
             app.heldStepEdited = true
             app.flash("STEP ${step + 1} $label $text", 900)
@@ -1082,10 +1077,9 @@ fun MpcRoot(actions: SampleActions) {
                             if (held) app.flash("CHOKE: TOUCH PADS", 1500)
                         },
                     ) {}
-                    HwButton("P-LOCK", Modifier.weight(1f), led = Settings.pLock, height = 24.dp) {
-                        Settings.pLock = !Settings.pLock
-                        AudioEngine.seqSetLocksEnabled(Settings.pLock)
-                        app.flash(if (Settings.pLock) "STEP PARAMS ON" else "STEP PARAMS OFF: PAD VALUES FOR ALL STEPS", 1800)
+                    HwButton("EXPORT", Modifier.weight(1f), led = app.exportOpen, ledColor = Skin.LedRed, height = 24.dp) {
+                        if (app.seqRecording) AudioEngine.seqSetRecording(false)
+                        app.exportOpen = true
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1116,6 +1110,9 @@ fun MpcRoot(actions: SampleActions) {
 
         // ---- ввод темпа цифрами ----
         if (app.tempoEntry) TempoEntry(app, Modifier.fillMaxSize())
+
+        // ---- EXPORT мастера ----
+        if (app.exportOpen) ExportScreen(app, Modifier.fillMaxSize())
 
         // ---- настройки (Ableton Link, latency) ----
         if (app.setupOpen) {

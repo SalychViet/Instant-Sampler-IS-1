@@ -139,6 +139,8 @@ public:
     int songLength() const { return songLenPub_.load(std::memory_order_relaxed); }
     int songAt(int i) const { return i >= 0 && i < kMaxSong ? songPub_[i].load(std::memory_order_relaxed) : -1; }
     float bpm() const { return bpm_; }   // аудио-поток
+    // EXPORT (аудио-поток): без метронома и отсчёта, чтобы в файл шла только музыка.
+    void setExporting(bool on) { exporting_ = on; }
 
 private:
     struct Pattern {
@@ -196,6 +198,7 @@ private:
     double framesPerTick_ = 250.0;
     int quantize_ = 24;
     int metroMode_ = 0;
+    bool exporting_ = false;
     float metroLevel_ = 0.7f;
     int countInBars_ = 0;
     bool locksEnabled_ = true;

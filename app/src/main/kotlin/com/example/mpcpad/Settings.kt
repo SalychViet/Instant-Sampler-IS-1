@@ -38,7 +38,6 @@ object Settings {
 
     // ---- общее ----
     private val _master = mutableFloatStateOf(0.8f)
-    private val _pLock = mutableStateOf(false)
     private val _fullLevel = mutableStateOf(false)
 
     // ---- синхронизация ----
@@ -58,7 +57,6 @@ object Settings {
     var stepVelocity: Float get() = _stepVelocity.floatValue; set(v) { _stepVelocity.floatValue = v; putFloat("stepVelocity", v) }
     var master: Float get() = _master.floatValue; set(v) { _master.floatValue = v; putFloat("master", v) }
     /** P-LOCK: параметры шагов (VOL/PAN/PITCH/…) играют и правятся удержанием шага в STEP. */
-    var pLock: Boolean get() = _pLock.value; set(v) { _pLock.value = v; putBool("pLock", v) }
     var fullLevel: Boolean get() = _fullLevel.value; set(v) { _fullLevel.value = v; putBool("fullLevel", v) }
     var linkEnabled: Boolean get() = _linkEnabled.value; set(v) { _linkEnabled.value = v; putBool("linkEnabled", v) }
     /** Сдвиг звука относительно сетки Ableton Link, мс: плюс — играть раньше. */
@@ -78,7 +76,6 @@ object Settings {
         _countInBars.intValue = p.getInt("countInBars", 1).coerceIn(0, 4)
         _stepVelocity.floatValue = p.getFloat("stepVelocity", 0.8f).coerceIn(0.05f, 1f)
         _master.floatValue = p.getFloat("master", 0.8f).coerceIn(0f, 1.2f)
-        _pLock.value = p.getBoolean("pLock", false)
         _fullLevel.value = p.getBoolean("fullLevel", false)
         _linkEnabled.value = p.getBoolean("linkEnabled", false)
         _latencyMs.floatValue = p.getFloat("latencyMs", 0f).coerceIn(-100f, 100f)

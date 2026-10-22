@@ -409,7 +409,7 @@ void Sequencer::play() {
         skipTick_[i] = -1;
         heldPat_[i] = -1;
     }
-    countingIn_ = recording_ && countInBars_ > 0;
+    countingIn_ = recording_ && countInBars_ > 0 && !exporting_;
     countInLeft_ = countingIn_ ? countInBars_ * kBarTicks : 0;
     countInDone_ = 0;
 }
@@ -535,7 +535,7 @@ void Sequencer::processTick() {
         ++pass_;
     }
 
-    const bool metro = metroMode_ == 1 || (metroMode_ == 2 && recording_);
+    const bool metro = !exporting_ && (metroMode_ == 1 || (metroMode_ == 2 && recording_));
     if (metro && pos_ % kPpq == 0) startClick(pos_ % kBarTicks == 0);
 
     const Pattern& p = patterns_[current_];

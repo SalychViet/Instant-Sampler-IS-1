@@ -1,6 +1,7 @@
 #include "EngineCore.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include "Denormals.h"
@@ -130,6 +131,26 @@ void EngineCore::apply(const Command& c) {
         case CmdType::AllNotesOff:
             voices_.allNotesOff();
             break;
+        case CmdType::Export:
+            if (c.param > 0) {
+                // Старт: длина в кадрах по темпу, который будет играть (Link во время экспорта не трогаем).
+                const double frames = static_cast<double>(c.param) * sampleRate_ * 60.0 /
+                                      (static_cast<double>(seq_.bpm()) * kPpq);
+                const int cap = static_cast<int>(expBuf_.size() / 2);
+                expTarget_.store(std::clamp(static_cast<int>(std::ceil(frames)), 1, cap), std::memory_order_relaxed);
+                expLen_.store(0, std::memory_order_relaxed);
+                seq_.setExporting(true);
+                seq_.apply(SeqOp::SetRecording, 0, 0, 0, 0, 0.0f);
+                seq_.apply(SeqOp::Stop, 0, 0, 0, 0, 0.0f);
+                voices_.allNotesOff();
+                seq_.apply(SeqOp::Play, 0, 0, 0, 0, 0.0f);
+                expState_.store(2, std::memory_order_release);
+            } else if (expState_.load(std::memory_order_relaxed) == 2) {
+                seq_.apply(SeqOp::Stop, 0, 0, 0, 0, 0.0f);
+                seq_.setExporting(false);
+                expState_.store(0, std::memory_order_release);
+            }
+            break;
         case CmdType::SetMaster:
             master_ = c.value;
             break;
@@ -175,7 +196,8 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
     if (!ftzDone_) { enableFlushToZero(); ftzDone_ = true; }
 
     drainCommands();
-    if (link) seq_.linkSync(*link, numFrames);
+    const bool exporting = expState_.load(std::memory_order_relaxed) == 2;
+    if (link && !exporting) seq_.linkSync(*link, numFrames);   // экспорт идёт от своих часов
     std::memset(out, 0, sizeof(float) * 2 * static_cast<size_t>(numFrames));
     seq_.render(out, numFrames);   // голоса + метроном, с разбивкой по тикам секвенсора
     fx_.process(out, numFrames, seq_.bpm());   // KAOSS — на весь микс, до лимитера
@@ -192,9 +214,64 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
         if (len + k >= cap) resOn_.store(false, std::memory_order_release);   // буфер полон
     }
 
+    if (exporting) {
+        const int len = expLen_.load(std::memory_order_relaxed);
+        const int target = expTarget_.load(std::memory_order_relaxed);
+        const int k = std::min(numFrames, target - len);
+        int16_t* dst = expBuf_.data() + 2 * static_cast<size_t>(len);
+        for (int i = 0; i < 2 * k; ++i) {
+            const float v = std::clamp(out[i], -1.0f, 1.0f) * 32767.0f;
+            dst[i] = static_cast<int16_t>(std::lrint(v));
+        }
+        expLen_.store(len + k, std::memory_order_release);
+        if (len + k >= target) {
+            // Ровно длина цепочки: дальше не играем, хвосты не пишем.
+            seq_.apply(SeqOp::Stop, 0, 0, 0, 0, 0.0f);
+            seq_.setExporting(false);
+            expState_.store(3, std::memory_order_release);
+        }
+    }
+
     peak_.store(peak, std::memory_order_relaxed);
     activeMask_.store(voices_.activePadMask(), std::memory_order_relaxed);
     activeVoices_.store(voices_.activeCount(), std::memory_order_relaxed);
+}
+
+bool EngineCore::exportStart(int lengthTicks, float bpm) {
+    const int st = expState_.load(std::memory_order_acquire);
+    if (st == 1 || st == 2 || lengthTicks <= 0) return false;
+    // Буфер с запасом на случай, если темп чуть изменится до старта. Максимум — 10 минут.
+    const double sec = static_cast<double>(lengthTicks) * 60.0 / (std::max(20.0f, bpm) * kPpq);
+    const double frames = std::min(sec * 1.05 + 0.5, 600.0) * sampleRate_;
+    try {
+        expBuf_.assign(static_cast<size_t>(frames) * 2, 0);
+    } catch (...) {
+        expBuf_.clear();
+        return false;
+    }
+    expLen_.store(0, std::memory_order_relaxed);
+    expState_.store(1, std::memory_order_release);
+    Command c;
+    c.type = CmdType::Export;
+    c.param = lengthTicks;
+    std::lock_guard<std::mutex> lk(producerMutex_);
+    if (post(c)) return true;
+    expState_.store(0, std::memory_order_release);
+    return false;
+}
+
+void EngineCore::exportCancel() {
+    Command c;
+    c.type = CmdType::Export;
+    c.param = 0;
+    std::lock_guard<std::mutex> lk(producerMutex_);
+    post(c);
+}
+
+void EngineCore::exportFree() {
+    if (expState_.load(std::memory_order_acquire) != 3) return;
+    expState_.store(0, std::memory_order_release);
+    std::vector<int16_t>().swap(expBuf_);
 }
 
 int EngineCore::resampleRead(float* dst, int maxFrames) const {

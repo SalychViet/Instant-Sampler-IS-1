@@ -18,7 +18,7 @@ class MpcApp : Application() {
         AudioEngine.seqSetQuantize(Settings.quantize)
         AudioEngine.seqSetMetronome(Settings.metroMode, Settings.metroLevel)
         AudioEngine.seqSetCountIn(Settings.countInBars)
-        AudioEngine.seqSetLocksEnabled(Settings.pLock)
+        AudioEngine.seqSetLocksEnabled(true)   // параметры шагов звучат всегда
         LinkNetwork.apply(this)
         DefaultKit.load()
         ProjectStore.load(this)   // паттерны, цепочка и параметры падов с прошлого раза

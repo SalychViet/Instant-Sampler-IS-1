@@ -11,6 +11,7 @@ add_executable(mpc_tests
     tests_sequencer.cpp
     tests_aiff.cpp
     tests_kaoss.cpp
+    tests_export.cpp
     ${ENGINE}/Voice.cpp
     ${ENGINE}/VoicePool.cpp
     ${ENGINE}/EngineCore.cpp

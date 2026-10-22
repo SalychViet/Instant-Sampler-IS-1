@@ -15,7 +15,7 @@
 
 namespace mpc {
 
-enum class CmdType : uint8_t { NoteOn, NoteOff, SetParam, SetMaster, LoadSample, AllNotesOff, Seq };
+enum class CmdType : uint8_t { NoteOn, NoteOff, SetParam, SetMaster, LoadSample, AllNotesOff, Seq, Export };
 
 struct Command {
     CmdType type = CmdType::NoteOn;
@@ -83,6 +83,19 @@ public:
     int resampleRead(float* dst, int maxFrames) const;
     int seqSongAt(int i) const { return seq_.songAt(i); }
 
+    // ---- EXPORT: мастер (с эффектами) ровно на длину Song/паттерна, с самого начала ----
+    // lengthTicks — длина в тиках секвенсора; bpm — текущий темп (по нему выделяется буфер).
+    // Секвенсор перезапускается с начала цепочки, запись идёт, пока не наберётся вся длина.
+    bool exportStart(int lengthTicks, float bpm);
+    void exportCancel();
+    // 0 — нет, 1 — ждём старта, 2 — пишем, 3 — готово.
+    int exportState() const { return expState_.load(std::memory_order_acquire); }
+    int exportFrames() const { return expLen_.load(std::memory_order_acquire); }
+    int exportTarget() const { return expTarget_.load(std::memory_order_acquire); }
+    // Готовый экспорт (exportState() == 3): interleaved stereo 16 бит.
+    const int16_t* exportData() const { return expBuf_.data(); }
+    void exportFree();
+
     // ---- аудио-поток ----
     // out: interleaved stereo float. link — снимок Ableton Link на начало буфера (nullptr = без Link).
     void render(float* out, int numFrames, const LinkFrame* link = nullptr);
@@ -117,6 +130,11 @@ private:
     std::vector<float> resBuf_;
     std::atomic<bool> resOn_{false};
     std::atomic<int> resLen_{0};
+
+    std::vector<int16_t> expBuf_;   // выделяется в exportStart, пока аудио-поток в него не пишет
+    std::atomic<int> expState_{0};
+    std::atomic<int> expLen_{0};
+    std::atomic<int> expTarget_{0};
 
     std::atomic<uint64_t> activeMask_{0};
     std::atomic<float> peak_{0.0f};

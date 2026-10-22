@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "AudioOutput.h"
+#include "ExportFile.h"
 
 using mpc::AudioOutput;
 using mpc::Sample;
@@ -218,6 +219,69 @@ JNIEXPORT jint JNICALL JNI(nativeResampleRead)(JNIEnv* env, jobject, jlong h, jf
     const int n = o->core().resampleRead(tmp.data(), maxFrames);
     env->SetFloatArrayRegion(out, 0, n * 2, tmp.data());
     return n;
+}
+
+// ---- EXPORT ----
+
+JNIEXPORT jboolean JNICALL JNI(nativeExportStart)(JNIEnv*, jobject, jlong h, jint ticks, jfloat bpm) {
+    auto* o = get(h);
+    return o && o->core().exportStart(ticks, bpm);
+}
+
+JNIEXPORT void JNICALL JNI(nativeExportCancel)(JNIEnv*, jobject, jlong h) {
+    if (auto* o = get(h)) o->core().exportCancel();
+}
+
+JNIEXPORT jint JNICALL JNI(nativeExportState)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->core().exportState() : 0;
+}
+
+JNIEXPORT jint JNICALL JNI(nativeExportFrames)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->core().exportFrames() : 0;
+}
+
+JNIEXPORT jint JNICALL JNI(nativeExportTarget)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->core().exportTarget() : 0;
+}
+
+// format: 0 — WAV 16 бит, 1 — MP3 (kbps). Только когда exportState() == 3.
+JNIEXPORT jboolean JNICALL JNI(nativeExportWrite)(JNIEnv* env, jobject, jlong h, jstring path, jint format, jint kbps) {
+    auto* o = get(h);
+    if (!o || !path || o->core().exportState() != 3) return false;
+    const char* p = env->GetStringUTFChars(path, nullptr);
+    if (!p) return false;
+    auto& c = o->core();
+    const bool ok = format == 1 ? mpc::writeMp3File(p, c.exportData(), c.exportFrames(), c.sampleRate(), kbps)
+                                : mpc::writeWav16File(p, c.exportData(), c.exportFrames(), c.sampleRate());
+    env->ReleaseStringUTFChars(path, p);
+    return ok;
+}
+
+// Готовый экспорт как interleaved stereo float (для вставки в пад). null — нет данных.
+JNIEXPORT jfloatArray JNICALL JNI(nativeExportRead)(JNIEnv* env, jobject, jlong h) {
+    auto* o = get(h);
+    if (!o || o->core().exportState() != 3) return nullptr;
+    const int n = o->core().exportFrames();
+    jfloatArray arr = env->NewFloatArray(n * 2);
+    if (!arr) {
+        env->ExceptionClear();   // не хватило памяти — вернём null
+        return nullptr;
+    }
+    const int16_t* src = o->core().exportData();
+    std::vector<float> tmp(16384);
+    for (int pos = 0; pos < n * 2; pos += static_cast<int>(tmp.size())) {
+        const int k = std::min(static_cast<int>(tmp.size()), n * 2 - pos);
+        for (int i = 0; i < k; ++i) tmp[i] = src[pos + i] * (1.0f / 32768.0f);
+        env->SetFloatArrayRegion(arr, pos, k, tmp.data());
+    }
+    return arr;
+}
+
+JNIEXPORT void JNICALL JNI(nativeExportFree)(JNIEnv*, jobject, jlong h) {
+    if (auto* o = get(h)) o->core().exportFree();
 }
 
 JNIEXPORT jint JNICALL JNI(nativeSampleRate)(JNIEnv*, jobject, jlong h) {
