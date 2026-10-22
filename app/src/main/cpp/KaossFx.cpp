@@ -212,6 +212,7 @@ void KaossFx::process(float* io, int n, float bpm) {
     const bool touch = touch_.load(std::memory_order_relaxed);
     const float xt = std::clamp(x_.load(std::memory_order_relaxed), 0.0f, 1.0f);
     const float yt = std::clamp(y_.load(std::memory_order_relaxed), 0.0f, 1.0f);
+    const float mt = std::clamp(mix_.load(std::memory_order_relaxed), 0.0f, 1.0f);
 
     if (prog != curProgram_) {
         curProgram_ = prog;
@@ -835,6 +836,12 @@ void KaossFx::process(float* io, int n, float bpm) {
             // Касание включает эффект плавно: смешиваем «сухой» и обработанный сигнал.
             ol = l + (ol - l) * w;
             orr = r + (orr - r) * w;
+        }
+        // DRY/WET программы (сглажено, без щелчков при повороте ручки)
+        mixS_ += (mt - mixS_) * xyCoef;
+        if (mixS_ < 0.9999f) {
+            ol = l + (ol - l) * mixS_;
+            orr = r + (orr - r) * mixS_;
         }
         if (!std::isfinite(ol) || !std::isfinite(orr)) { resetState(); ol = l; orr = r; }
         io[2 * i] = ol;

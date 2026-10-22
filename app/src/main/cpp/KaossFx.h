@@ -37,6 +37,8 @@ public:
         y_.store(y, std::memory_order_relaxed);
     }
     void setTouch(bool on) { touch_.store(on, std::memory_order_relaxed); }
+    // DRY/WET: 1 — как задумано программой, 0 — эффект не слышен.
+    void setMix(float m) { mix_.store(m, std::memory_order_relaxed); }
 
     // io: interleaved stereo, обрабатывается на месте. bpm — для эффектов с синхронизацией.
     void process(float* io, int numFrames, float bpm);
@@ -70,6 +72,8 @@ private:
     std::atomic<int> program_{kKpLpf};
     std::atomic<float> x_{0.5f}, y_{0.5f};
     std::atomic<bool> touch_{false};
+    std::atomic<float> mix_{1.0f};
+    float mixS_ = 1.0f;
 
     int curProgram_ = -1;
     float xs_ = 0.5f, ys_ = 0.5f;   // сглаженные X/Y

@@ -228,13 +228,14 @@ JNIEXPORT jint JNICALL JNI(nativeSampleRate)(JNIEnv*, jobject, jlong h) {
 // ---- KAOSS ----
 
 JNIEXPORT void JNICALL JNI(nativeKaoss)(JNIEnv*, jobject, jlong h, jint program, jfloat x, jfloat y,
-                                        jboolean touch) {
+                                        jboolean touch, jfloat mix) {
     auto* o = get(h);
     if (!o) return;
     auto& fx = o->core().fx();
     fx.setProgram(program);
     fx.setXY(x, y);
     fx.setTouch(touch);
+    fx.setMix(mix);
 }
 
 JNIEXPORT jint JNICALL JNI(nativeSeqSongLength)(JNIEnv*, jobject, jlong h) {

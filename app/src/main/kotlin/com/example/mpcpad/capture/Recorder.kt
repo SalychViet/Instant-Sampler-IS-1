@@ -35,7 +35,7 @@ class Recorder(
                 .setChannelMask(mask)
                 .build()
             val minBuf = AudioRecord.getMinBufferSize(config.sampleRate, mask, AudioFormat.ENCODING_PCM_16BIT)
-            check(minBuf > 0) { "Устройство не поддерживает запись ${config.sampleRate} Гц" }
+            check(minBuf > 0) { "Device cannot record at ${config.sampleRate} Hz" }
             val bufBytes = maxOf(minBuf * 2, config.sampleRate * config.channels * 2 / 5)
             val builder = AudioRecord.Builder()
                 .setAudioFormat(format)
@@ -43,7 +43,7 @@ class Recorder(
             when (config.source) {
                 CaptureSource.MIC -> builder.setAudioSource(MediaRecorder.AudioSource.MIC)
                 CaptureSource.INTERNAL -> {
-                    val p = checkNotNull(projection) { "Нет MediaProjection для захвата внутреннего звука" }
+                    val p = checkNotNull(projection) { "No MediaProjection for internal audio capture" }
                     val capture = AudioPlaybackCaptureConfiguration.Builder(p)
                         .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
                         .addMatchingUsage(AudioAttributes.USAGE_GAME)
@@ -56,7 +56,7 @@ class Recorder(
             val record = builder.build()
             if (record.state != AudioRecord.STATE_INITIALIZED) {
                 record.release()
-                throw IllegalStateException("Не удалось открыть источник звука (AudioRecord не инициализирован)")
+                throw IllegalStateException("Cannot open the audio source (AudioRecord not initialized)")
             }
             return record
         }
@@ -114,7 +114,7 @@ class Recorder(
                 while (!stopRequested) {
                     val n = record.read(chunk, 0, chunk.size)
                     if (n < 0) {
-                        error = "Ошибка чтения аудио (код $n)"
+                        error = "Audio read error (code $n)"
                         break
                     }
                     if (n == 0) continue
@@ -146,7 +146,7 @@ class Recorder(
                         w.writeShorts(chunk, n)
                         elapsedMs = w.frames * 1000 / rate
                         if (w.frames >= maxFrames) {
-                            stopReason = stopReason ?: "Достигнут лимит записи (10 мин)"
+                            stopReason = stopReason ?: "Recording limit reached (10 min)"
                             break
                         }
                     }
@@ -162,7 +162,7 @@ class Recorder(
                 }
             }
         } catch (e: Exception) {
-            error = "Сбой записи: ${e.message}"
+            error = "Recording failed: ${e.message}"
         } finally {
             try {
                 record.stop()
@@ -177,7 +177,7 @@ class Recorder(
             val ok = frames > 0
             if (!ok) outFile.delete()
             val message = error ?: stopReason ?: if (!ok) {
-                if (config.thresholdDb != null) "Порог не был превышен — запись не началась" else "Ничего не записано"
+                if (config.thresholdDb != null) "Threshold never reached — nothing recorded" else "Nothing recorded"
             } else {
                 null
             }

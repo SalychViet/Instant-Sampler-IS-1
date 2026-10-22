@@ -155,7 +155,7 @@ class CaptureService : Service() {
                 val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 val data = IntentCompat.getParcelableExtra(intent, EXTRA_DATA, Intent::class.java)
                 if (code != android.app.Activity.RESULT_OK || data == null) {
-                    failWith("Нет согласия на захват звука", armedMode)
+                    failWith("Audio capture was not allowed", armedMode)
                     return null
                 }
                 val manager = getSystemService(MediaProjectionManager::class.java)
@@ -163,7 +163,7 @@ class CaptureService : Service() {
                 projection = p
                 p.registerCallback(object : MediaProjection.Callback() {
                     override fun onStop() {
-                        val reason = "Захват звука остановлен системой"
+                        val reason = "Audio capture stopped by the system"
                         recorder?.requestStop(reason)
                         armed?.stop(reason)
                     }
@@ -172,14 +172,14 @@ class CaptureService : Service() {
             return try {
                 Prepared(config, Recorder.buildAudioRecord(config, projection))
             } catch (e: SecurityException) {
-                failWith("Нет разрешения на запись звука: ${e.message}", armedMode)
+                failWith("No permission to record audio: ${e.message}", armedMode)
                 null
             } catch (e: Exception) {
-                failWith(e.message ?: "Не удалось начать запись", armedMode)
+                failWith(e.message ?: "Could not start recording", armedMode)
                 null
             }
         } catch (e: Exception) {
-            failWith("Не удалось запустить сервис записи: ${e.message}", armedMode)
+            failWith("Could not start the recording service: ${e.message}", armedMode)
             return null
         }
     }

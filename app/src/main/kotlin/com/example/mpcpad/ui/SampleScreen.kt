@@ -80,18 +80,18 @@ fun SampleBody(
             Chip(if (recording) "■ STOP" else "● REC", enabled = !vm.busy, danger = true, compact = true) {
                 if (recording) actions.stopRecording() else actions.startRecording()
             }
-            Chip("Микрофон", active = vm.source == CaptureSource.MIC, enabled = !recording, compact = true) {
+            Chip("MIC", active = vm.source == CaptureSource.MIC, enabled = !recording, compact = true) {
                 vm.source = CaptureSource.MIC
             }
-            Chip("Внутр. звук", active = vm.source == CaptureSource.INTERNAL, enabled = !recording, compact = true) {
+            Chip("INTERNAL", active = vm.source == CaptureSource.INTERNAL, enabled = !recording, compact = true) {
                 vm.source = CaptureSource.INTERNAL
             }
             if (vm.source == CaptureSource.MIC) {
-                Chip(if (vm.micStereo) "Стерео" else "Моно", enabled = !recording, compact = true) {
+                Chip(if (vm.micStereo) "STEREO" else "MONO", enabled = !recording, compact = true) {
                     vm.micStereo = !vm.micStereo
                 }
             }
-            Chip("Порог", active = vm.thresholdOn, enabled = !recording, compact = true) {
+            Chip("THRESHOLD", active = vm.thresholdOn, enabled = !recording, compact = true) {
                 vm.thresholdOn = !vm.thresholdOn
             }
             if (vm.thresholdOn) {
@@ -102,9 +102,9 @@ fun SampleBody(
                     enabled = !recording,
                     modifier = Modifier.width(90.dp),
                 )
-                Text(String.format("%.0f дБ", vm.thresholdDb), color = TextMain, fontSize = 11.sp)
+                Text(String.format("%.0f dB", vm.thresholdDb), color = TextMain, fontSize = 11.sp)
             }
-            Chip("Отсчёт 3 с", active = vm.countIn, enabled = !recording, compact = true) {
+            Chip("COUNT 3 s", active = vm.countIn, enabled = !recording, compact = true) {
                 vm.countIn = !vm.countIn
             }
             PeakMeter(recLevel, Modifier.width(70.dp).height(10.dp))
@@ -114,19 +114,19 @@ fun SampleBody(
             (cap.status == CaptureStatus.ARMED || cap.status == CaptureStatus.RECORDING) &&
             cap.silentMs > 3000
         val (statusText, statusColor) = when {
-            silentWarning -> "Уже ${cap.silentMs / 1000} с тишины: в другом приложении ничего не играет либо оно " +
-                "запрещает захват звука (DRM / настройка приложения)" to RecRed
+            silentWarning -> "${cap.silentMs / 1000} s of silence: nothing is playing in the other app, or it " +
+                "blocks audio capture (DRM / app setting)" to RecRed
             cap.status == CaptureStatus.COUNT_IN ->
-                "Запись начнётся через ${ceil(cap.countInLeftMs / 1000.0).toInt()}…" to TextMain
+                "Recording starts in ${ceil(cap.countInLeftMs / 1000.0).toInt()}…" to TextMain
             cap.status == CaptureStatus.ARMED ->
-                String.format("Ждём сигнал громче %.0f дБ…", vm.thresholdDb) to TextMain
+                String.format("Waiting for signal above %.0f dB…", vm.thresholdDb) to TextMain
             cap.status == CaptureStatus.RECORDING ->
-                String.format("● Запись %.1f с", cap.elapsedMs / 1000.0) to RecRed
+                String.format("● REC %.1f s", cap.elapsedMs / 1000.0) to RecRed
             vm.message != null -> vm.message!! to TextMain
             vm.source == CaptureSource.INTERNAL ->
-                "Запустите звук в другом приложении (например YouTube), затем нажмите REC. " +
-                    "Остановить можно здесь или в уведомлении." to TextDim
-            else -> "Совет: слушайте в наушниках, чтобы звук динамика не попал в микрофон." to TextDim
+                "Start audio in another app (e.g. YouTube), then press REC. " +
+                    "Stop here or from the notification." to TextDim
+            else -> "Tip: use headphones so the speaker does not bleed into the mic." to TextDim
         }
         Text(statusText, color = statusColor, fontSize = 11.sp, maxLines = 2)
 
@@ -134,10 +134,10 @@ fun SampleBody(
             val total = clip.durationMs / 1000.0
             Text(
                 String.format(
-                    "%.2f с · %d Гц · %s · выделение %.2f–%.2f с",
+                    "%.2f s · %d Hz · %s · selection %.2f–%.2f s",
                     total,
                     clip.sampleRate,
-                    if (clip.channels == 1) "моно" else "стерео",
+                    if (clip.channels == 1) "mono" else "stereo",
                     vm.selStart * total,
                     vm.selEnd * total,
                 ),
@@ -159,15 +159,15 @@ fun SampleBody(
             Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Chip("▶ Прослушать", enabled = canEdit, compact = true) { vm.previewSelection() }
+            Chip("▶ PREVIEW", enabled = canEdit, compact = true) { vm.previewSelection() }
             Chip("■", enabled = clip != null, compact = true) { vm.stopPreview() }
-            Chip("Обрезать", enabled = canEdit, compact = true) { vm.trimToSelection() }
-            Chip("Нормализ.", enabled = canEdit, compact = true) { vm.normalize() }
-            Chip("Fade in", enabled = canEdit, compact = true) { vm.fadeIn() }
-            Chip("Fade out", enabled = canEdit, compact = true) { vm.fadeOut() }
-            Chip("Reverse", enabled = canEdit, compact = true) { vm.reverse() }
-            Chip("Тишина", enabled = canEdit, compact = true) { vm.trimSilence() }
-            Chip("Undo", enabled = vm.canUndo && !vm.busy && !recording, compact = true) { vm.undo() }
+            Chip("TRIM", enabled = canEdit, compact = true) { vm.trimToSelection() }
+            Chip("NORMALIZE", enabled = canEdit, compact = true) { vm.normalize() }
+            Chip("FADE IN", enabled = canEdit, compact = true) { vm.fadeIn() }
+            Chip("FADE OUT", enabled = canEdit, compact = true) { vm.fadeOut() }
+            Chip("REVERSE", enabled = canEdit, compact = true) { vm.reverse() }
+            Chip("SILENCE", enabled = canEdit, compact = true) { vm.trimSilence() }
+            Chip("UNDO", enabled = vm.canUndo && !vm.busy && !recording, compact = true) { vm.undo() }
         }
 
         // Нарезка и назначение.
@@ -175,38 +175,38 @@ fun SampleBody(
             Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Chip("Маркеры +", active = vm.chopEdit, enabled = clip != null, compact = true) {
+            Chip("MARKERS +", active = vm.chopEdit, enabled = clip != null, compact = true) {
                 vm.chopEdit = !vm.chopEdit
             }
-            Chip("Авто", enabled = canEdit, compact = true) { vm.autoChop() }
+            Chip("AUTO", enabled = canEdit, compact = true) { vm.autoChop() }
             for (n in listOf(4, 8, 16)) {
                 Chip("÷$n", enabled = canEdit, compact = true) { vm.equalChop(n) }
             }
-            Chip("Сброс", enabled = vm.marks.isNotEmpty(), compact = true) { vm.clearMarks() }
+            Chip("RESET", enabled = vm.marks.isNotEmpty(), compact = true) { vm.clearMarks() }
             Chip(
-                "Срезы (${vm.marks.size + 1}) → ${padName(app.bank * 16)}…",
+                "SLICES (${vm.marks.size + 1}) → ${padName(app.bank * 16)}…",
                 enabled = canEdit && vm.marks.isNotEmpty(),
                 compact = true,
             ) {
                 vm.assignChops(app.bank * 16) { app.resetRegion(it) }
             }
-            Chip("→ пад ${padName(app.selected)}", enabled = canEdit, compact = true) {
+            Chip("→ PAD ${padName(app.selected)}", enabled = canEdit, compact = true) {
                 vm.assignToPad(app.selected) { app.resetRegion(it) }
             }
-            Chip("Импорт", enabled = !recording && !vm.busy, compact = true) { actions.importFile() }
+            Chip("IMPORT", enabled = !recording && !vm.busy, compact = true) { actions.importFile() }
             Box {
-                Chip("Записи (${vm.recordings.size})", enabled = !recording, compact = true) {
+                Chip("RECORDINGS (${vm.recordings.size})", enabled = !recording, compact = true) {
                     vm.refreshRecordings()
                     recentOpen = true
                 }
                 DropdownMenu(expanded = recentOpen, onDismissRequest = { recentOpen = false }) {
                     if (vm.recordings.isEmpty()) {
-                        DropdownMenuItem(text = { Text("Записей пока нет") }, onClick = { recentOpen = false })
+                        DropdownMenuItem(text = { Text("No recordings yet") }, onClick = { recentOpen = false })
                     }
                     for (file in vm.recordings.take(15)) {
                         DropdownMenuItem(
                             text = {
-                                Text(file.name.removePrefix("rec_").removeSuffix(".wav") + " · " + file.length() / 1024 + " КБ")
+                                Text(file.name.removePrefix("rec_").removeSuffix(".wav") + " · " + file.length() / 1024 + " KB")
                             },
                             onClick = {
                                 recentOpen = false
@@ -216,7 +216,7 @@ fun SampleBody(
                     }
                 }
             }
-            Chip("Очистить", enabled = clip != null && !recording, compact = true) { vm.clear() }
+            Chip("CLEAR", enabled = clip != null && !recording, compact = true) { vm.clear() }
         }
     }
 }
@@ -289,7 +289,7 @@ private fun WaveformView(vm: SampleViewModel, modifier: Modifier = Modifier) {
         }
         if (vm.clip == null) {
             Text(
-                "Нет семпла: нажмите REC, «Импорт» или выберите из «Записи»",
+                "No sample: press REC, IMPORT or pick one from RECORDINGS",
                 color = TextDim,
                 fontSize = 12.sp,
                 textAlign = TextAlign.Center,

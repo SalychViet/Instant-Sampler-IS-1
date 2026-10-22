@@ -215,8 +215,8 @@ object AudioEngine {
 
     // ---- KAOSS ----
     /** Программа эффекта, X/Y 0..1 и касание (эффект включён, пока касаются). */
-    fun kaoss(program: Int, x: Float, y: Float, touch: Boolean) {
-        if (handle != 0L) nativeKaoss(handle, program, x, y, touch)
+    fun kaoss(program: Int, x: Float, y: Float, touch: Boolean, mix: Float = 1f) {
+        if (handle != 0L) nativeKaoss(handle, program, x, y, touch, mix)
     }
 
     fun seqState(): SeqState = if (handle != 0L) SeqState.from(nativeSeqState(handle)) else SeqState()
@@ -290,7 +290,7 @@ object AudioEngine {
     private external fun nativeResampling(h: Long): Boolean
     private external fun nativeResampleRead(h: Long, out: FloatArray): Int
     private external fun nativeSampleRate(h: Long): Int
-    private external fun nativeKaoss(h: Long, program: Int, x: Float, y: Float, touch: Boolean)
+    private external fun nativeKaoss(h: Long, program: Int, x: Float, y: Float, touch: Boolean, mix: Float)
     private external fun nativeSeqSongLength(h: Long): Int
     private external fun nativeSeqSongAt(h: Long, i: Int): Int
     private external fun nativeLinkSetEnabled(h: Long, on: Boolean)

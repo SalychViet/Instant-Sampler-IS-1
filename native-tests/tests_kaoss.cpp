@@ -142,3 +142,18 @@ TEST(KaossTest, SweepNoiseAddsNoiseOverSilence) {
     EXPECT_GT(m, 0.05f);
     EXPECT_LT(m, 2.0f);
 }
+
+TEST(KaossTest, MixZeroIsDry) {
+    KaossFx fx;
+    fx.setSampleRate(kSr);
+    fx.setProgram(kKpBitCrush);
+    fx.setXY(1.0f, 1.0f);
+    fx.setMix(0.0f);
+    fx.setTouch(true);
+    auto ref = sine(kSr, 440.0f);
+    auto buf = ref;
+    run(fx, buf);
+    float d = 0;
+    for (int i = kSr / 2; i < kSr; ++i) d = std::max(d, std::fabs(buf[2 * i] - ref[2 * i]));
+    EXPECT_LT(d, 1e-3f);
+}

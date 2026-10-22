@@ -60,18 +60,33 @@ internal fun Knob(
     brass: Boolean = false,
     defaultValue: Float? = null,
     onTouch: (Boolean) -> Unit = {},
+    /** Тройной тап (например, сброс всех значений). Если задан — двойной тап не сбрасывает. */
+    onTripleTap: (() -> Unit)? = null,
 ) {
     val v by rememberUpdatedState(value)
     val set by rememberUpdatedState(onChange)
     val touch by rememberUpdatedState(onTouch)
     val reset by rememberUpdatedState(defaultValue)
+    val triple by rememberUpdatedState(onTripleTap)
 
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
         Text(label, style = Skin.Silk, maxLines = 1)
         Canvas(
             Modifier
                 .size(diameter)
-                .pointerInput(Unit) { detectTapGestures(onDoubleTap = { reset?.let { set(it) } }) }
+                .pointerInput(Unit) {
+                    var taps = 0
+                    var last = 0L
+                    detectTapGestures(
+                        onTap = {
+                            val now = System.currentTimeMillis()
+                            taps = if (now - last < 450) taps + 1 else 1
+                            last = now
+                            if (taps >= 3) { taps = 0; triple?.invoke() }
+                        },
+                        onDoubleTap = if (onTripleTap == null) ({ reset?.let { set(it) } }) else null,
+                    )
+                }
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { touch(true) },
@@ -129,6 +144,8 @@ internal fun Fader(
     trackWidth: Dp = 34.dp,
     defaultValue: Float? = null,
     onTouch: (Boolean) -> Unit = {},
+    capWidth: Dp = 24.dp,
+    capHeight: Dp = 18.dp,
 ) {
     val v by rememberUpdatedState(value)
     val set by rememberUpdatedState(onChange)
@@ -144,7 +161,7 @@ internal fun Fader(
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
-                        val capH = 18.dp.toPx()
+                        val capH = capHeight.toPx()
                         fun setFromY(y: Float) {
                             val travel = (size.height - capH).coerceAtLeast(1f)
                             set((1f - (y - capH / 2f) / travel).coerceIn(0f, 1f))
@@ -165,7 +182,7 @@ internal fun Fader(
         ) {
             val w = size.width
             val h = size.height
-            val capH = 18.dp.toPx()
+            val capH = capHeight.toPx()
             val slotW = 4.dp.toPx()
             val cx = w / 2f
             // риски по бокам
@@ -177,7 +194,7 @@ internal fun Fader(
             // прорезь
             drawRoundRect(Color(0xFF0B0B0D), Offset(cx - slotW / 2f, 2f), Size(slotW, h - 4f), CornerRadius(slotW / 2f))
             // колпачок
-            val capW = 24.dp.toPx()
+            val capW = capWidth.toPx()
             val y = capH / 2f + (h - capH) * (1f - v.coerceIn(0f, 1f)) - capH / 2f
             drawRoundRect(Color(0x66000000), Offset(cx - capW / 2f + 1f, y + 3f), Size(capW, capH), CornerRadius(3.dp.toPx()))
             drawRoundRect(

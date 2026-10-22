@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity(), SampleActions {
             afterMicPermission = null
             if (granted) next?.invoke()
             else sampleVm.showMessage(
-                "Нет разрешения на микрофон. Разрешите его в Настройки → Приложения → IS-1 → Разрешения."
+                "No microphone permission. Allow it in Settings → Apps → IS-1 → Permissions."
             )
         }
 
@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity(), SampleActions {
                 if (arm) CaptureService.arm(this, config, result.resultCode, data)
                 else CaptureService.start(this, config, result.resultCode, data)
             } else {
-                val msg = "Захват внутреннего звука отменён: нужно подтвердить доступ в системном диалоге"
+                val msg = "Internal audio capture cancelled: confirm access in the system dialog"
                 if (arm) PadCapture.cancelArming(msg) else sampleVm.showMessage(msg)
             }
         }
@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity(), SampleActions {
     override fun startRecording() {
         if (CaptureController.isBusy) return
         if (PadCapture.isBusy) {
-            sampleVm.showMessage("Сначала выключите SAMPLE● на панели: микрофон занят записью в пады")
+            sampleVm.showMessage("Turn off SAMPLE on the panel first: the mic is busy recording to pads")
             return
         }
         val config = sampleVm.buildConfig()

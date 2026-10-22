@@ -96,7 +96,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
     // ============================ загрузка ============================
 
     fun loadFile(file: File) = load(PadLibrary.displayName(file.name.removePrefix("rec_"))) {
-        val c = SampleOps.parseWav(file.readBytes()) ?: throw IOException("Не удалось прочитать запись")
+        val c = SampleOps.parseWav(file.readBytes()) ?: throw IOException("Cannot read the recording")
         AudioDecoder.Result(c, false)
     }
 
@@ -112,7 +112,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
                 val r = withContext(Dispatchers.Default) { AudioDecoder.decode(getApplication(), uri) }
                 PadSampler.importClip(pad, r.clip, name, r.truncated)
             } catch (e: Exception) {
-                PadSampler.reject(pad, e.message ?: "Не удалось загрузить файл")
+                PadSampler.reject(pad, e.message ?: "Cannot load the file")
             }
         }
     }
@@ -121,8 +121,8 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
     fun loadFromPad(pad: Int) {
         val name = PadLibrary.infos[pad]?.name ?: "SAMPLE"
         load(name) {
-            val bytes = PadStore.readWav(getApplication(), pad) ?: throw IOException("На паде ${padName(pad)} нет семпла")
-            val c = SampleOps.parseWav(bytes) ?: throw IOException("Не удалось прочитать семпл пада")
+            val bytes = PadStore.readWav(getApplication(), pad) ?: throw IOException("Pad ${padName(pad)} has no sample")
+            val c = SampleOps.parseWav(bytes) ?: throw IOException("Cannot read the pad sample")
             AudioDecoder.Result(c, false)
         }
     }
@@ -146,12 +146,12 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
                 canUndo = false
                 clipName = name
                 show(r.clip)
-                message = if (r.truncated) "Файл длиннее ${AudioDecoder.MAX_SECONDS} с — обрезан"
-                else "Загружено: %.2f с, %d Гц, %s".format(
-                    r.clip.durationMs / 1000.0, r.clip.sampleRate, if (r.clip.channels == 1) "моно" else "стерео"
+                message = if (r.truncated) "File longer than ${AudioDecoder.MAX_SECONDS} s — truncated"
+                else "Loaded: %.2f s, %d Hz, %s".format(
+                    r.clip.durationMs / 1000.0, r.clip.sampleRate, if (r.clip.channels == 1) "mono" else "stereo"
                 )
             } catch (e: Exception) {
-                message = e.message ?: "Не удалось загрузить файл"
+                message = e.message ?: "Cannot load the file"
             } finally {
                 busy = false
                 refreshRecordings()
@@ -185,8 +185,8 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
             val pos = withContext(Dispatchers.Default) { SampleOps.detectTransients(c, sensitivity) }
             val list = pos.map { it / c.frames.toFloat() }.filter { it in 0.001f..0.999f }.take(MAX_SLICES - 1)
             marks = list
-            message = if (list.isEmpty()) "Атак не найдено — попробуйте «Поровну» или поставьте маркеры вручную"
-            else "Найдено срезов: ${list.size + 1}"
+            message = if (list.isEmpty()) "No transients found — try ÷4/÷8/÷16 or place markers by hand"
+            else "Slices found: ${list.size + 1}"
         }
     }
 
@@ -194,13 +194,13 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
         if (clip == null) return noSample()
         val n = parts.coerceIn(2, MAX_SLICES)
         marks = (1 until n).map { it / n.toFloat() }
-        message = "Нарезано поровну: $n"
+        message = "Sliced evenly: $n"
     }
 
     fun addMark(fraction: Float) {
         if (clip == null) return
         if (marks.size >= MAX_SLICES - 1) {
-            message = "Максимум $MAX_SLICES срезов (по числу падов в банке)"
+            message = "Max $MAX_SLICES slices (one bank of pads)"
             return
         }
         marks = (marks + fraction.coerceIn(0.001f, 0.999f)).sorted()
@@ -222,31 +222,31 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
         (selStart * c.frames).roundToInt().coerceIn(0, c.frames) to
             (selEnd * c.frames).roundToInt().coerceIn(0, c.frames)
 
-    fun normalize() = edit("Нормализовано до −0.2 дБ", keepView = true) { c ->
+    fun normalize() = edit("Normalized to −0.2 dB", keepView = true) { c ->
         c.copy().also { SampleOps.normalize(it.data, it.channels, 0, it.frames, 0.98f) }
     }
 
-    fun fadeIn() = edit("Fade in по выделению", keepView = true) { c ->
+    fun fadeIn() = edit("Fade in on selection", keepView = true) { c ->
         val (s, e) = selFrames(c)
         c.copy().also { SampleOps.fadeIn(it.data, it.channels, s, e) }
     }
 
-    fun fadeOut() = edit("Fade out по выделению", keepView = true) { c ->
+    fun fadeOut() = edit("Fade out on selection", keepView = true) { c ->
         val (s, e) = selFrames(c)
         c.copy().also { SampleOps.fadeOut(it.data, it.channels, s, e) }
     }
 
-    fun reverse() = edit("Выделение развёрнуто", keepView = true) { c ->
+    fun reverse() = edit("Selection reversed", keepView = true) { c ->
         val (s, e) = selFrames(c)
         c.copy().also { SampleOps.reverse(it.data, it.channels, s, e) }
     }
 
-    fun trimToSelection() = edit("Обрезано по маркерам", keepView = false) { c ->
+    fun trimToSelection() = edit("Trimmed to selection", keepView = false) { c ->
         val (s, e) = selFrames(c)
         if (e - s < 2) null else c.slice(s, e)
     }
 
-    fun trimSilence() = edit("Тишина по краям убрана", keepView = false) { c ->
+    fun trimSilence() = edit("Silence trimmed at both ends", keepView = false) { c ->
         val bounds = SampleOps.findNonSilent(c.data, c.channels, -50f)
         if (bounds == null) null else c.slice(bounds[0], bounds[1])
     }
@@ -261,7 +261,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val r = withContext(Dispatchers.Default) { op(c) }
                 if (r == null) {
-                    message = "Нечего менять: семпл тихий или выделение слишком короткое"
+                    message = "Nothing to change: sample is silent or selection too short"
                 } else {
                     undoStack.addLast(before)
                     while (undoStack.size > MAX_UNDO) undoStack.removeFirst()
@@ -270,7 +270,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
                     message = done
                 }
             } catch (e: Exception) {
-                message = "Ошибка: ${e.message}"
+                message = "Error: ${e.message}"
             } finally {
                 busy = false
             }
@@ -289,7 +289,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
         stopPreview()
         show(s.clip, s.start, s.end, s.marks)
         canUndo = undoStack.isNotEmpty()
-        message = "Отменено"
+        message = "Undone"
     }
 
     private fun show(newClip: SampleClip, start: Float = 0f, end: Float = 1f, newMarks: List<Float> = emptyList()) {
@@ -306,7 +306,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun noSample() { message = "Сначала запишите или загрузите семпл" }
+    private fun noSample() { message = "Record or load a sample first" }
 
     // ============================ предпрослушивание ============================
 
@@ -330,12 +330,12 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
         val c = clip ?: return noSample()
         val (s, e) = selFrames(c)
         if (e - s < MIN_ASSIGN_FRAMES) {
-            message = "Выделение слишком короткое"
+            message = "Selection too short"
             return
         }
         val trimmed = AutoTrim.apply(c.slice(s, e))
         if (trimmed == null) {
-            message = "Выделение тише порога автообрезки (%.0f дБ) — выключите TRIM или сдвиньте маркеры".format(Settings.trimDb)
+            message = "Selection is below the auto-trim threshold (%.0f dB) — lower TRIM or move markers".format(Settings.trimDb)
             return
         }
         val part = trimmed.clip
@@ -343,11 +343,11 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
             val ok = withContext(Dispatchers.Default) { putOnPad(pad, part, clipName) }
             if (ok) {
                 onAssigned(pad)
-                message = "Назначено на пад ${padName(pad)} (%.2f с)".format(part.durationMs / 1000.0) +
+                message = "Assigned to pad ${padName(pad)} (%.2f s)".format(part.durationMs / 1000.0) +
                     if (trimmed.headMs + trimmed.tailMs > 0)
-                        " · тишина срезана: ${trimmed.headMs} мс в начале, ${trimmed.tailMs} мс в конце" else ""
+                        " · silence trimmed: ${trimmed.headMs} ms head, ${trimmed.tailMs} ms tail" else ""
             } else {
-                message = "Не удалось назначить на пад ${padName(pad)} — повторите"
+                message = "Could not assign to pad ${padName(pad)} — try again"
             }
         }
     }
@@ -356,7 +356,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
     fun assignChops(firstPad: Int, onAssigned: (Int) -> Unit) {
         val c = clip ?: return noSample()
         if (marks.isEmpty()) {
-            message = "Сначала расставьте маркеры: «Авто» или «Поровну»"
+            message = "Place markers first: AUTO or ÷4/÷8/÷16"
             return
         }
         val cuts = listOf(0) + marks.map { (it * c.frames).roundToInt() } + listOf(c.frames)
@@ -372,7 +372,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
-            message = "Срезов на падах ${padName(firstPad)}…${padName(firstPad + (done - 1).coerceAtLeast(0))}: $done"
+            message = "Slices on pads ${padName(firstPad)}…${padName(firstPad + (done - 1).coerceAtLeast(0))}: $done"
         }
     }
 

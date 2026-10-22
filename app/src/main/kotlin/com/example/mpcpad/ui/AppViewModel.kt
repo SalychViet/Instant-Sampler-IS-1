@@ -55,6 +55,12 @@ class SampleClipboard(val clip: SampleClip, val name: String, val ui: PadUi?, va
 class MotionPoint(val t: Long, val x: Float, val y: Float, val touch: Boolean)
 class Motion(val points: List<MotionPoint>, val lengthMs: Long)
 
+/**
+ * CHOKE: в каждом банке 4 своих группы. В UI хранится группа 1..4 (0 — нет), в движок уходит
+ * номер, уникальный для банка, — так пады глушат друг друга только внутри своего банка.
+ */
+fun chokeEngineValue(pad: Int, group: Int): Float = if (group <= 0) 0f else ((pad / 16) * 4 + group).toFloat()
+
 /** «A1»…«D16» по глобальному номеру пада 0..63. */
 fun padName(global: Int): String = "${'A' + global / 16}${global % 16 + 1}"
 
@@ -103,6 +109,8 @@ class AppViewModel : ViewModel() {
 
     // ---- KAOSS ----
     var kaossMode by mutableStateOf(false)
+    /** DRY/WET для каждой из 50 программ KAOSS (0..1, по умолчанию 100%). */
+    val kaossMix = mutableStateListOf<Float>().apply { addAll(ProjectStore.kaossMix) }
     var kaossProgram by mutableIntStateOf(ProjectStore.kaossProgram.coerceIn(0, 49))
     /** Ручное касание XY (0..1; Y вверх = 1). */
     var kx by mutableFloatStateOf(0.5f)
@@ -149,6 +157,18 @@ class AppViewModel : ViewModel() {
     var resampleClip by mutableStateOf<SampleClip?>(null)
     /** Окно ввода темпа цифрами (долгое нажатие на BPM на экране). */
     var tempoEntry by mutableStateOf(false)
+
+    // ---- банк запоминается отдельно для PAD, SEQ и STEP ----
+    private val bankByView = IntArray(3)
+    private fun viewIndex(m: Mode, step: Boolean) = when { m == Mode.PAD -> 0; step -> 2; else -> 1 }
+
+    /** Переключить режим экрана, вернув банк, который был в том режиме в прошлый раз. */
+    fun switchView(newMode: Mode, newStep: Boolean) {
+        bankByView[viewIndex(mode, stepView)] = bank
+        mode = newMode
+        stepView = newStep
+        bank = bankByView[viewIndex(newMode, newStep)]
+    }
 
     // ---- UNDO: до 3 последних действий ----
     private class UndoEntry(val label: String, val restore: () -> Unit)
@@ -280,7 +300,7 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
         AudioEngine.setParam(pad, PadParam.REVERSE, if (u.reverse) 1f else 0f)
-        AudioEngine.setParam(pad, PadParam.CHOKE, u.choke.toFloat())
+        AudioEngine.setParam(pad, PadParam.CHOKE, chokeEngineValue(pad, u.choke))
         AudioEngine.setParam(pad, PadParam.ATTACK_MS, u.attackMs)
         AudioEngine.setParam(pad, PadParam.RELEASE_MS, u.releaseMs)
     }

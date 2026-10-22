@@ -28,6 +28,7 @@ object ProjectStore {
     var fxAuto: FxAutomation? = null; private set
     var kaossProgram = 0; private set
     var pattern = 0; private set
+    var kaossMix: List<Float> = List(50) { 1f }; private set
 
     fun save(context: Context, app: AppViewModel) {
         try {
@@ -35,6 +36,7 @@ object ProjectStore {
             root.put("version", 1)
             root.put("pattern", app.seqPattern)
             root.put("kaossProgram", app.kaossProgram)
+            root.put("kaossMix", JSONArray().apply { for (m in app.kaossMix) put(m.toDouble()) })
             root.put("pads", JSONArray().apply { for (u in app.pads) put(padToJson(u)) })
 
             val pats = JSONArray()
@@ -90,6 +92,7 @@ object ProjectStore {
             val root = JSONObject(f.readText())
             pattern = root.optInt("pattern", 0).coerceIn(0, 63)
             kaossProgram = root.optInt("kaossProgram", 0)
+            root.optJSONArray("kaossMix")?.let { a -> kaossMix = List(50) { if (it < a.length()) a.getDouble(it).toFloat() else 1f } }
 
             root.optJSONArray("pads")?.let { arr ->
                 val list = List(64) { i -> if (i < arr.length()) padFromJson(arr.getJSONObject(i)) else PadUi() }
@@ -159,7 +162,7 @@ object ProjectStore {
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
         AudioEngine.setParam(pad, PadParam.REVERSE, if (u.reverse) 1f else 0f)
-        AudioEngine.setParam(pad, PadParam.CHOKE, u.choke.toFloat())
+        AudioEngine.setParam(pad, PadParam.CHOKE, com.example.mpcpad.ui.chokeEngineValue(pad, u.choke))
         AudioEngine.setParam(pad, PadParam.ATTACK_MS, u.attackMs)
         AudioEngine.setParam(pad, PadParam.RELEASE_MS, u.releaseMs)
     }

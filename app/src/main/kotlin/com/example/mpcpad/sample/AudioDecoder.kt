@@ -40,17 +40,17 @@ object AudioDecoder {
                     else -> Container.OTHER
                 }
             }
-        } ?: throw IOException("Не удалось открыть файл")
+        } ?: throw IOException("Cannot open the file")
 
         if (container == Container.OTHER) return decodeCompressed(context, uri)
 
         val bytes = resolver.openInputStream(uri)?.use { readLimited(it) }
-            ?: throw IOException("Не удалось открыть файл")
+            ?: throw IOException("Cannot open the file")
         val clip = SampleOps.parseWav(bytes) ?: throw IOException(
             if (container == Container.WAV) {
-                "Этот вариант WAV не поддерживается (нужен PCM 8/16/24/32 бит или float)"
+                "Unsupported WAV (need PCM 8/16/24/32-bit or float)"
             } else {
-                "Этот вариант AIFF не поддерживается (нужен несжатый PCM 8–32 бит или float; ulaw/ima4 нельзя)"
+                "Unsupported AIFF (need uncompressed PCM 8–32-bit or float; no ulaw/ima4)"
             }
         )
         return limit(clip)
@@ -79,7 +79,7 @@ object AudioDecoder {
             val n = ins.read(buf)
             if (n < 0) break
             total += n
-            if (total > MAX_FILE_BYTES) throw IOException("Файл слишком большой (больше 150 МБ)")
+            if (total > MAX_FILE_BYTES) throw IOException("File too large (over 150 MB)")
             out.write(buf, 0, n)
         }
         return out.toByteArray()
@@ -113,7 +113,7 @@ object AudioDecoder {
                     break
                 }
             }
-            if (track < 0 || format == null) throw IOException("В файле нет аудиодорожки")
+            if (track < 0 || format == null) throw IOException("No audio track in the file")
             extractor.selectTrack(track)
             var inCh = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
@@ -181,14 +181,14 @@ object AudioDecoder {
                     }
                 }
             }
-            if (sink.size == 0) throw IOException("Не удалось декодировать файл")
+            if (sink.size == 0) throw IOException("Cannot decode the file")
             val channels = minOf(inCh, 2)
             val data = FloatArray(sink.size) { sink.data[it] / 32768f }
             return Result(SampleClip(data, channels, rate), truncated)
         } catch (e: IOException) {
             throw e
         } catch (e: Exception) {
-            throw IOException("Не удалось декодировать файл: ${e.message}")
+            throw IOException("Cannot decode the file: ${e.message}")
         } finally {
             try {
                 codec?.stop()

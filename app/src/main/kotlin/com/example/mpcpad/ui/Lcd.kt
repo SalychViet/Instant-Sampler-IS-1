@@ -134,7 +134,7 @@ fun Lcd(
                     else -> "ONE"
                 }
             )
-            if (ui.choke > 0) append(" CHK")
+            if (ui.choke > 0) append(" CHK${ui.choke}")
         }
         Text(params, Modifier.fillMaxWidth(), style = small, maxLines = 1, overflow = TextOverflow.Clip)
         val flags = buildString {

@@ -93,6 +93,9 @@ fun MpcRoot(actions: SampleActions) {
     val route = remember { IntArray(64) }
     val cap by PadCapture.state.collectAsState()
 
+    var eraseHold: Job? = null
+    var eraseHeld = false
+
     // ---- RESAMPLE ----
     var resampleHold: Job? = null
     var resampleHeld = false
@@ -279,6 +282,7 @@ fun MpcRoot(actions: SampleActions) {
         var sentY = -1f
         var sentT = false
         var sentProg = -1
+        var sentMix = -1f
         val recTicks = ArrayList<IntArray>()     // tick, program, touch
         val recXY = ArrayList<FloatArray>()
         var recLast = -1
@@ -339,9 +343,10 @@ fun MpcRoot(actions: SampleActions) {
 
                 kShown[0] = x; kShown[1] = y; kShown[2] = if (t) 1f else 0f
                 app.shownProgram = prog
-                if (x != sentX || y != sentY || t != sentT || prog != sentProg) {
-                    AudioEngine.kaoss(prog, x, y, t)
-                    sentX = x; sentY = y; sentT = t; sentProg = prog
+                val mix = app.kaossMix.getOrElse(prog) { 1f }
+                if (x != sentX || y != sentY || t != sentT || prog != sentProg || mix != sentMix) {
+                    AudioEngine.kaoss(prog, x, y, t, mix)
+                    sentX = x; sentY = y; sentT = t; sentProg = prog; sentMix = mix
                 }
             }
         }
@@ -420,11 +425,13 @@ fun MpcRoot(actions: SampleActions) {
         route[global] = 0
         if (app.chokeHold) {
             // CHOKE удерживается: пад входит/выходит из группы глушения.
-            val on = app.pads[global].choke == 0
+            // OFF → 1 → 2 → 3 → 4 → OFF: группы свои в каждом банке.
+            val g = (app.pads[global].choke + 1) % 5
             val prev = app.pads[global]
             app.pushUndo("CHOKE ${padName(global)}") { app.applyPadUi(global, prev) }
-            app.setParam(global, PadParam.CHOKE, if (on) 1f else 0f) { it.copy(choke = if (on) 1 else 0) }
-            flash("CHOKE ${padName(global)} " + if (on) "ON" else "OFF")
+            app.update(global) { it.copy(choke = g) }
+            AudioEngine.setParam(global, PadParam.CHOKE, chokeEngineValue(global, g))
+            flash("CHOKE ${padName(global)} " + if (g == 0) "OFF" else "GROUP $g")
             return
         }
         when {
@@ -625,11 +632,11 @@ fun MpcRoot(actions: SampleActions) {
                 } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     SoftKey(1, "PAD", Modifier.weight(1f), active = app.mode == Mode.PAD) {
                         finishSongRec()
-                        app.mode = Mode.PAD; app.stepView = false; app.soundPick = false; app.eraseLatch = false; app.copySource = -1
+                        app.switchView(Mode.PAD, false); app.soundPick = false; app.eraseLatch = false; app.copySource = -1
                     }
                     SoftKey(2, "SEQ", Modifier.weight(1f), active = app.mode == Mode.SEQ && !app.stepView) {
                         finishSongRec()
-                        app.mode = Mode.SEQ; app.stepView = false; app.soundPick = false; app.eraseLatch = false; app.copySource = -1
+                        app.switchView(Mode.SEQ, false); app.soundPick = false; app.eraseLatch = false; app.copySource = -1
                     }
                     SoftKey(3, if (app.stepView) "SOUND" else "STEP", Modifier.weight(1f), active = app.stepView && app.soundPick) {
                         if (app.stepView) {
@@ -637,7 +644,7 @@ fun MpcRoot(actions: SampleActions) {
                             flash(if (app.soundPick) "TOUCH A PAD: SOUND" else "STEP INPUT")
                         } else {
                             finishSongRec()
-                            app.mode = Mode.SEQ; app.stepView = true; app.eraseLatch = false; app.copySource = -1
+                            app.switchView(Mode.SEQ, true); app.eraseLatch = false; app.copySource = -1
                             flash("STEP: ${padName(app.selected)}")
                         }
                     }
@@ -801,8 +808,34 @@ fun MpcRoot(actions: SampleActions) {
 
                 // --- ряд C: ввод семплов ---
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    HwButton("ERASE", Modifier.weight(1f), led = app.eraseLatch, ledColor = Skin.LedRed, height = 28.dp) {
-                        if (app.kaossMode) {
+                    HwButton(
+                        "ERASE", Modifier.weight(1f), led = app.eraseLatch, ledColor = Skin.LedRed, height = 28.dp,
+                        onPress = { down ->
+                            eraseHold?.cancel()
+                            if (down && !app.kaossMode && app.mode == Mode.SEQ && !app.stepView) {
+                                // SEQ: удержание ERASE стирает цепочку паттернов (Song).
+                                eraseHold = scope.launch {
+                                    delay(700)
+                                    eraseHeld = true
+                                    val prev = app.song
+                                    app.pushUndo("SONG") {
+                                        AudioEngine.songClear()
+                                        prev.forEach { AudioEngine.songAppend(it) }
+                                        AudioEngine.songEnable(prev.isNotEmpty())
+                                        app.song = prev
+                                    }
+                                    AudioEngine.songClear()
+                                    AudioEngine.songEnable(false)
+                                    app.song = emptyList()
+                                    app.eraseLatch = false
+                                    app.flash(if (prev.isEmpty()) "NO SONG TO ERASE" else "SONG ERASED", 1800)
+                                }
+                            }
+                        },
+                    ) {
+                        if (eraseHeld) {
+                            eraseHeld = false
+                        } else if (app.kaossMode) {
                             val prev = app.fxAuto
                             if (prev == null) {
                                 flash("NO FX AUTOMATION")
@@ -843,7 +876,7 @@ fun MpcRoot(actions: SampleActions) {
                                         resampleHeld = true
                                         app.clipboard = SampleClipboard(clip, "RESAMPLE", null, true, -1)
                                         app.pasteArmed = true
-                                        app.mode = Mode.PAD; app.stepView = false
+                                        app.switchView(Mode.PAD, false)
                                         app.flash("RESAMPLE COPIED → TOUCH A PAD", 4000)
                                     }
                                 }
@@ -870,7 +903,7 @@ fun MpcRoot(actions: SampleActions) {
                             actions.disarmPadCapture()
                             flash("SAMPLE OFF")
                         } else {
-                            app.mode = Mode.PAD; app.stepView = false
+                            app.switchView(Mode.PAD, false)
                             actions.armPadCapture()
                             flash("HOLD A PAD TO RECORD")
                         }
@@ -900,6 +933,15 @@ fun MpcRoot(actions: SampleActions) {
                 Modifier.width(34.dp).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             ) {
+                // DRY/WET эффекта KAOSS: своё значение у каждой программы, 3 тапа — все на 100%.
+                val mixProg = app.shownProgram.coerceIn(0, app.kaossMix.size - 1)
+                Knob("MIX", app.kaossMix[mixProg], { n ->
+                    app.kaossMix[mixProg] = n
+                    app.flash("${Kaoss.PROGRAMS[mixProg].name} MIX %.0f%%".format(n * 100), 900)
+                }, diameter = 30.dp, onTripleTap = {
+                    for (i in app.kaossMix.indices) app.kaossMix[i] = 1f
+                    app.flash("ALL FX MIX 100%", 1500)
+                })
                 for (b in 3 downTo 0) {
                     val kaoss = app.kaossMode
                     val pageMode = !kaoss && app.mode == Mode.SEQ && app.stepView
@@ -994,18 +1036,12 @@ fun MpcRoot(actions: SampleActions) {
                         Settings.master = v
                         AudioEngine.setMasterVolume(v)
                         app.flash("MASTER %.0f%%".format(v * 100), 900)
-                    }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = 0.8f / 1.2f)
-                    Fader("TEMPO", norm(Settings.bpm, 30f, 300f), { n ->
-                        val v = (denorm(n, 30f, 300f) * 2f).roundToInt() / 2f
-                        Settings.bpm = v
-                        AudioEngine.seqSetBpm(v)
-                        app.flash("TEMPO %.1f".format(v), 900)
-                    }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = norm(120f, 30f, 300f))
+                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.8f / 1.2f)
                     Fader("CLICK", Settings.metroLevel, { n ->
                         Settings.metroLevel = n
                         AudioEngine.seqSetMetronome(Settings.metroMode, n)
                         app.flash("CLICK %.0f%%".format(n * 100), 900)
-                    }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = 0.7f)
+                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.7f)
                     val loopPad = app.pads[app.selected].mode == PlayMode.LOOP
                     if (loopPad) {
                         // LOOP: фейдер выбирает длину петли по темпу; внизу — FREE (END вручную).
@@ -1017,19 +1053,19 @@ fun MpcRoot(actions: SampleActions) {
                                 app.setLoopDiv(app.selected, d, Settings.bpm)
                                 app.flash("LOOP " + if (d < 0) "FREE" else LOOP_DIVS[d].first, 900)
                             }
-                        }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = 0f)
+                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0f)
                     } else {
                         Fader("GAIN", norm(Settings.recGainDb, -12f, 24f), { n ->
                             val v = denorm(n, -12f, 24f).roundToInt().toFloat()
                             Settings.recGainDb = v
                             app.flash("REC GAIN %+.0f DB".format(v), 900)
-                        }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = norm(0f, -12f, 24f))
+                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = norm(0f, -12f, 24f))
                     }
                     Fader("TRIM", norm(Settings.trimDb, -72f, -20f), { n ->
                         val v = denorm(n, -72f, -20f).roundToInt().toFloat()
                         Settings.trimDb = v
                         app.flash("TRIM THRESH %.0f DB".format(v), 900)
-                    }, Modifier.weight(1f), trackWidth = 22.dp, defaultValue = norm(-50f, -72f, -20f))
+                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = norm(-50f, -72f, -20f))
                 }
                 PeakMeter(level = { peak.floatValue }, modifier = Modifier.fillMaxWidth().height(7.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1090,7 +1126,7 @@ fun MpcRoot(actions: SampleActions) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("EDIT · PAD ${padName(app.selected)}", color = TextMain, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                    Chip("ЗАКРЫТЬ", active = true, compact = true) {
+                    Chip("CLOSE", active = true, compact = true) {
                         sampleVm.stopPreview()
                         app.editorOpen = false
                     }
