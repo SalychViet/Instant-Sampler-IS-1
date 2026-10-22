@@ -530,8 +530,8 @@ fun MpcRoot(actions: SampleActions) {
                 route[global] = 3
                 app.heldStep = step
                 app.heldStepEdited = false
-                app.heldStepUi = if (Settings.pLock) stepUi(step) else null
-                if (Settings.pLock) flash("STEP ${step + 1}: TURN A KNOB")
+                app.heldStepUi = stepUi(step)
+                flash("STEP ${step + 1}: TURN A KNOB")
             }
         }
     }
@@ -560,13 +560,19 @@ fun MpcRoot(actions: SampleActions) {
 
     // ---- ручки выбранного пада ----
     val pad = app.selected
-    val inStepEdit = Settings.pLock && app.mode == Mode.SEQ && app.stepView && app.heldStep >= 0
+    // STEP: пока шаг удерживается, ручки правят только этот шаг (P-LOCK).
+    val inStepEdit = app.mode == Mode.SEQ && app.stepView && app.heldStep >= 0
     val ui = (if (inStepEdit) app.heldStepUi else null) ?: app.pads[pad]
     fun setPad(id: Int, label: String, text: String, v: Float, f: (PadUi) -> PadUi) {
         val step = app.heldStep
         if (inStepEdit && step >= 0) {
             // P-LOCK: значение только для этого шага.
             AudioEngine.seqSetLock(app.seqPattern, pad, step * STEP_TICKS, STEP_TICKS, id, v)
+            if (!Settings.pLock) {
+                // Параметры шагов должны звучать — включаем их воспроизведение.
+                Settings.pLock = true
+                AudioEngine.seqSetLocksEnabled(true)
+            }
             app.heldStepUi = f(app.heldStepUi ?: app.pads[pad])
             app.heldStepEdited = true
             app.flash("STEP ${step + 1} $label $text", 900)
@@ -1079,7 +1085,7 @@ fun MpcRoot(actions: SampleActions) {
                     HwButton("P-LOCK", Modifier.weight(1f), led = Settings.pLock, height = 24.dp) {
                         Settings.pLock = !Settings.pLock
                         AudioEngine.seqSetLocksEnabled(Settings.pLock)
-                        app.flash(if (Settings.pLock) "P-LOCK ON: STEP + HOLD + KNOB" else "P-LOCK OFF", 1800)
+                        app.flash(if (Settings.pLock) "STEP PARAMS ON" else "STEP PARAMS OFF: PAD VALUES FOR ALL STEPS", 1800)
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -37,7 +37,7 @@ fun Lcd(
 ) {
     val pad = app.selected
     val info = PadLibrary.infos[pad]
-    val stepEdit = Settings.pLock && app.mode == Mode.SEQ && app.stepView && app.heldStep >= 0
+    val stepEdit = app.mode == Mode.SEQ && app.stepView && app.heldStep >= 0
     // Текущее состояние семпла: параметры пада или удерживаемого шага (P-LOCK).
     val ui = (if (stepEdit) app.heldStepUi else null) ?: app.pads[pad]
     val shape = RoundedCornerShape(6.dp)
