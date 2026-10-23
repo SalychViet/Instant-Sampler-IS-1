@@ -18,6 +18,7 @@ struct PadParams {
     int choke = 0;
     float attackMs = 0.0f;
     float releaseMs = 15.0f;
+    float detune = 0.0f;   // центы
     const Sample* sample = nullptr;  // владелец — EngineCore
 };
 

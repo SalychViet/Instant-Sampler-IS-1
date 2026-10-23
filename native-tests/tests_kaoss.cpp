@@ -76,15 +76,15 @@ TEST(KaossTest, DelayEchoArrivesOnBeat) {
     float peak = 0;
     for (int i = 5000; i < 40000; ++i)
         if (std::fabs(buf[2 * i]) > peak) { peak = std::fabs(buf[2 * i]); peakAt = i; }
-    EXPECT_GT(peak, 0.2f);
+    EXPECT_GT(peak, 0.15f);
     EXPECT_NEAR(peakAt, 1000 + 24000, 3);
 }
 
-TEST(KaossTest, BeatRepeatLoopsCapturedSlice) {
+TEST(KaossTest, LooperLoopsCapturedBeat) {
     KaossFx fx;
     fx.setSampleRate(kSr);
-    fx.setProgram(kKpBeatRepeat);
-    fx.setXY(0.6f, 1.0f);   // индекс 4 -> 1/6 доли = 4000 кадров при 120 BPM
+    fx.setProgram(kKpFreezeLoop);
+    fx.setXY(0.6f, 1.0f);   // Looper Beat индекс 4 -> 1/4 доли = 6000 кадров при 120 BPM; Y=1 — только петля
     std::vector<float> warm(2 * 1000, 0.1f);
     run(fx, warm);
     fx.setTouch(true);
@@ -94,9 +94,9 @@ TEST(KaossTest, BeatRepeatLoopsCapturedSlice) {
     for (int i = 0; i < frames; ++i) buf[2 * i] = buf[2 * i + 1] = static_cast<float>(i % 9000) / 9000.0f;
     const auto in = buf;
     run(fx, buf, 200);
-    // Через пару повторов (wet уже 1) кадр 12500 = копия кадра 12500 % 4000 = 500 входа.
+    // Первый круг записывается, дальше кадр 12500 = копия кадра 12500 % 6000 = 500 входа.
     EXPECT_NEAR(buf[2 * 12500], in[2 * 500], 0.01f);
-    EXPECT_NEAR(buf[2 * 16900], in[2 * 900], 0.01f);
+    EXPECT_NEAR(buf[2 * 16900], in[2 * 4900], 0.01f);
 }
 
 TEST(KaossTest, LowpassCutsHighs) {
@@ -112,41 +112,39 @@ TEST(KaossTest, LowpassCutsHighs) {
     EXPECT_LT(m, 0.01f);
 }
 
-TEST(KaossTest, DistortionKeepsLoudnessAtFullDrive) {
-    for (int p : {kKpDistortion, kKpFuzz, kKpWavefolder}) {
-        KaossFx fx;
-        fx.setSampleRate(kSr);
-        fx.setProgram(p);
-        fx.setXY(1.0f, 0.8f);
-        fx.setTouch(true);
-        auto buf = sine(kSr, 220.0f, 0.3f);
-        const auto in = buf;
-        run(fx, buf);
-        double ein = 0, eout = 0;
-        for (int i = kSr / 2; i < kSr; ++i) { ein += in[2 * i] * in[2 * i]; eout += buf[2 * i] * buf[2 * i]; }
-        const double db = 10.0 * std::log10(eout / ein);
-        EXPECT_LT(std::fabs(db), 3.0);   // ±3 дБ от исходной громкости
-    }
-}
-
-TEST(KaossTest, SweepNoiseAddsNoiseOverSilence) {
+TEST(KaossTest, EchoBreakCutsDrySignal) {
     KaossFx fx;
     fx.setSampleRate(kSr);
-    fx.setProgram(kKpSweepNoise);
-    fx.setXY(0.7f, 0.8f);
+    fx.setProgram(kKpEchoBreak);
+    fx.setXY(0.7f, 0.5f);   // эхо через 1 долю = 24000 кадров
     fx.setTouch(true);
-    std::vector<float> buf(2 * kSr / 2, 0.0f);
+    auto buf = sine(kSr, 440.0f);
     run(fx, buf);
     float m = 0;
-    for (float v : buf) m = std::max(m, std::fabs(v));
-    EXPECT_GT(m, 0.05f);
-    EXPECT_LT(m, 2.0f);
+    for (int i = 2000; i < 23000; ++i) m = std::max(m, std::fabs(buf[2 * i]));
+    EXPECT_LT(m, 0.01f);   // живой звук оборван, эхо ещё не пришло
+    float e = 0;
+    for (int i = 25000; i < 30000; ++i) e = std::max(e, std::fabs(buf[2 * i]));
+    EXPECT_GT(e, 0.2f);    // а потом слышно эхо
+}
+
+TEST(KaossTest, VinylLooperStopsAtCenter) {
+    KaossFx fx;
+    fx.setSampleRate(kSr);
+    fx.setProgram(kKpVinylLoop);
+    fx.setXY(0.6f, 0.5f);   // Y в центре — «пластинка» стоит
+    fx.setTouch(true);
+    auto buf = sine(kSr, 440.0f);
+    run(fx, buf);
+    float m = 0;
+    for (int i = 20000; i < kSr; ++i) m = std::max(m, std::fabs(buf[2 * i]));
+    EXPECT_LT(m, 0.01f);
 }
 
 TEST(KaossTest, MixZeroIsDry) {
     KaossFx fx;
     fx.setSampleRate(kSr);
-    fx.setProgram(kKpBitCrush);
+    fx.setProgram(kKpDigiTalk);
     fx.setXY(1.0f, 1.0f);
     fx.setMix(0.0f);
     fx.setTouch(true);

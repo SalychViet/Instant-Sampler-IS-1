@@ -5,19 +5,20 @@
 
 namespace mpc {
 
-// Программы KAOSS. Значения ДОЛЖНЫ совпадать с Kaoss.PROGRAMS в Kotlin.
+// Программы KAOSS — по образцу KORG KAOSS PAD KP3+ (имена и оси X/Y — из таблицы программ KP3+).
+// Значения ДОЛЖНЫ совпадать с Kaoss.PROGRAMS в Kotlin.
 // Пять наборов по 10 (кнопки 1–5): номер программы = набор * 10 + позиция.
 enum KaossProgram : int {
-    // 1 FILTER
-    kKpLpf = 0, kKpHpf, kKpBpf, kKpDjFilter, kKpNotch, kKpComb, kKpFormant, kKpAutoFilter, kKpEnvFilter, kKpIsolator,
-    // 2 SPACE
-    kKpDelay, kKpPingPong, kKpReverb, kKpDubEcho, kKpTapeEcho, kKpMultiTap, kKpHall, kKpRoom, kKpGatedVerb, kKpFreeze,
-    // 3 REPEAT
-    kKpBeatRepeat, kKpRoll, kKpReverse, kKpTapeStop, kKpGlitch, kKpScratch, kKpSlicer, kKpPitchRepeat, kKpSpinback, kKpBarLoop,
-    // 4 MOD
-    kKpFlanger, kKpPhaser, kKpRingMod, kKpSweepNoise, kKpChorus, kKpTremolo, kKpAutoPan, kKpVibrato, kKpRotary, kKpSiren,
-    // 5 LO-FI
-    kKpBitCrush, kKpDistortion, kKpLofi, kKpPitch, kKpFuzz, kKpWavefolder, kKpVinyl, kKpPump, kKpOctaver, kKpRobot,
+    // 1 FILTER — FLt.1 … FL.10
+    kKpMorphFilt = 0, kKpLpf, kKpHpf, kKpBpf, kKp72dbLpf, kKpLpfDelay, kKpHpfDelay, kKpBpfDelay, kKpLpfReverb, kKpHpfReverb,
+    // 2 SPACE — дилеи, ревербы и особые программы KP3+
+    kKpDelay, kKpEchoBreak, kKpTapeEcho, kKpDubEcho, kKpPingPong, kKpPumpReverb, kKpFreezeReverb, kKpGateReverb, kKpJetSpace, kKpGrainShift,
+    // 3 REPEAT — LoP.1 … LP.10
+    kKpLooperFR, kKpBreakLoop, kKpLoopRvsDelay, kKpFreezeLoop, kKpHighLooper, kKpShuttleLoop, kKpSliceLoop, kKpLoopBreaker, kKpKp2Looper, kKpVinylLoop,
+    // 4 MOD — Mod.1 … Md.10
+    kKpVinylBreak, kKpBreakVerb, kKpJetPlus, kKpJetMinus, kKpManuPhaser, kKpTalkFilter, kKpDigiTalk, kKpDuckComp, kKpCompressor, kKpLowComp,
+    // 5 LFO — LFO.1 … LF.10
+    kKpJagFilter, kKpLfoLpf, kKpLfoHpf, kKpLfoBpf, kKpLfoHpfDelay, kKpInfiniteHpf, kKpRandomLpf, kKpRandomHpf, kKpYoiYoi, kKpFlanger,
     kKpCount
 };
 
@@ -56,6 +57,9 @@ private:
     };
     enum class SvfOut { Low, Band, High, Notch };
     static float svf(Svf& s, const SvfCoef& c, float v0, SvfOut out);
+    static void svf3(Svf& s, const SvfCoef& c, float v0, float& lo, float& bp, float& hp);
+    float loopLen(float x, float bpm) const;   // Looper Beat по X, кадры
+    void compress(float level, float thresh, float attackMs, float releaseMs);
 
     void resetState();
     float hist(int ch, double pos) const;   // чтение истории с интерполяцией (абсолютная позиция)
@@ -65,8 +69,6 @@ private:
     float beatsToFrames(float beats, float bpm) const;
     float noise();
     void reverb(float in, float room, float damp, float& outL, float& outR);
-    float pitchTap(int ch, double& phase, double ratio, double win, bool advance);
-    void autoGain(float inL, float inR, float& l, float& r);
 
     int sr_ = 48000;
     std::atomic<int> program_{kKpLpf};
@@ -110,24 +112,16 @@ private:
     int coefCountdown_ = 0;
     float env_ = 0;
 
-    // Повторы и скретч
+    // Лупер и «пластинка»
     int64_t capStart_ = 0;
     int64_t capT_ = 0;
-    int rollLen_ = 0;
-    int64_t rollCycleStart_ = 0;
     double tapePos_ = 0;
     float tapeSpeed_ = 1;
-    int64_t glitchSrc_ = 0;
-    int64_t glitchSlotStart_ = 0;
-    bool glitchOn_ = false;
-    double scratchPos_ = 0;
-    double scratchVel_ = 0;
 
     // Модуляция
-    double lfo_ = 0, lfo2_ = 0;
+    double lfo_ = 0;
     float apState_[2][6] = {};
     float phaserFb_[2] = {};
-    double osc_ = 0;
     double gatePhase_ = 0;
     float ampEnv_ = 1;
 
@@ -135,10 +129,18 @@ private:
     float crushHold_[2] = {};
     float crushCount_ = 0;
     uint32_t noise_ = 22222;
-    float agIn_ = 0, agOut_ = 0;
 
-    // Питч
-    double pitchPh_ = 0, pitchPh2_ = 0;
+    // KP3: 72 дБ/окт, лупер, скретч по Y, компрессор, случайный LFO
+    Svf f6_[2][6];
+    SvfCoef fc6_[6];
+    float prevY_ = 0.5f;
+    double vinylPos_ = 0;
+    float compGain_ = 1;
+    float compEnv_ = 0;
+    float sh_ = 0, shS_ = 0;
+    int64_t lfoCycle_ = -1;
+    int64_t grainSrc_ = 0;
+    int64_t grainSlot_ = -1;
 };
 
 }  // namespace mpc

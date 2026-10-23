@@ -11,10 +11,14 @@ constexpr float kPi = 3.14159265358979f;
 constexpr double kTwoPi = 6.283185307179586;
 
 // Деления для эффектов с синхронизацией (в долях-четвертях), X выбирает по порядку.
+// Delay Time (X): слева коротко, справа длинно.
 constexpr float kDelayBeats[] = {0.125f, 0.25f, 1.0f / 3.0f, 0.5f, 0.75f, 1.0f, 1.5f, 2.0f};
-constexpr float kRepeatBeats[] = {1.0f, 0.5f, 1.0f / 3.0f, 0.25f, 1.0f / 6.0f, 0.125f, 1.0f / 16.0f};
-constexpr float kSliceBeats[] = {0.5f, 0.25f, 1.0f / 6.0f, 0.125f, 1.0f / 16.0f};
-constexpr float kBarBeats[] = {1.0f, 2.0f, 4.0f, 8.0f};
+// Looper Beat (X): слева длинная петля, справа короткая.
+constexpr float kLoopBeats[] = {4.0f, 2.0f, 1.0f, 0.5f, 0.25f, 0.125f, 1.0f / 16.0f};
+// LFO Speed (X): период в долях, слева медленно.
+constexpr float kLfoBeats[] = {8.0f, 4.0f, 2.0f, 1.0f, 0.5f, 0.25f, 0.125f, 1.0f / 16.0f};
+// Grain Cycle Speed (X).
+constexpr float kGrainBeats[] = {0.5f, 0.25f, 0.125f, 1.0f / 16.0f, 1.0f / 32.0f};
 
 template <size_t N>
 float pick(const float (&a)[N], float x) {
@@ -22,17 +26,10 @@ float pick(const float (&a)[N], float x) {
     return a[i];
 }
 
-// Ритмы слайсера: 16 шагов, 1 — звук проходит.
-constexpr uint16_t kSlicerPatterns[4] = {0b1011011010110110, 0b1110111011101110, 0b1001001010010010, 0b1101101101101101};
-
 // Freeverb: длины гребёнок/allpass при 44.1 кГц.
 constexpr int kCombLen[8] = {1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617};
 constexpr int kApLen[4] = {556, 441, 341, 225};
 constexpr int kStereoSpread = 23;
-
-// Форманты гласных A, E, I, O, U (Гц).
-constexpr float kFormants[5][3] = {
-    {800, 1150, 2900}, {400, 1600, 2700}, {350, 2300, 3000}, {450, 800, 2830}, {325, 700, 2530}};
 
 // Огибающая на стыках повторов: убирает щелчки.
 float seam(int64_t d, int64_t len, int fade) {
@@ -44,12 +41,21 @@ float seam(int64_t d, int64_t len, int fade) {
 
 float mix(float dry, float wet, float amount) { return dry + (wet - dry) * amount; }
 
+// «Cutoff & Resonance» по Y у KP3: ФНЧ закрывается и резонирует, ФВЧ — открывается вверх.
+float lpfCut(float y) { return 18000.0f * std::pow(2.0f, -y * 6.8f); }
+float hpfCut(float y) { return 20.0f * std::pow(2.0f, y * 9.0f); }
+float bpfCut(float y) { return 150.0f * std::pow(2.0f, y * 6.0f); }
+float yReso(float y) { return 0.7f + y * 6.0f; }
+// Мягкое ограничение резонансных пиков: тихий сигнал не трогает, всплески держит в пределах ~1.25.
+float soft(float v) { return std::tanh(v * 0.8f) * 1.25f; }
+
 }  // namespace
 
 bool KaossFx::hasTails(int p) {
     switch (p) {
-        case kKpDelay: case kKpPingPong: case kKpReverb: case kKpDubEcho: case kKpTapeEcho:
-        case kKpMultiTap: case kKpHall: case kKpRoom: case kKpGatedVerb: case kKpFreeze:
+        case kKpLpfDelay: case kKpHpfDelay: case kKpBpfDelay: case kKpLpfReverb: case kKpHpfReverb:
+        case kKpDelay: case kKpEchoBreak: case kKpTapeEcho: case kKpDubEcho: case kKpPingPong:
+        case kKpPumpReverb: case kKpFreezeReverb: case kKpGateReverb: case kKpBreakVerb: case kKpLfoHpfDelay:
             return true;
         default:
             return false;
@@ -86,6 +92,7 @@ void KaossFx::resetState() {
         f_[c].reset();
         fbLp_[c].reset();
         for (auto& s : f2_[c]) s.reset();
+        for (auto& s : f6_[c]) s.reset();
         for (auto& s : apState_[c]) s = 0;
         phaserFb_[c] = 0;
         crushHold_[c] = 0;
@@ -95,7 +102,10 @@ void KaossFx::resetState() {
     env_ = 0;
     gateEnv_ = 0;
     gateHold_ = 0;
-    agIn_ = agOut_ = 0;
+    compGain_ = 1;
+    compEnv_ = 0;
+    lfoCycle_ = -1;
+    grainSlot_ = -1;
 }
 
 void KaossFx::SvfCoef::set(float fc, float q, float sr) {
@@ -119,6 +129,31 @@ float KaossFx::svf(Svf& s, const SvfCoef& c, float v0, SvfOut out) {
         case SvfOut::Notch: return v0 - c.k * v1;
         default: return v0 - c.k * v1 - v2;
     }
+}
+
+void KaossFx::svf3(Svf& s, const SvfCoef& c, float v0, float& lo, float& bp, float& hp) {
+    const float v3 = v0 - s.ic2;
+    const float v1 = c.a1 * s.ic1 + c.a2 * v3;
+    const float v2 = s.ic2 + c.a2 * s.ic1 + c.a3 * v3;
+    s.ic1 = 2.0f * v1 - s.ic1;
+    s.ic2 = 2.0f * v2 - s.ic2;
+    lo = v2;
+    bp = v1;
+    hp = v0 - c.k * v1 - v2;
+}
+
+float KaossFx::loopLen(float x, float bpm) const {
+    return std::clamp(beatsToFrames(pick(kLoopBeats, x), bpm), 64.0f, static_cast<float>(histSize_ / 2));
+}
+
+// Компрессор: огибающая уровня -> плавное усиление compGain_ (ratio 6:1).
+void KaossFx::compress(float level, float thresh, float attackMs, float releaseMs) {
+    const float sr = static_cast<float>(sr_);
+    compEnv_ += (level - compEnv_) * (level > compEnv_ ? 1.0f - std::exp(-1.0f / (0.0005f * sr)) : 1.0f - std::exp(-1.0f / (0.05f * sr)));
+    float target = 1.0f;
+    if (compEnv_ > thresh) target = std::pow(thresh / compEnv_, 1.0f - 1.0f / 6.0f);
+    const float ms = target < compGain_ ? attackMs : releaseMs;
+    compGain_ += (target - compGain_) * (1.0f - std::exp(-1.0f / (ms * 0.001f * sr)));
 }
 
 float KaossFx::histAt(int ch, int64_t pos) const {
@@ -184,29 +219,6 @@ void KaossFx::reverb(float in, float room, float damp, float& outL, float& outR)
     outR = out[1];
 }
 
-// Гранулярный сдвиг высоты по истории: две головки со сдвигом в полокна, треугольные окна.
-float KaossFx::pitchTap(int ch, double& phase, double ratio, double win, bool advance) {
-    if (advance) {
-        phase += (1.0 - ratio) / win;
-        phase -= std::floor(phase);
-    }
-    const double ph2 = std::fmod(phase + 0.5, 1.0);
-    const double base = static_cast<double>(histW_ - 1) - 2.0;
-    const float g1 = std::sin(kPi * static_cast<float>(phase));
-    const float g2 = std::sin(kPi * static_cast<float>(ph2));
-    return hist(ch, base - phase * win) * g1 + hist(ch, base - ph2 * win) * g2;
-}
-
-// Перегруз делает звук громче — подтягиваем выход к громкости входа (RMS, ~60 мс).
-void KaossFx::autoGain(float inL, float inR, float& l, float& r) {
-    const float c = 1.0f - std::exp(-1.0f / (0.06f * static_cast<float>(sr_)));
-    agIn_ += ((inL * inL + inR * inR) * 0.5f - agIn_) * c;
-    agOut_ += ((l * l + r * r) * 0.5f - agOut_) * c;
-    const float g = std::clamp(std::sqrt((agIn_ + 1e-9f) / (agOut_ + 1e-9f)), 0.05f, 1.5f);
-    l *= g;
-    r *= g;
-}
-
 void KaossFx::process(float* io, int n, float bpm) {
     const int prog = std::clamp(program_.load(std::memory_order_relaxed), 0, kKpCount - 1);
     const bool touch = touch_.load(std::memory_order_relaxed);
@@ -223,15 +235,13 @@ void KaossFx::process(float* io, int n, float bpm) {
     if (started) {
         capStart_ = histW_;
         capT_ = 0;
-        rollCycleStart_ = 0;
-        rollLen_ = 0;
         tapePos_ = static_cast<double>(histW_);
         tapeSpeed_ = 1.0f;
+        vinylPos_ = 0;
         gatePhase_ = 0;
-        glitchOn_ = false;
-        glitchSlotStart_ = 0;
-        scratchPos_ = static_cast<double>(histW_);
-        scratchVel_ = 1.0;
+        grainSlot_ = -1;
+        prevY_ = yt;
+        ys_ = yt;
     }
     wasTouch_ = touch;
 
@@ -242,6 +252,7 @@ void KaossFx::process(float* io, int n, float bpm) {
     // Без касания и без хвостов — эффект полностью выключен (кроме записи истории).
     const bool idle = !touch && wet_ < 1e-4f && !tails;
     const int fade = std::max(8, sr_ / 1000);
+    const float beat = beatsToFrames(1.0f, bpm);
 
     for (int i = 0; i < n; ++i) {
         float l = io[2 * i], r = io[2 * i + 1];
@@ -254,373 +265,386 @@ void KaossFx::process(float* io, int n, float bpm) {
         ys_ += (yt - ys_) * xyCoef;
         wet_ += ((touch ? 1.0f : 0.0f) - wet_) * wetCoef;
         const float x = xs_, y = ys_, w = wet_;
+        const float dy = y - prevY_;   // движение пальца по Y (скретч)
+        prevY_ = y;
         float ol = l, orr = r;
+        const bool upd = --coefCountdown_ <= 0;
+        if (upd) coefCountdown_ = 16;
+
+        // ---- общие куски ----
+        // Дилей со сглаженным временем; send — что подаём, fb — обратная связь. Возвращает выход линии.
+        auto delayTap = [&](float target, float sendL, float sendR, float fb, float& dL, float& dR, float glide) {
+            target = std::clamp(target, 16.0f, static_cast<float>(dlSize_ - 4));
+            if (dlTime_ <= 0) dlTime_ = target;
+            dlTime_ += (target - dlTime_) * glide;
+            dL = delayRead(0, dlTime_);
+            dR = delayRead(1, dlTime_);
+            delayWrite(sendL + dL * fb, sendR + dR * fb);
+        };
+        // Фильтр «Cutoff & Resonance» по Y; type: 0 LPF, 1 HPF, 2 BPF+ (с перегрузом).
+        auto yFilter = [&](int type, float in0, float in1, float& o0, float& o1) {
+            if (upd) {
+                const float fc = type == 0 ? lpfCut(y) : type == 1 ? hpfCut(y) : bpfCut(y);
+                fc_.set(fc, type == 2 ? 2.0f + y * 6.0f : yReso(y), sr);
+            }
+            const SvfOut o = type == 0 ? SvfOut::Low : type == 1 ? SvfOut::High : SvfOut::Band;
+            o0 = soft(svf(f_[0], fc_, in0, o));
+            o1 = soft(svf(f_[1], fc_, in1, o));
+            if (type == 2) {
+                o0 = std::tanh(o0 * 2.5f) * 0.8f;
+                o1 = std::tanh(o1 * 2.5f) * 0.8f;
+            }
+        };
+        // Петля лупера: позиция 0..len в записи с момента касания.
+        auto loopAt = [&](int ch, double pos) { return hist(ch, static_cast<double>(capStart_) + pos); };
+        // Фаза LFO по темпу (X — скорость), 0..1.
+        auto lfoStep = [&](float xs) {
+            lfo_ += 1.0 / std::max(16.0f, beatsToFrames(pick(kLfoBeats, xs), bpm));
+            lfo_ -= std::floor(lfo_);
+            return static_cast<float>(lfo_);
+        };
 
         switch (prog) {
             // ====================================================== 1 FILTER
+            case kKpMorphFilt: {
+                // FLt.1: X — частота (и форма: ФНЧ → полоса → ФВЧ), Y — резонанс.
+                if (upd) fc_.set(40.0f * std::pow(2.0f, x * 8.6f), yReso(y) * 1.4f, sr);
+                float lo, bp, hp, lo2, bp2, hp2;
+                svf3(f_[0], fc_, l, lo, bp, hp);
+                svf3(f_[1], fc_, r, lo2, bp2, hp2);
+                const float a = (1.0f - x) * (1.0f - x), b = 2.0f * x * (1.0f - x) * 1.6f, c = x * x;
+                ol = soft(lo * a + bp * b + hp * c);
+                orr = soft(lo2 * a + bp2 * b + hp2 * c);
+                break;
+            }
             case kKpLpf:
             case kKpHpf:
-            case kKpBpf:
-            case kKpNotch: {
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 16;
-                    const float fc = 30.0f * std::pow(2.0f, x * 9.3f);   // 30 Гц … 19 кГц
-                    fc_.set(fc, prog == kKpNotch ? 0.5f + y * 3.0f : 0.6f + y * (prog == kKpBpf ? 12.0f : 9.0f), sr);
+            case kKpBpf: {
+                // FLt.2/3: X — частота, Y — резонанс. FLt.4: X — частота, Y — баланс.
+                if (upd) {
+                    const float fc = 30.0f * std::pow(2.0f, x * 9.3f);
+                    fc_.set(fc, prog == kKpBpf ? 3.0f : yReso(y) * 1.4f, sr);
                 }
-                const SvfOut o = prog == kKpLpf ? SvfOut::Low : prog == kKpHpf ? SvfOut::High
-                               : prog == kKpBpf ? SvfOut::Band : SvfOut::Notch;
-                const float g = prog == kKpBpf ? 1.6f : 1.0f;
-                ol = svf(f_[0], fc_, l, o) * g;
-                orr = svf(f_[1], fc_, r, o) * g;
+                const SvfOut o = prog == kKpLpf ? SvfOut::Low : prog == kKpHpf ? SvfOut::High : SvfOut::Band;
+                ol = soft(svf(f_[0], fc_, l, o));
+                orr = soft(svf(f_[1], fc_, r, o));
+                if (prog == kKpBpf) {
+                    ol = mix(l, ol * 2.0f, y);
+                    orr = mix(r, orr * 2.0f, y);
+                }
                 break;
             }
-            case kKpDjFilter: {
-                // Левее центра — ФНЧ закрывается, правее — ФВЧ; в центре звук не тронут.
-                const bool hp = x > 0.5f;
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 16;
-                    const float d = std::fabs(x - 0.5f) * 2.0f;
-                    const float fc = hp ? 20.0f * std::pow(2.0f, d * 8.6f) : 20000.0f * std::pow(2.0f, -d * 8.4f);
-                    fc_.set(fc, 0.7f + y * 7.0f, sr);
+            case kKp72dbLpf: {
+                // FLt.5: шесть звеньев по 12 дБ — очень крутой срез. X — частота, Y — резонанс.
+                if (upd) {
+                    const float fc = 30.0f * std::pow(2.0f, x * 9.3f);
+                    for (int k = 0; k < 6; ++k) fc6_[k].set(fc, k == 5 ? yReso(y) : 0.54f, sr);
                 }
-                ol = svf(f_[0], fc_, l, hp ? SvfOut::High : SvfOut::Low);
-                orr = svf(f_[1], fc_, r, hp ? SvfOut::High : SvfOut::Low);
+                for (int k = 0; k < 6; ++k) {
+                    ol = svf(f6_[0][k], fc6_[k], ol, SvfOut::Low);
+                    orr = svf(f6_[1][k], fc6_[k], orr, SvfOut::Low);
+                }
+                ol = soft(ol);
+                orr = soft(orr);
                 break;
             }
-            case kKpComb: {
-                // Резонирующая гребёнка: X — высота тона, Y — резонанс.
-                const float f = 40.0f * std::pow(2.0f, x * 5.5f);
-                const float d = sr / f;
-                const float fb = 0.5f + y * 0.47f;
-                const float dL = delayRead(0, d), dR = delayRead(1, d);
-                delayWrite(l + dL * fb, r + dR * fb);
-                ol = (l + dL) * (1.0f - fb * 0.5f);
-                orr = (r + dR) * (1.0f - fb * 0.5f);
+            case kKpLpfDelay:
+            case kKpHpfDelay:
+            case kKpBpfDelay: {
+                // FLt.6–8: X — время задержки (по темпу), Y — фильтр (частота и резонанс).
+                float fl, fr;
+                yFilter(prog - kKpLpfDelay, l, r, fl, fr);
+                fl = mix(l, fl, w);
+                fr = mix(r, fr, w);
+                float dL, dR;
+                delayTap(beatsToFrames(pick(kDelayBeats, x), bpm), fl * w, fr * w, 0.5f, dL, dR, 0.002f);
+                ol = fl + dL * 0.7f;
+                orr = fr + dR * 0.7f;
                 break;
             }
-            case kKpFormant: {
-                // «Говорящий» фильтр: X — гласная A-E-I-O-U, Y — резонанс.
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 16;
-                    const float pos = x * 4.0f;
-                    const int a = std::min(3, static_cast<int>(pos));
-                    const float t = pos - a;
-                    for (int k = 0; k < 3; ++k) {
-                        const float f = kFormants[a][k] * (1.0f - t) + kFormants[a + 1][k] * t;
-                        fc2_[k].set(f, 4.0f + y * 14.0f, sr);
-                    }
-                }
-                float s[2] = {0, 0};
-                const float in[2] = {l, r};
-                for (int c = 0; c < 2; ++c)
-                    for (int k = 0; k < 3; ++k) s[c] += svf(f2_[c][k], fc2_[k], in[c], SvfOut::Band) * (k == 0 ? 1.0f : 0.6f);
-                ol = s[0] * 1.6f;
-                orr = s[1] * 1.6f;
-                break;
-            }
-            case kKpAutoFilter: {
-                // ФНЧ качается по темпу: X — скорость (1/4…1/32), Y — глубина.
-                const float period = beatsToFrames(pick(kSliceBeats, x), bpm);
-                lfo_ += 1.0 / std::max(16.0f, period);
-                lfo_ -= std::floor(lfo_);
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 16;
-                    const float m = 0.5f - 0.5f * static_cast<float>(std::cos(kTwoPi * lfo_));
-                    fc_.set(18000.0f * std::pow(2.0f, -m * y * 8.0f), 2.5f, sr);
-                }
-                ol = svf(f_[0], fc_, l, SvfOut::Low);
-                orr = svf(f_[1], fc_, r, SvfOut::Low);
-                break;
-            }
-            case kKpEnvFilter: {
-                // Автовау: громкость открывает полосовой фильтр. X — чувствительность, Y — резонанс.
-                const float a = std::fabs(l) + std::fabs(r);
-                const float c = a > env_ ? 1.0f - std::exp(-1.0f / (0.004f * sr)) : 1.0f - std::exp(-1.0f / (0.12f * sr));
-                env_ += (a - env_) * c;
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 16;
-                    const float e = std::min(1.0f, env_ * (1.0f + x * 12.0f));
-                    fc_.set(250.0f * std::pow(2.0f, e * 5.0f), 2.0f + y * 10.0f, sr);
-                }
-                ol = svf(f_[0], fc_, l, SvfOut::Band) * 2.0f;
-                orr = svf(f_[1], fc_, r, SvfOut::Band) * 2.0f;
-                break;
-            }
-            case kKpIsolator: {
-                // DJ-изолятор: X слева направо гасит низ → середину → верх, Y — насколько глушить.
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 64;
-                    fc2_[0].set(250.0f, 0.7f, sr);
-                    fc2_[1].set(3500.0f, 0.7f, sr);
-                }
-                const float kill = 1.0f - y;
-                const float gLo = x < 0.33f ? kill : 1.0f;
-                const float gMid = (x >= 0.33f && x < 0.66f) ? kill : 1.0f;
-                const float gHi = x >= 0.66f ? kill : 1.0f;
-                const float in[2] = {l, r};
-                float out[2];
-                for (int c = 0; c < 2; ++c) {
-                    const float lo = svf(f2_[c][0], fc2_[0], in[c], SvfOut::Low);
-                    const float hi = svf(f2_[c][1], fc2_[1], in[c], SvfOut::High);
-                    out[c] = lo * gLo + (in[c] - lo - hi) * gMid + hi * gHi;
-                }
-                ol = out[0];
-                orr = out[1];
+            case kKpLpfReverb:
+            case kKpHpfReverb: {
+                // FLt.9 / FL.10: X — глубина ревёрба, Y — фильтр.
+                float fl, fr;
+                yFilter(prog == kKpLpfReverb ? 0 : 1, l, r, fl, fr);
+                fl = mix(l, fl, w);
+                fr = mix(r, fr, w);
+                float rl, rr;
+                reverb((fl + fr) * 0.5f * w * 0.03f, 0.84f, 0.3f, rl, rr);
+                ol = fl + rl * x * 2.2f;
+                orr = fr + rr * x * 2.2f;
                 break;
             }
 
             // ====================================================== 2 SPACE (хвосты доигрывают)
             case kKpDelay:
-            case kKpPingPong:
-            case kKpDubEcho:
-            case kKpTapeEcho: {
-                float target;
-                if (prog == kKpDubEcho || prog == kKpTapeEcho) target = (0.05f + x * x * 0.85f) * sr;   // 50…900 мс
-                else target = beatsToFrames(pick(kDelayBeats, x), bpm);
-                if (prog == kKpTapeEcho) {
-                    // «Плёнка»: время дрожит (wow & flutter)
-                    lfo_ += 0.7 / sr_;
-                    lfo_ -= std::floor(lfo_);
-                    target *= 1.0f + 0.004f * static_cast<float>(std::sin(kTwoPi * lfo_));
-                }
+            case kKpPingPong: {
+                // dLY.1 / dL.11: X — время (по темпу), Y — глубина (повторы и уровень).
+                float dL, dR;
+                const float fb = 0.15f + y * 0.75f;
+                const float target = std::clamp(beatsToFrames(pick(kDelayBeats, x), bpm), 16.0f, static_cast<float>(dlSize_ - 4));
+                if (dlTime_ <= 0) dlTime_ = target;
+                dlTime_ += (target - dlTime_) * 0.002f;
+                dL = delayRead(0, dlTime_);
+                dR = delayRead(1, dlTime_);
+                if (prog == kKpPingPong) delayWrite((l + r) * 0.5f * w + dR * fb, dL * fb);
+                else delayWrite(l * w + dL * fb, r * w + dR * fb);
+                const float lvl = 0.4f + 0.5f * y;
+                ol = l + dL * lvl;
+                orr = r + dR * lvl;
+                break;
+            }
+            case kKpEchoBreak: {
+                // dLY.2: пока держишь — живой звук обрывается, слышно только эхо. X — время, Y — повторы.
+                float dL, dR;
+                delayTap(beatsToFrames(pick(kDelayBeats, x), bpm), l * w, r * w, 0.2f + y * 0.75f, dL, dR, 0.002f);
+                ol = l * (1.0f - w) + dL;
+                orr = r * (1.0f - w) + dR;
+                break;
+            }
+            case kKpTapeEcho:
+            case kKpDubEcho: {
+                // dLY.6: плёнка (дрожит время, мягкий перегруз), Y — глубина.
+                // dLY.7: даб-эхо, долгие повторы, Y — тембр повторов.
+                lfo_ += 0.7 / sr_;
+                lfo_ -= std::floor(lfo_);
+                float target = beatsToFrames(pick(kDelayBeats, x), bpm);
+                if (prog == kKpTapeEcho) target *= 1.0f + 0.004f * static_cast<float>(std::sin(kTwoPi * lfo_));
+                if (upd) fc_.set(prog == kKpDubEcho ? 400.0f * std::pow(2.0f, y * 4.0f) : 4500.0f, 0.7f, sr);
                 target = std::clamp(target, 16.0f, static_cast<float>(dlSize_ - 4));
                 if (dlTime_ <= 0) dlTime_ = target;
-                dlTime_ += (target - dlTime_) * (prog == kKpDelay || prog == kKpPingPong ? 0.002f : 0.0004f);
-                const float fb = prog == kKpDubEcho ? 0.35f + y * 0.75f : y * 0.92f;
+                dlTime_ += (target - dlTime_) * 0.0004f;   // плёнка «тянет» высоту при смене времени
                 const float dL = delayRead(0, dlTime_), dR = delayRead(1, dlTime_);
-                const float sendL = l * w, sendR = r * w;
-                if (prog == kKpPingPong) {
-                    delayWrite((sendL + sendR) * 0.5f + dR * fb, dL * fb);
-                } else if (prog == kKpDubEcho || prog == kKpTapeEcho) {
-                    if (--coefCountdown_ <= 0) {
-                        coefCountdown_ = 64;
-                        fc_.set(prog == kKpDubEcho ? 2200.0f : 4500.0f, 0.7f, sr);
-                    }
-                    delayWrite(std::tanh(sendL + svf(fbLp_[0], fc_, dL, SvfOut::Low) * fb),
-                               std::tanh(sendR + svf(fbLp_[1], fc_, dR, SvfOut::Low) * fb));
-                } else {
-                    delayWrite(sendL + dL * fb, sendR + dR * fb);
-                }
-                ol = l + dL * 0.7f;
-                orr = r + dR * 0.7f;
+                const float fb = prog == kKpDubEcho ? 0.78f : 0.2f + y * 0.7f;
+                delayWrite(std::tanh(l * w + svf(fbLp_[0], fc_, dL, SvfOut::Low) * fb),
+                           std::tanh(r * w + svf(fbLp_[1], fc_, dR, SvfOut::Low) * fb));
+                const float lvl = prog == kKpDubEcho ? 0.8f : 0.4f + 0.5f * y;
+                ol = l + dL * lvl;
+                orr = r + dR * lvl;
                 break;
             }
-            case kKpMultiTap: {
-                // Три отвода (1/8, 1/4, 3/8 такта×X), Y — обратная связь.
-                const float base = beatsToFrames(0.25f + x * 0.75f, bpm);
-                const float t1 = std::min(base, dlSize_ / 3.2f);
-                const float a = delayRead(0, t1) * 0.6f + delayRead(1, t1 * 2.0f) * 0.45f + delayRead(0, t1 * 3.0f) * 0.3f;
-                const float b = delayRead(1, t1) * 0.6f + delayRead(0, t1 * 2.0f) * 0.45f + delayRead(1, t1 * 3.0f) * 0.3f;
-                const float fb = y * 0.6f;
-                delayWrite(l * w + a * fb, r * w + b * fb);
-                ol = l + a;
-                orr = r + b;
-                break;
-            }
-            case kKpReverb:
-            case kKpHall:
-            case kKpRoom:
-            case kKpFreeze: {
-                float room, damp, gainIn = 0.03f;
-                if (prog == kKpHall) { room = 0.86f + x * 0.12f; damp = 0.15f + (1.0f - y) * 0.3f; }
-                else if (prog == kKpRoom) { room = 0.55f + x * 0.2f; damp = 0.4f + (1.0f - y) * 0.4f; }
-                else if (prog == kKpFreeze) {
-                    // Заморозка: пока держишь — хвост бесконечный, вход почти не идёт.
-                    room = touch ? 0.999f : 0.75f;
-                    damp = 0.05f;
-                    gainIn = touch ? 0.03f * (1.0f - y) : 0.0f;
-                } else { room = 0.70f + x * 0.28f; damp = 0.2f + (1.0f - y) * 0.5f; }
+            case kKpPumpReverb: {
+                // rEV.1: ревёрб «качается» на каждую долю. X — время ревёрба, Y — глубина качания.
+                gatePhase_ += 1.0 / std::max(16.0f, beat);
+                gatePhase_ -= std::floor(gatePhase_);
+                const float ph = static_cast<float>(gatePhase_);
+                const float pump = 1.0f - y * (1.0f - std::min(1.0f, ph * ph * 3.0f));
+                ampEnv_ += (pump - ampEnv_) * (1.0f - std::exp(-1.0f / (0.002f * sr)));
                 float rl, rr;
-                reverb((l + r) * 0.5f * (prog == kKpFreeze ? 1.0f : w) * gainIn, room, damp, rl, rr);
-                const float m = prog == kKpFreeze ? 0.6f + x * 1.4f : 0.6f + y * 1.4f;
-                ol = l + rl * m;
-                orr = r + rr * m;
+                reverb((l + r) * 0.5f * w * 0.03f, 0.7f + x * 0.28f, 0.25f, rl, rr);
+                ol = l + rl * 1.6f * ampEnv_;
+                orr = r + rr * 1.6f * ampEnv_;
                 break;
             }
-            case kKpGatedVerb: {
-                // Гейтованный ревёрб 80-х: хвост обрывается через X (60…500 мс), Y — размер.
+            case kKpFreezeReverb: {
+                // rEV.2: пока держишь — хвост замирает. X — тембр, Y — баланс сухой/ревёрб.
+                const float room = touch ? 0.9985f : 0.8f;
+                float rl, rr;
+                reverb((l + r) * 0.5f * (touch ? 0.012f : 0.0f), room, 0.05f + (1.0f - x) * 0.6f, rl, rr);
+                ol = mix(l, l * 0.3f + rl * 2.0f, y);
+                orr = mix(r, r * 0.3f + rr * 2.0f, y);
+                break;
+            }
+            case kKpGateReverb: {
+                // rEV.7: гейтованный ревёрб. X — время гейта, Y — глубина.
                 const float a = std::fabs(l) + std::fabs(r);
-                if (a > 0.08f && touch) gateHold_ = static_cast<int>((0.06f + x * 0.44f) * sr);
+                if (a > 0.08f && touch) gateHold_ = static_cast<int>((0.05f + x * 0.45f) * sr);
                 const float target = gateHold_ > 0 ? 1.0f : 0.0f;
                 if (gateHold_ > 0) --gateHold_;
                 gateEnv_ += (target - gateEnv_) * (1.0f - std::exp(-1.0f / (0.004f * sr)));
                 float rl, rr;
-                reverb((l + r) * 0.5f * w * 0.04f, 0.8f + y * 0.18f, 0.2f, rl, rr);
-                ol = l + rl * 1.8f * gateEnv_;
-                orr = r + rr * 1.8f * gateEnv_;
+                reverb((l + r) * 0.5f * w * 0.04f, 0.9f, 0.2f, rl, rr);
+                ol = l + rl * 2.4f * y * gateEnv_;
+                orr = r + rr * 2.4f * y * gateEnv_;
+                break;
+            }
+            case kKpJetSpace:
+            case kKpJetPlus:
+            case kKpJetMinus: {
+                // Mod.3 JET+ / Mod.4 JET-: «реактивный» флэнджер без LFO. X — задержка, Y — обратная связь.
+                const float target = (0.0002f + x * x * 0.009f) * sr;
+                if (dlTime_ <= 0) dlTime_ = target;
+                dlTime_ += (target - dlTime_) * 0.003f;
+                const float fb = (prog == kKpJetMinus ? -1.0f : 1.0f) * y * 0.93f;
+                const float dL = delayRead(0, dlTime_), dR = delayRead(1, dlTime_ + 2.0f);
+                delayWrite(l + dL * fb, r + dR * fb);
+                ol = (l + dL) * 0.65f;
+                orr = (r + dR) * 0.65f;
+                break;
+            }
+            case kKpGrainShift: {
+                // Grn.1: на каждом шаге X-сетки повторяется крошечный кусок — «зерно». Y — длина зерна.
+                const int64_t period = std::max<int64_t>(64, static_cast<int64_t>(beatsToFrames(pick(kGrainBeats, x), bpm)));
+                const int64_t slot = capT_ / period;
+                if (slot != grainSlot_) {
+                    grainSlot_ = slot;
+                    grainSrc_ = histW_ - period;
+                }
+                const int64_t glen = std::max<int64_t>(32, static_cast<int64_t>(static_cast<float>(period) * (0.08f + 0.92f * y)));
+                const int64_t d = (capT_ % period) % glen;
+                const float env = seam(d, glen, std::min<int>(fade, static_cast<int>(glen / 4)));
+                ol = histAt(0, grainSrc_ + d) * env;
+                orr = histAt(1, grainSrc_ + d) * env;
+                ++capT_;
                 break;
             }
 
-            // ====================================================== 3 REPEAT
-            case kKpBeatRepeat:
-            case kKpRoll:
-            case kKpBarLoop:
-            case kKpPitchRepeat: {
+            // ====================================================== 3 REPEAT (лупер: X — Looper Beat)
+            case kKpLooperFR:
+            case kKpBreakLoop:
+            case kKpLoopRvsDelay:
+            case kKpFreezeLoop:
+            case kKpHighLooper:
+            case kKpShuttleLoop:
+            case kKpKp2Looper:
+            case kKpVinylLoop:
+            case kKpLoopBreaker: {
                 if (!touch) break;   // отпустили — сразу живой звук
-                int64_t len;
-                if (prog == kKpRoll) {
-                    // каждый повтор вдвое короче — «раскрутка» к концу фразы
-                    if (rollLen_ == 0) rollLen_ = static_cast<int>(beatsToFrames(pick(kRepeatBeats, x * 0.5f), bpm));
-                    if (capT_ - rollCycleStart_ >= rollLen_ && capT_ >= rollLen_) {
-                        rollCycleStart_ = capT_;
-                        rollLen_ = std::max(static_cast<int>(beatsToFrames(1.0f / 32.0f, bpm)), rollLen_ / 2);
-                    }
-                    len = rollLen_;
-                } else if (prog == kKpBarLoop) {
-                    len = static_cast<int64_t>(beatsToFrames(pick(kBarBeats, x), bpm));
-                } else {
-                    len = static_cast<int64_t>(beatsToFrames(pick(kRepeatBeats, x), bpm));
-                }
-                len = std::clamp<int64_t>(len, 64, histSize_ / 2);
+                const int64_t len = static_cast<int64_t>(loopLen(x, bpm));
+                ++capT_;
+                if (capT_ <= len) break;   // первый круг — записываем петлю, звучит живой звук
                 const int64_t d = capT_ % len;
-                const float env = capT_ >= len ? seam(d, len, fade) : 1.0f;
-                float rl, rr;
-                if (prog == kKpPitchRepeat && capT_ >= len) {
-                    // каждый повтор ниже на Y×12 полутонов (до октавы на повтор)
-                    const int64_t k = capT_ / len;
-                    const double rate = std::pow(2.0, -static_cast<double>(y) * static_cast<double>(k) / 2.0);
-                    const double pos = static_cast<double>(capStart_) + static_cast<double>(d) * std::max(0.05, rate);
-                    rl = hist(0, pos) * env;
-                    rr = hist(1, pos) * env;
-                    ol = rl;
-                    orr = rr;
-                } else {
-                    rl = histAt(0, capStart_ + d) * env;
-                    rr = histAt(1, capStart_ + d) * env;
-                    const float amt = prog == kKpBarLoop ? 1.0f : 0.35f + 0.65f * y;
-                    ol = mix(l, rl, amt);
-                    orr = mix(r, rr, amt);
+                const int64_t k = capT_ / len;
+                const float env = seam(d, len, fade);
+                const double L = static_cast<double>(len);
+                float a, b;
+                switch (prog) {
+                    case kKpLooperFR: {
+                        // LoP.1: Y — назад (внизу) / вперёд (вверху).
+                        const double pos = y < 0.5f ? L - 1.0 - d : static_cast<double>(d);
+                        a = loopAt(0, pos) * env;
+                        b = loopAt(1, pos) * env;
+                        break;
+                    }
+                    case kKpBreakLoop: {
+                        // LoP.2: каждый круг петля тормозит до остановки. Y — время торможения.
+                        const double t = static_cast<double>(d);
+                        const double stop = y < 0.02f ? 1e12 : L * (0.15 + 0.85 * (1.0 - y)) * 2.0;
+                        const double tt = std::min(t, stop);
+                        const double pos = tt - tt * tt / (2.0 * stop);
+                        const float g = static_cast<float>(std::max(0.0, 1.0 - t / stop));
+                        a = loopAt(0, pos) * env * std::min(1.0f, g * 3.0f);
+                        b = loopAt(1, pos) * env * std::min(1.0f, g * 3.0f);
+                        break;
+                    }
+                    case kKpLoopRvsDelay: {
+                        // LoP.3: петля + её же отражение задом наперёд. Y — ФВЧ.
+                        const double rv = L - 1.0 - d;
+                        float fl = loopAt(0, static_cast<double>(d)) + loopAt(0, rv) * 0.5f;
+                        float fr = loopAt(1, static_cast<double>(d)) + loopAt(1, rv) * 0.5f;
+                        if (upd) fc_.set(20.0f * std::pow(2.0f, y * 8.5f), 0.8f, sr);
+                        a = svf(f_[0], fc_, fl, SvfOut::High) * env;
+                        b = svf(f_[1], fc_, fr, SvfOut::High) * env;
+                        break;
+                    }
+                    case kKpFreezeLoop:
+                    case kKpKp2Looper: {
+                        a = loopAt(0, static_cast<double>(d)) * env;
+                        b = loopAt(1, static_cast<double>(d)) * env;
+                        if (prog == kKpFreezeLoop) {
+                            // LoP.4: Y — баланс живой звук / петля.
+                            a = mix(l, a, 0.2f + 0.8f * y);
+                            b = mix(r, b, 0.2f + 0.8f * y);
+                        } else {
+                            // LoP.9: Y — ФНЧ (вверху открыт).
+                            if (upd) fc_.set(150.0f * std::pow(2.0f, y * 7.0f), 1.2f, sr);
+                            a = svf(f_[0], fc_, a, SvfOut::Low);
+                            b = svf(f_[1], fc_, b, SvfOut::Low);
+                        }
+                        break;
+                    }
+                    case kKpHighLooper: {
+                        // LoP.5: петля вдвое быстрее (октавой выше). Y — баланс.
+                        const int64_t d2 = (2 * d) % len;
+                        const float e2 = seam(d2, len, fade) * env;
+                        a = mix(l, loopAt(0, static_cast<double>(d2)) * e2, 0.2f + 0.8f * y);
+                        b = mix(r, loopAt(1, static_cast<double>(d2)) * e2, 0.2f + 0.8f * y);
+                        break;
+                    }
+                    case kKpShuttleLoop: {
+                        // LoP.6: туда-обратно, как челнок. Y — ФНЧ.
+                        const double pos = (k % 2 == 0) ? L - 1.0 - d : static_cast<double>(d);
+                        if (upd) fc_.set(150.0f * std::pow(2.0f, y * 7.0f), 1.2f, sr);
+                        a = svf(f_[0], fc_, loopAt(0, pos), SvfOut::Low) * env;
+                        b = svf(f_[1], fc_, loopAt(1, pos), SvfOut::Low) * env;
+                        break;
+                    }
+                    case kKpLoopBreaker: {
+                        // LoP.8: движение пальца по Y «скретчит» петлю.
+                        vinylPos_ += 1.0 + static_cast<double>(dy) * L;   // весь ход по Y = вся петля
+                        vinylPos_ = std::fmod(vinylPos_, L);
+                        if (vinylPos_ < 0) vinylPos_ += L;
+                        a = loopAt(0, vinylPos_);
+                        b = loopAt(1, vinylPos_);
+                        break;
+                    }
+                    default: {   // kKpVinylLoop
+                        // LP.10: Y — скорость и направление, как пластинка: внизу назад, в центре стоп, вверху ×2.
+                        const double speed = (y * 2.0 - 1.0) * 2.0;
+                        vinylPos_ = std::fmod(vinylPos_ + speed, L);
+                        if (vinylPos_ < 0) vinylPos_ += L;
+                        const float g = std::min(1.0f, static_cast<float>(std::fabs(speed)) * 3.0f);
+                        a = loopAt(0, vinylPos_) * g;
+                        b = loopAt(1, vinylPos_) * g;
+                        break;
+                    }
                 }
-                ++capT_;
+                ol = a;
+                orr = b;
                 break;
             }
-            case kKpReverse: {
+            case kKpSliceLoop: {
+                // LoP.7: X — длина кусочка, Y — какой кусок последнего такта (до касания) играть.
                 if (!touch) break;
-                const int64_t len = std::clamp<int64_t>(
-                    static_cast<int64_t>(beatsToFrames(pick(kDelayBeats, 0.25f + x * 0.75f), bpm)), 256, histSize_ / 3);
-                const int64_t k = capT_ / len, d = capT_ % len;
-                if (k >= 1) {
-                    const int64_t src = capStart_ + k * len - 1 - d;   // предыдущий кусок задом наперёд
-                    const float env = seam(d, len, 2 * fade);
-                    ol = mix(l, histAt(0, src) * env, 0.4f + 0.6f * y);
-                    orr = mix(r, histAt(1, src) * env, 0.4f + 0.6f * y);
-                }
+                const int64_t len = static_cast<int64_t>(loopLen(x, bpm));
+                const int64_t bar = std::min<int64_t>(static_cast<int64_t>(beat * 4.0f), histSize_ / 2);
+                const int64_t slices = std::max<int64_t>(1, bar / len);
+                const int64_t idx = std::min<int64_t>(slices - 1, static_cast<int64_t>(y * static_cast<float>(slices)));
+                const int64_t d = capT_ % len;
+                const int64_t src = capStart_ - bar + idx * len;
+                const float env = seam(d, len, fade);
+                ol = histAt(0, src + d) * env;
+                orr = histAt(1, src + d) * env;
                 ++capT_;
-                break;
-            }
-            case kKpTapeStop: {
-                if (!touch) break;
-                // X — время торможения (0.1…3 с), Y — глубина (вверху — до полной остановки).
-                const float brake = 0.1f + x * 2.9f;
-                tapeSpeed_ = std::max(1.0f - y, tapeSpeed_ - 1.0f / (brake * sr));
-                tapePos_ += tapeSpeed_;
-                const double maxBack = histSize_ - 4;
-                if (static_cast<double>(histW_) - tapePos_ > maxBack) tapePos_ = static_cast<double>(histW_) - maxBack;
-                const float g = std::min(1.0f, tapeSpeed_ * 4.0f);
-                ol = hist(0, tapePos_ - 1) * g;
-                orr = hist(1, tapePos_ - 1) * g;
-                break;
-            }
-            case kKpSpinback: {
-                if (!touch) break;
-                // «Перемотка пластинки назад»: разгоняется до X×4, Y — затухание.
-                tapeSpeed_ = std::min(1.0f + x * 3.0f, tapeSpeed_ + 6.0f / sr);
-                tapePos_ -= tapeSpeed_;
-                const double minPos = static_cast<double>(histW_) - (histSize_ - 4);
-                if (tapePos_ < minPos) tapePos_ = minPos;
-                const float g = 1.0f - y * std::min(1.0f, static_cast<float>(capT_) / sr);
-                ol = hist(0, tapePos_) * g;
-                orr = hist(1, tapePos_) * g;
-                ++capT_;
-                break;
-            }
-            case kKpGlitch: {
-                if (!touch) break;
-                // На каждой доле X-сетки решаем: играть живой звук или повторить случайный кусок прошлого.
-                const int64_t len = std::clamp<int64_t>(static_cast<int64_t>(beatsToFrames(pick(kRepeatBeats, x), bpm)), 64, histSize_ / 8);
-                if (capT_ - glitchSlotStart_ >= len || capT_ == 0) {
-                    glitchSlotStart_ = capT_;
-                    noise_ = noise_ * 1664525u + 1013904223u;
-                    glitchOn_ = (noise_ >> 8) % 100 < static_cast<uint32_t>(30 + y * 65);
-                    const int64_t back = len * (1 + static_cast<int64_t>((noise_ >> 3) % 4));
-                    glitchSrc_ = histW_ - back;
-                }
-                if (glitchOn_) {
-                    const int64_t d = capT_ - glitchSlotStart_;
-                    const float env = seam(d, len, fade);
-                    ol = histAt(0, glitchSrc_ + d) * env;
-                    orr = histAt(1, glitchSrc_ + d) * env;
-                }
-                ++capT_;
-                break;
-            }
-            case kKpScratch: {
-                if (!touch) break;
-                // Скретч: X — положение «иглы» в последней доле, движение пальца = движение пластинки.
-                const double window = beatsToFrames(1.0f, bpm);
-                const double target = static_cast<double>(capStart_) - window + static_cast<double>(x) * window;
-                const double v = (target - scratchPos_) * 0.002;
-                scratchVel_ += (std::clamp(v, -4.0, 4.0) - scratchVel_) * 0.05;
-                scratchPos_ += scratchVel_;
-                const float g = std::min(1.0f, static_cast<float>(std::fabs(scratchVel_)) * 3.0f);
-                ol = mix(l * (1.0f - y), hist(0, scratchPos_) * g, w);
-                orr = mix(r * (1.0f - y), hist(1, scratchPos_) * g, w);
-                ++capT_;
-                break;
-            }
-            case kKpSlicer: {
-                // Ритмичная нарезка: X — деление, Y — один из 4 ритмов.
-                const float period = beatsToFrames(pick(kSliceBeats, x), bpm);
-                gatePhase_ += 1.0 / std::max(16.0f, period);
-                const int step = static_cast<int>(gatePhase_) % 16;
-                const int pat = std::min(3, static_cast<int>(y * 4.0f));
-                const float target = (kSlicerPatterns[pat] >> (15 - step)) & 1u ? 1.0f : 0.0f;
-                ampEnv_ += (target - ampEnv_) * (1.0f - std::exp(-1.0f / (0.0015f * sr)));
-                ol = l * ampEnv_;
-                orr = r * ampEnv_;
                 break;
             }
 
             // ====================================================== 4 MOD
-            case kKpFlanger:
-            case kKpChorus:
-            case kKpVibrato: {
-                const double rate = prog == kKpChorus ? 0.1 + x * 3.0 : 0.05 + x * x * 6.0;
-                lfo_ += rate / sr_;
-                lfo_ -= std::floor(lfo_);
-                const float m = 0.5f + 0.5f * static_cast<float>(std::sin(kTwoPi * lfo_));
-                const float m2 = 0.5f + 0.5f * static_cast<float>(std::sin(kTwoPi * (lfo_ + 0.25)));
-                if (prog == kKpFlanger) {
-                    const float d = (0.0007f + m * 0.006f) * sr;
-                    const float fb = 0.2f + y * 0.7f;
-                    const float dL = delayRead(0, d), dR = delayRead(1, d + 3.0f);
-                    delayWrite(l + dL * fb, r + dR * fb);
-                    ol = (l + dL) * 0.7f;
-                    orr = (r + dR) * 0.7f;
-                } else if (prog == kKpChorus) {
-                    const float depth = (0.002f + y * 0.008f) * sr;
-                    const float base = 0.015f * sr;
-                    const float dL = delayRead(0, base + m * depth), dR = delayRead(1, base + m2 * depth);
-                    delayWrite(l, r);
-                    ol = (l + dL) * 0.75f;
-                    orr = (r + dR) * 0.75f;
-                } else {
-                    const float depth = (0.0005f + y * 0.006f) * sr;
-                    ol = delayRead(0, 2.0f + m * depth);
-                    orr = delayRead(1, 2.0f + m * depth);
-                    delayWrite(l, r);
+            case kKpVinylBreak:
+            case kKpBreakVerb: {
+                // Mod.1: пластинку останавливают рукой. X — время торможения, Y — скретч.
+                // Mod.2: то же по темпу и с ревёрбом (хвост доигрывает).
+                float vl = l, vr = r;
+                if (touch) {
+                    const float brake = prog == kKpBreakVerb ? beatsToFrames(0.25f * std::pow(2.0f, x * 4.0f), bpm) / sr
+                                                             : 0.08f + x * 2.9f;
+                    tapeSpeed_ = std::max(0.0f, tapeSpeed_ - 1.0f / (brake * sr));
+                    tapePos_ += tapeSpeed_ + static_cast<double>(dy) * sr * 0.6;   // палец по Y крутит пластинку
+                    const double maxBack = histSize_ - 4;
+                    if (static_cast<double>(histW_) - tapePos_ > maxBack) tapePos_ = static_cast<double>(histW_) - maxBack;
+                    if (tapePos_ > static_cast<double>(histW_ - 2)) tapePos_ = static_cast<double>(histW_ - 2);
+                    const float g = std::min(1.0f, tapeSpeed_ * 4.0f + std::fabs(dy) * 400.0f);
+                    vl = hist(0, tapePos_ - 1) * g;
+                    vr = hist(1, tapePos_ - 1) * g;
                 }
+                vl = mix(l, vl, w);
+                vr = mix(r, vr, w);
+                if (prog == kKpBreakVerb) {
+                    float rl, rr;
+                    reverb((vl + vr) * 0.5f * w * 0.03f, 0.88f, 0.25f, rl, rr);
+                    vl += rl * 1.5f;
+                    vr += rr * 1.5f;
+                }
+                ol = vl;
+                orr = vr;
                 break;
             }
-            case kKpPhaser: {
-                const double rate = 0.05 + x * x * 5.0;
-                lfo_ += rate / sr_;
-                lfo_ -= std::floor(lfo_);
-                const float m = 0.5f + 0.5f * static_cast<float>(std::sin(kTwoPi * lfo_));
-                const float fc = 200.0f * std::pow(2.0f, m * 3.6f);
-                const float t = std::tan(kPi * fc / sr);
+            case kKpManuPhaser: {
+                // Mod.5: фазер без LFO. X — частота, Y — резонанс.
+                const float fc = 150.0f * std::pow(2.0f, x * 5.8f);
+                const float t = std::tan(kPi * std::min(fc, sr * 0.45f) / sr);
                 const float a = (t - 1.0f) / (t + 1.0f);
-                const float fb = y * 0.75f;
+                const float fb = y * 0.85f;
                 float in[2] = {l, r};
                 for (int c = 0; c < 2; ++c) {
                     float v = in[c] + phaserFb_[c] * fb;
@@ -636,197 +660,169 @@ void KaossFx::process(float* io, int n, float bpm) {
                 orr = in[1];
                 break;
             }
-            case kKpRingMod: {
-                const double f = 30.0 * std::pow(2.0, x * 6.2);   // 30 Гц … 2.2 кГц
-                osc_ += f / sr_;
-                osc_ -= std::floor(osc_);
-                const float s = static_cast<float>(std::sin(kTwoPi * osc_));
-                ol = mix(l, l * s, 0.3f + 0.7f * y);
-                orr = mix(r, r * s, 0.3f + 0.7f * y);
-                break;
-            }
-            case kKpSweepNoise: {
-                // Переход: белый шум через фильтр. X — частота (вправо — «взлёт»), Y — громкость и резонанс.
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 16;
-                    fc_.set(60.0f * std::pow(2.0f, x * 8.2f), 0.8f + y * 5.0f, sr);
+            case kKpTalkFilter:
+            case kKpDigiTalk: {
+                // Mod.6 / Mod.7: «говорящий» фильтр. X — первая форманта, Y — вторая.
+                if (upd) {
+                    fc2_[0].set(240.0f * std::pow(2.0f, x * 2.0f), 7.0f, sr);    // 240–960 Гц
+                    fc2_[1].set(650.0f * std::pow(2.0f, y * 2.1f), 9.0f, sr);    // 650–2800 Гц
                 }
-                const float nL = noise(), nR = noise();
-                const float lvl = (0.08f + y * 0.35f) * w;
-                ol = l + svf(f_[0], fc_, nL, SvfOut::Band) * lvl * 2.0f;
-                orr = r + svf(f_[1], fc_, nR, SvfOut::Band) * lvl * 2.0f;
-                break;
-            }
-            case kKpTremolo:
-            case kKpAutoPan: {
-                // X — скорость по темпу (1/2…1/32), Y — глубина.
-                const float period = beatsToFrames(pick(kSliceBeats, x), bpm);
-                lfo_ += 1.0 / std::max(16.0f, period);
-                lfo_ -= std::floor(lfo_);
-                const float s = static_cast<float>(std::sin(kTwoPi * lfo_));
-                if (prog == kKpTremolo) {
-                    const float g = 1.0f - y * (0.5f - 0.5f * s);
-                    ol = l * g;
-                    orr = r * g;
-                } else {
-                    const float p = s * y;   // -1..1
-                    ol = l * std::sqrt(0.5f * (1.0f - p)) * 1.414f;
-                    orr = r * std::sqrt(0.5f * (1.0f + p)) * 1.414f;
+                float in[2] = {l, r};
+                if (prog == kKpDigiTalk) {
+                    // цифровой: 6 бит и частота дискретизации /6
+                    crushCount_ += 1.0f;
+                    if (crushCount_ >= 6.0f) {
+                        crushCount_ -= 6.0f;
+                        crushHold_[0] = std::round(l * 32.0f) / 32.0f;
+                        crushHold_[1] = std::round(r * 32.0f) / 32.0f;
+                    }
+                    in[0] = crushHold_[0];
+                    in[1] = crushHold_[1];
                 }
+                float out[2];
+                for (int c = 0; c < 2; ++c)
+                    out[c] = soft((svf(f2_[c][0], fc2_[0], in[c], SvfOut::Band) * fc2_[0].k +
+                                   svf(f2_[c][1], fc2_[1], in[c], SvfOut::Band) * fc2_[1].k * 0.8f) * 4.0f);
+                ol = out[0];
+                orr = out[1];
                 break;
             }
-            case kKpRotary: {
-                // «Лесли»: доплер + вращение по каналам. X — скорость (медленно/быстро), Y — глубина.
-                const double target = 0.8 + x * 6.0;
-                lfo2_ += (target - lfo2_) * 0.00005;   // разгон рупора
-                lfo_ += lfo2_ / sr_;
-                lfo_ -= std::floor(lfo_);
-                const float s = static_cast<float>(std::sin(kTwoPi * lfo_));
-                const float c = static_cast<float>(std::cos(kTwoPi * lfo_));
-                const float depth = (0.0003f + 0.0015f * y) * sr;
-                const float dL = delayRead(0, 3.0f + (1.0f + s) * depth);
-                const float dR = delayRead(1, 3.0f + (1.0f - s) * depth);
-                delayWrite(l, r);
-                ol = dL * (1.0f - 0.35f * y * c);
-                orr = dR * (1.0f + 0.35f * y * c);
-                break;
-            }
-            case kKpSiren: {
-                // Сирена/синт поверх микса: X — высота, Y — скорость «воя».
-                lfo_ += (0.2 + y * 8.0) / sr_;
-                lfo_ -= std::floor(lfo_);
-                const double f = 120.0 * std::pow(2.0, x * 4.0) * (1.0 + 0.5 * std::sin(kTwoPi * lfo_));
-                osc_ += f / sr_;
-                osc_ -= std::floor(osc_);
-                const float saw = static_cast<float>(osc_ * 2.0 - 1.0);
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 32;
-                    fc_.set(2500.0f, 0.8f, sr);
-                }
-                const float v = svf(f_[0], fc_, saw, SvfOut::Low) * 0.25f * w;
-                ol = l + v;
-                orr = r + v;
-                break;
-            }
-
-            // ====================================================== 5 LO-FI
-            case kKpBitCrush: {
-                const float hold = 1.0f + x * x * 47.0f;
-                crushCount_ += 1.0f;
-                if (crushCount_ >= hold) {
-                    crushCount_ -= hold;
-                    const float bits = 16.0f - y * 13.0f;
-                    const float step = 2.0f / std::pow(2.0f, bits);
-                    crushHold_[0] = std::round(l / step) * step;
-                    crushHold_[1] = std::round(r / step) * step;
-                }
-                ol = crushHold_[0];
-                orr = crushHold_[1];
-                break;
-            }
-            case kKpDistortion:
-            case kKpFuzz:
-            case kKpWavefolder: {
-                // Драйв растёт по X — громкость автоматически возвращается к исходной (autoGain).
-                const float drive = prog == kKpFuzz ? 2.0f + x * x * 120.0f : prog == kKpWavefolder ? 1.0f + x * 6.0f : 1.0f + x * x * 50.0f;
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 32;
-                    fc_.set(700.0f * std::pow(2.0f, y * 4.5f), 0.7f, sr);
-                }
-                float sl, sr2;
-                if (prog == kKpFuzz) {
-                    sl = std::clamp(l * drive, -0.7f, 0.7f) + 0.15f * std::clamp(l * drive * 0.3f, 0.0f, 0.5f);
-                    sr2 = std::clamp(r * drive, -0.7f, 0.7f) + 0.15f * std::clamp(r * drive * 0.3f, 0.0f, 0.5f);
-                } else if (prog == kKpWavefolder) {
-                    sl = std::sin(l * drive * 1.6f);
-                    sr2 = std::sin(r * drive * 1.6f);
-                } else {
-                    sl = std::tanh(l * drive);
-                    sr2 = std::tanh(r * drive);
-                }
-                ol = svf(f_[0], fc_, sl, SvfOut::Low);
-                orr = svf(f_[1], fc_, sr2, SvfOut::Low);
-                autoGain(l, r, ol, orr);
-                break;
-            }
-            case kKpLofi: {
-                // «Старое радио»: полоса сужается по X, шум и треск растут по Y.
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 32;
-                    fc_.set(1400.0f, 0.8f + x * 4.0f, sr);
-                }
-                const float nz = noise();
-                const float crackle = ((noise_ >> 3) % 6000u == 0u) ? 0.6f : 0.0f;
-                const float add = (nz * 0.02f + crackle) * y;
-                ol = svf(f_[0], fc_, l, SvfOut::Band) * 2.2f + add;
-                orr = svf(f_[1], fc_, r, SvfOut::Band) * 2.2f + add;
-                break;
-            }
-            case kKpVinyl: {
-                // Пластинка: «плывёт» высота (X — wow), глуше верх, треск (Y).
-                lfo_ += 0.55 / sr_;
-                lfo_ -= std::floor(lfo_);
-                const float d = (0.002f + x * 0.004f * (0.5f + 0.5f * static_cast<float>(std::sin(kTwoPi * lfo_)))) * sr;
-                const float dL = delayRead(0, d), dR = delayRead(1, d);
-                delayWrite(l, r);
-                if (--coefCountdown_ <= 0) {
-                    coefCountdown_ = 64;
-                    fc_.set(5500.0f - y * 2500.0f, 0.7f, sr);
-                }
-                const float nz = noise();
-                const float crackle = ((noise_ >> 5) % 2500u == 0u) ? 0.5f * nz : 0.0f;
-                ol = svf(f_[0], fc_, dL, SvfOut::Low) + (crackle + nz * 0.004f) * y;
-                orr = svf(f_[1], fc_, dR, SvfOut::Low) + (crackle + nz * 0.004f) * y;
-                break;
-            }
-            case kKpPump: {
-                // «Качание» как от сайдчейна на каждую долю: X — глубина, Y — длина подъёма.
-                const float period = beatsToFrames(1.0f, bpm);
-                gatePhase_ += 1.0 / std::max(16.0f, period);
-                gatePhase_ -= std::floor(gatePhase_);
-                const float rise = 0.15f + y * 0.8f;
-                const float ph = static_cast<float>(gatePhase_);
-                const float shape = ph < rise ? std::pow(ph / rise, 2.0f) : 1.0f;
-                const float g = 1.0f - x * (1.0f - shape);
-                ampEnv_ += (g - ampEnv_) * (1.0f - std::exp(-1.0f / (0.001f * sr)));
+            case kKpDuckComp: {
+                // Mod.8: «качает» от собственных ударов. X — чувствительность, Y — глубина.
+                const float a = std::max(std::fabs(l), std::fabs(r)) * (1.0f + x * 10.0f);
+                env_ += (a - env_) * (a > env_ ? 1.0f - std::exp(-1.0f / (0.001f * sr)) : 1.0f - std::exp(-1.0f / (0.18f * sr)));
+                const float g = 1.0f - y * std::min(1.0f, env_);
+                ampEnv_ += (g - ampEnv_) * (1.0f - std::exp(-1.0f / (0.003f * sr)));
                 ol = l * ampEnv_;
                 orr = r * ampEnv_;
                 break;
             }
-            case kKpPitch:
-            case kKpOctaver: {
-                const double win = 0.06 * sr_;
-                if (prog == kKpPitch) {
-                    // X — от −12 до +12 полутонов, Y — доля эффекта.
-                    const double semis = std::round((x - 0.5f) * 24.0f);
-                    const double ratio = std::pow(2.0, semis / 12.0);
-                    const float pl = pitchTap(0, pitchPh_, ratio, win, true);
-                    const float pr = pitchTap(1, pitchPh_, ratio, win, false);
-                    ol = mix(l, pl, 0.5f + 0.5f * y);
-                    orr = mix(r, pr, 0.5f + 0.5f * y);
-                } else {
-                    // Октавер: −1 октава (и −2 по X) подмешивается снизу, Y — сколько.
-                    const float s1l = pitchTap(0, pitchPh_, 0.5, win, true);
-                    const float s1r = pitchTap(1, pitchPh_, 0.5, win, false);
-                    const float s2l = pitchTap(0, pitchPh2_, 0.25, win * 1.5, true);
-                    const float s2r = pitchTap(1, pitchPh2_, 0.25, win * 1.5, false);
-                    const float sub = 0.4f + 0.8f * y;
-                    ol = l * 0.8f + (s1l * (1.0f - x) + s2l * x) * sub;
-                    orr = r * 0.8f + (s1r * (1.0f - x) + s2r * x) * sub;
+            case kKpCompressor: {
+                // Mod.9: X — чувствительность (порог ниже), Y — атака (вверху медленная — щелчок удара остаётся).
+                const float thresh = std::pow(10.0f, (-x * 36.0f) / 20.0f);
+                compress(std::max(std::fabs(l), std::fabs(r)), thresh, 0.1f + y * 60.0f, 150.0f);
+                const float makeup = 1.0f + x * 2.5f;
+                ol = l * compGain_ * makeup;
+                orr = r * compGain_ * makeup;
+                break;
+            }
+            case kKpLowComp: {
+                // Md.10: компрессор только на низ (до ~200 Гц). X — чувствительность, Y — атака.
+                if (upd) fc_.set(200.0f, 0.7f, sr);
+                const float lo0 = svf(f_[0], fc_, l, SvfOut::Low);
+                const float lo1 = svf(f_[1], fc_, r, SvfOut::Low);
+                const float thresh = std::pow(10.0f, (-x * 36.0f) / 20.0f);
+                compress(std::max(std::fabs(lo0), std::fabs(lo1)), thresh, 0.1f + y * 60.0f, 150.0f);
+                const float g = compGain_ * (1.0f + x * 3.0f);
+                ol = (l - lo0) + lo0 * g;
+                orr = (r - lo1) + lo1 * g;
+                break;
+            }
+
+            // ====================================================== 5 LFO
+            case kKpJagFilter: {
+                // LFO.1: пила по темпу открывает ФНЧ. X — скорость, Y — пила назад (внизу) / вперёд (вверху).
+                const float ph = lfoStep(x);
+                const float m = y < 0.5f ? 1.0f - ph : ph;
+                if (upd) fc_.set(150.0f * std::pow(2.0f, m * 6.8f), 4.0f, sr);
+                ol = soft(svf(f_[0], fc_, l, SvfOut::Low));
+                orr = soft(svf(f_[1], fc_, r, SvfOut::Low));
+                break;
+            }
+            case kKpLfoLpf:
+            case kKpLfoHpf:
+            case kKpLfoBpf: {
+                // LFO.2–4: фильтр качается по темпу. X — скорость, Y — резонанс.
+                const float m = 0.5f - 0.5f * static_cast<float>(std::cos(kTwoPi * lfoStep(x)));
+                if (upd) {
+                    const float fc = prog == kKpLfoLpf ? 200.0f * std::pow(2.0f, m * 6.3f)
+                                   : prog == kKpLfoHpf ? 40.0f * std::pow(2.0f, m * 7.0f)
+                                                       : 200.0f * std::pow(2.0f, m * 5.5f);
+                    fc_.set(fc, prog == kKpLfoBpf ? 2.0f + y * 8.0f : yReso(y) * 1.3f, sr);
+                }
+                const SvfOut o = prog == kKpLfoLpf ? SvfOut::Low : prog == kKpLfoHpf ? SvfOut::High : SvfOut::Band;
+                ol = soft(svf(f_[0], fc_, l, o));
+                orr = soft(svf(f_[1], fc_, r, o));
+                if (prog == kKpLfoBpf) {
+                    ol = std::tanh(ol * 2.5f) * 0.8f;
+                    orr = std::tanh(orr * 2.5f) * 0.8f;
                 }
                 break;
             }
-            case kKpRobot: {
-                // Робот: короткая гребёнка на высоте X + кольцевая модуляция, Y — доля.
-                const float f = 60.0f * std::pow(2.0f, x * 2.8f);
-                const float d = sr / f;
-                const float dL = delayRead(0, d), dR = delayRead(1, d);
-                delayWrite(l + dL * 0.85f, r + dR * 0.85f);
-                osc_ += f / sr_;
-                osc_ -= std::floor(osc_);
-                const float s = 0.6f + 0.4f * static_cast<float>(std::sin(kTwoPi * osc_));
-                ol = mix(l, dL * s * 0.5f, 0.4f + 0.6f * y);
-                orr = mix(r, dR * s * 0.5f, 0.4f + 0.6f * y);
+            case kKpLfoHpfDelay: {
+                // LFO.5: ФВЧ качается (такт) + дилей. X — время дилея, Y — уровень ФВЧ и глубина дилея.
+                lfo_ += 1.0 / std::max(16.0f, beat * 4.0f);
+                lfo_ -= std::floor(lfo_);
+                const float m = 0.5f - 0.5f * static_cast<float>(std::cos(kTwoPi * lfo_));
+                if (upd) fc_.set(60.0f * std::pow(2.0f, m * 6.5f * (0.3f + 0.7f * y)), 3.0f, sr);
+                float fl = std::tanh(svf(f_[0], fc_, l, SvfOut::High) * 1.5f);
+                float fr = std::tanh(svf(f_[1], fc_, r, SvfOut::High) * 1.5f);
+                fl = mix(l, fl, w);
+                fr = mix(r, fr, w);
+                float dL, dR;
+                delayTap(beatsToFrames(pick(kDelayBeats, x), bpm), fl * w, fr * w, 0.2f + y * 0.6f, dL, dR, 0.002f);
+                ol = fl + dL * (0.3f + 0.6f * y);
+                orr = fr + dR * (0.3f + 0.6f * y);
+                break;
+            }
+            case kKpInfiniteHpf: {
+                // LFO.6: ФВЧ бесконечно поднимается (два «голоса» внахлёст). X — скорость, Y — резонанс.
+                const float ph = lfoStep(x);
+                const float ph2 = ph + 0.5f - std::floor(ph + 0.5f);
+                if (upd) {
+                    fc2_[0].set(30.0f * std::pow(2.0f, ph * 9.0f), 1.0f + y * 7.0f, sr);
+                    fc2_[1].set(30.0f * std::pow(2.0f, ph2 * 9.0f), 1.0f + y * 7.0f, sr);
+                }
+                const float g1 = std::sin(kPi * ph), g2 = std::sin(kPi * ph2);
+                ol = std::tanh((svf(f2_[0][0], fc2_[0], l, SvfOut::High) * g1 + svf(f2_[0][1], fc2_[1], l, SvfOut::High) * g2) * 1.3f);
+                orr = std::tanh((svf(f2_[1][0], fc2_[0], r, SvfOut::High) * g1 + svf(f2_[1][1], fc2_[1], r, SvfOut::High) * g2) * 1.3f);
+                break;
+            }
+            case kKpRandomLpf:
+            case kKpRandomHpf: {
+                // LFO.7/8: частота фильтра прыгает случайно по темпу. X — скорость, Y — глубина.
+                const float ph = lfoStep(x);
+                const int64_t cyc = static_cast<int64_t>(ph < static_cast<float>(gatePhase_));
+                gatePhase_ = ph;
+                if (cyc || lfoCycle_ < 0) {
+                    lfoCycle_ = 0;
+                    sh_ = 0.5f + 0.5f * noise();
+                }
+                shS_ += (sh_ - shS_) * (1.0f - std::exp(-1.0f / (0.004f * sr)));
+                if (upd) {
+                    if (prog == kKpRandomLpf) fc_.set(18000.0f * std::pow(2.0f, -shS_ * y * 7.5f), 3.0f, sr);
+                    else fc_.set(30.0f * std::pow(2.0f, shS_ * y * 8.5f), 3.0f, sr);
+                }
+                if (prog == kKpRandomLpf) {
+                    ol = svf(f_[0], fc_, l, SvfOut::Low);
+                    orr = svf(f_[1], fc_, r, SvfOut::Low);
+                } else {
+                    ol = std::tanh(svf(f_[0], fc_, l, SvfOut::High) * 1.5f);
+                    orr = std::tanh(svf(f_[1], fc_, r, SvfOut::High) * 1.5f);
+                }
+                break;
+            }
+            case kKpYoiYoi: {
+                // LFO.9: «йой-йой» — высота и громкость качаются по темпу. X — скорость, Y — сила.
+                const float s = static_cast<float>(std::sin(kTwoPi * lfoStep(x)));
+                const float d = 2.0f + (0.5f + 0.5f * s) * y * 0.008f * sr;
+                ol = delayRead(0, d);
+                orr = delayRead(1, d);
+                delayWrite(l, r);
+                const float g = 1.0f - y * 0.35f * (0.5f - 0.5f * s);
+                ol *= g;
+                orr *= g;
+                break;
+            }
+            case kKpFlanger: {
+                // LF.10: X — скорость LFO (по темпу), Y — обратная связь.
+                const float m = 0.5f + 0.5f * static_cast<float>(std::sin(kTwoPi * lfoStep(x)));
+                const float d = (0.0006f + m * 0.006f) * sr;
+                const float fb = y * 0.9f;
+                const float dL = delayRead(0, d), dR = delayRead(1, d + 3.0f);
+                delayWrite(l + dL * fb, r + dR * fb);
+                ol = (l + dL) * 0.65f;
+                orr = (r + dR) * 0.65f;
                 break;
             }
             default: break;

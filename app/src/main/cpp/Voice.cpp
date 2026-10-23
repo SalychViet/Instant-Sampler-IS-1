@@ -38,7 +38,7 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
     endF_ = en;
 
     const double ratio = (static_cast<double>(s->sampleRate) / engineRate) *
-                         std::exp2(static_cast<double>(p.pitch) / 12.0);
+                         std::exp2((static_cast<double>(p.pitch) + static_cast<double>(p.detune) * 0.01) / 12.0);
     inc_ = p.reverse ? -ratio : ratio;
     pos_ = p.reverse ? en - 1e-6 : st;
 

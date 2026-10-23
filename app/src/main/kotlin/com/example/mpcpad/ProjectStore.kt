@@ -158,6 +158,7 @@ object ProjectStore {
         AudioEngine.setParam(pad, PadParam.VOLUME, u.volume)
         AudioEngine.setParam(pad, PadParam.PAN, u.pan)
         AudioEngine.setParam(pad, PadParam.PITCH, u.pitch)
+        AudioEngine.setParam(pad, PadParam.DETUNE, u.detune)
         AudioEngine.setParam(pad, PadParam.START, u.start)
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
@@ -168,7 +169,7 @@ object ProjectStore {
     }
 
     private fun padToJson(u: PadUi) = JSONObject()
-        .put("vol", u.volume.toDouble()).put("pan", u.pan.toDouble()).put("pitch", u.pitch.toDouble())
+        .put("vol", u.volume.toDouble()).put("pan", u.pan.toDouble()).put("pitch", u.pitch.toDouble()).put("detune", u.detune.toDouble())
         .put("start", u.start.toDouble()).put("end", u.end.toDouble()).put("mode", u.mode)
         .put("rev", u.reverse).put("choke", u.choke).put("rel", u.releaseMs.toDouble())
         .put("atk", u.attackMs.toDouble()).put("loopDiv", u.loopDiv)
@@ -177,6 +178,7 @@ object ProjectStore {
         volume = o.optDouble("vol", 1.0).toFloat(),
         pan = o.optDouble("pan", 0.0).toFloat(),
         pitch = o.optDouble("pitch", 0.0).toFloat(),
+        detune = o.optDouble("detune", 0.0).toFloat(),
         start = o.optDouble("start", 0.0).toFloat(),
         end = o.optDouble("end", 1.0).toFloat(),
         mode = o.optInt("mode", 0),

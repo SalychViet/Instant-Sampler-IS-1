@@ -112,7 +112,7 @@ fun KaossPad(
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp)) {
             Row(Modifier.fillMaxWidth()) {
                 Text(
-                    "${bank + 1}·${Kaoss.BANKS[bank]}  ${app.shownProgram % Kaoss.PER_BANK + 1}/${Kaoss.PER_BANK}",
+                    "${bank + 1}·${Kaoss.BANKS[bank]}  ${app.shownProgram % Kaoss.PER_BANK + 1}/${Kaoss.PER_BANK}  ${prog.code}",
                     color = KpLed, fontSize = 10.sp, fontFamily = mono, modifier = Modifier.weight(1f),
                 )
                 val motion = when {

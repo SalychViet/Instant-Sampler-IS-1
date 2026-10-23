@@ -627,7 +627,7 @@ fun MpcRoot(actions: SampleActions) {
                                 b * Kaoss.PER_BANK + kaossLast[b]
                             }
                             kaossLast[b] = app.kaossProgram % Kaoss.PER_BANK
-                            flash(Kaoss.PROGRAMS[app.kaossProgram].name)
+                            flash(Kaoss.PROGRAMS[app.kaossProgram].title)
                         }
                     }
                 } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -938,7 +938,7 @@ fun MpcRoot(actions: SampleActions) {
                 val mixProg = app.shownProgram.coerceIn(0, app.kaossMix.size - 1)
                 Knob("DRY/WET", app.kaossMix[mixProg], { n ->
                     app.kaossMix[mixProg] = n
-                    app.flash("${Kaoss.PROGRAMS[mixProg].name} MIX %.0f%%".format(n * 100), 900)
+                    app.flash("${Kaoss.PROGRAMS[mixProg].code} MIX %.0f%%".format(n * 100), 900)
                 }, diameter = 42.dp, accent = Color(0xFFFF6A00), onTripleTap = {
                     for (i in app.kaossMix.indices) app.kaossMix[i] = 1f
                     app.flash("ALL FX MIX 100%", 1500)

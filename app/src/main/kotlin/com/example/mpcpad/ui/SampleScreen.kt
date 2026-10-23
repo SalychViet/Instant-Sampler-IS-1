@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -37,11 +38,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.capture.CaptureStatus
 import com.example.mpcpad.sample.SampleViewModel
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 private val WaveBg = Color(0xFF111113)
 private val WaveOutside = Color(0xFF55555C)
@@ -146,13 +149,32 @@ fun SampleBody(
             )
         }
 
-        WaveformView(
-            vm,
+        Row(
             Modifier
                 .weight(1f)
-                .heightIn(min = 70.dp)
-                .fillMaxSize(),
-        )
+                .heightIn(min = 70.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            WaveformView(vm, Modifier.weight(1f).fillMaxSize())
+            // Высота выбранного пада: PITCH — полутоны, DETUNE — центы между ними.
+            val pu = app.pads[app.selected]
+            Column(
+                Modifier.fillMaxHeight(),
+                verticalArrangement = Arrangement.SpaceEvenly,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Knob("PITCH", (pu.pitch + 12f) / 24f, { n ->
+                    val v = (n * 24f - 12f).roundToInt().toFloat()
+                    app.setParam(app.selected, PadParam.PITCH, v) { it.copy(pitch = v) }
+                }, diameter = 38.dp, defaultValue = 0.5f)
+                Text("%+.0f ST".format(pu.pitch), color = TextMain, fontSize = 10.sp)
+                Knob("DETUNE", (pu.detune + 50f) / 100f, { n ->
+                    val v = (n * 100f - 50f).roundToInt().toFloat()
+                    app.setParam(app.selected, PadParam.DETUNE, v) { it.copy(detune = v) }
+                }, diameter = 38.dp, defaultValue = 0.5f)
+                Text("%+.0f CT".format(pu.detune), color = TextMain, fontSize = 10.sp)
+            }
+        }
 
         // Обработка выделения.
         Row(

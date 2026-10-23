@@ -12,6 +12,7 @@ object PadParam {
     const val CHOKE = 7
     const val ATTACK_MS = 8
     const val RELEASE_MS = 9
+    const val DETUNE = 10   // центы -50..50
 }
 
 /** Должны совпадать с PlayMode в Types.h. */

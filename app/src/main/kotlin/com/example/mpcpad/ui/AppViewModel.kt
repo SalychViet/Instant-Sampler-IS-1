@@ -31,6 +31,8 @@ data class PadUi(
     val volume: Float = 1f,
     val pan: Float = 0f,
     val pitch: Float = 0f,
+    /** Точная подстройка, центы -50..50 (ручка DETUNE в EDIT). */
+    val detune: Float = 0f,
     val start: Float = 0f,
     val end: Float = 1f,
     val mode: Int = PlayMode.ONE_SHOT,
@@ -297,6 +299,7 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.VOLUME, u.volume)
         AudioEngine.setParam(pad, PadParam.PAN, u.pan)
         AudioEngine.setParam(pad, PadParam.PITCH, u.pitch)
+        AudioEngine.setParam(pad, PadParam.DETUNE, u.detune)
         AudioEngine.setParam(pad, PadParam.START, u.start)
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())

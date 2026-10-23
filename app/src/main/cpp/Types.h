@@ -21,6 +21,7 @@ enum ParamId : int {
     kParamChoke,         // 0 = нет, 1..N = группа
     kParamAttackMs,
     kParamReleaseMs,
+    kParamDetune,        // центы, -50..50 (точная подстройка к полутонам PITCH)
     kParamCount
 };
 

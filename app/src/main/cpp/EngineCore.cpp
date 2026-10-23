@@ -180,6 +180,7 @@ void EngineCore::apply(const Command& c) {
                 case kParamChoke:     p.choke = std::max(0, static_cast<int>(v)); break;
                 case kParamAttackMs:  p.attackMs = std::clamp(v, 0.0f, 2000.0f); break;
                 case kParamReleaseMs: p.releaseMs = std::clamp(v, 0.0f, 5000.0f); break;
+                case kParamDetune:    p.detune = std::clamp(v, -50.0f, 50.0f); break;
                 default: break;
             }
             break;
