@@ -59,7 +59,7 @@ bool KaossFx::hasTails(int p) {
         case kKpLpfDelay: case kKpHpfDelay: case kKpBpfDelay: case kKpLpfReverb: case kKpHpfReverb:
         case kKpDelay: case kKpEchoBreak: case kKpTapeEcho: case kKpDubEcho: case kKpPingPong:
         case kKpPumpReverb: case kKpFreezeReverb: case kKpGateReverb: case kKpBreakVerb: case kKpLfoHpfDelay:
-        case kKpSweepNoise: case kKpPitchDelay:
+        case kKpSweepNoise: case kKpPitchDelay: case kKpDistBpfDelay: case kKpRepeatCrushDelay:
             return true;
         default:
             return false;
@@ -778,27 +778,65 @@ void KaossFx::process(float* io, int n, float bpm) {
             }
 
             // ====================================================== 5 LFO
-            case kKpJagFilter: {
-                // LFO.1: пила по темпу открывает ФНЧ. X — скорость, Y — пила назад (внизу) / вперёд (вверху).
-                const float ph = lfoStep(x);
-                const float m = y < 0.5f ? 1.0f - ph : ph;
-                if (upd) fc_.set(150.0f * std::pow(2.0f, m * 6.8f), 4.0f, sr);
-                ol = soft(svf(f_[0], fc_, l, SvfOut::Low));
-                orr = soft(svf(f_[1], fc_, r, SvfOut::Low));
+            case kKpDistBpfDelay: {
+                // DIST + BPF + DELAY: перегруз через полосовой фильтр и дилей по темпу.
+                // X — время дилея, Y — полоса (частота и резонанс). Громкость держится на уровне входа.
+                float fl, fr;
+                yFilter(2, std::tanh(l * 14.0f), std::tanh(r * 14.0f), fl, fr);
+                autoGain(l, r, fl, fr);
+                fl = mix(l, fl, w);
+                fr = mix(r, fr, w);
+                float dL, dR;
+                delayTap(beatsToFrames(pick(kDelayBeats, x), bpm), fl * w, fr * w, 0.5f, dL, dR, 0.002f);
+                ol = fl + dL * 0.7f;
+                orr = fr + dR * 0.7f;
+                break;
+            }
+            case kKpRepeatCrushDelay: {
+                // REPEAT + BIT CRUSH + PING PONG DELAY: петля по X (как Looper Beat), Y — сила
+                // «цифровой грязи» и глубина пинг-понга (3/16). Хвост дилея доигрывает.
+                float sl = l, sr2 = r;
+                if (touch) {
+                    const int64_t len = static_cast<int64_t>(loopLen(x, bpm));
+                    ++capT_;
+                    if (capT_ > len) {   // первый круг записывается, дальше повтор
+                        const int64_t d = capT_ % len;
+                        const float env = seam(d, len, fade);
+                        sl = histAt(0, capStart_ + d) * env;
+                        sr2 = histAt(1, capStart_ + d) * env;
+                    }
+                    const float hold = 1.0f + y * y * 30.0f;
+                    crushCount_ += 1.0f;
+                    if (crushCount_ >= hold) {
+                        crushCount_ -= hold;
+                        const float step = 2.0f / std::pow(2.0f, 16.0f - y * 11.0f);
+                        crushHold_[0] = std::round(sl / step) * step;
+                        crushHold_[1] = std::round(sr2 / step) * step;
+                    }
+                    sl = crushHold_[0];
+                    sr2 = crushHold_[1];
+                }
+                sl = mix(l, sl, w);
+                sr2 = mix(r, sr2, w);
+                const float target = std::clamp(beatsToFrames(0.75f, bpm), 16.0f, static_cast<float>(dlSize_ - 4));
+                if (dlTime_ <= 0) dlTime_ = target;
+                dlTime_ += (target - dlTime_) * 0.002f;
+                const float dL = delayRead(0, dlTime_), dR = delayRead(1, dlTime_);
+                const float fb = 0.3f + y * 0.5f;
+                delayWrite((sl + sr2) * 0.5f * w + dR * fb, dL * fb);
+                ol = sl + dL * 0.7f;
+                orr = sr2 + dR * 0.7f;
                 break;
             }
             case kKpLfoLpf:
-            case kKpLfoHpf:
             case kKpLfoBpf: {
-                // LFO.2–4: фильтр качается по темпу. X — скорость, Y — резонанс.
+                // LFO.2 / LFO.4: фильтр качается по темпу. X — скорость, Y — резонанс.
                 const float m = 0.5f - 0.5f * static_cast<float>(std::cos(kTwoPi * lfoStep(x)));
                 if (upd) {
-                    const float fc = prog == kKpLfoLpf ? 200.0f * std::pow(2.0f, m * 6.3f)
-                                   : prog == kKpLfoHpf ? 40.0f * std::pow(2.0f, m * 7.0f)
-                                                       : 200.0f * std::pow(2.0f, m * 5.5f);
+                    const float fc = prog == kKpLfoLpf ? 200.0f * std::pow(2.0f, m * 6.3f) : 200.0f * std::pow(2.0f, m * 5.5f);
                     fc_.set(fc, prog == kKpLfoBpf ? 2.0f + y * 8.0f : yReso(y) * 1.3f, sr);
                 }
-                const SvfOut o = prog == kKpLfoLpf ? SvfOut::Low : prog == kKpLfoHpf ? SvfOut::High : SvfOut::Band;
+                const SvfOut o = prog == kKpLfoLpf ? SvfOut::Low : SvfOut::Band;
                 ol = soft(svf(f_[0], fc_, l, o));
                 orr = soft(svf(f_[1], fc_, r, o));
                 if (prog == kKpLfoBpf) {

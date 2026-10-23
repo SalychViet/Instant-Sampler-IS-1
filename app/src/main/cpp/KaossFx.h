@@ -17,8 +17,8 @@ enum KaossProgram : int {
     kKpLooperFR, kKpBreakLoop, kKpLoopRvsDelay, kKpFreezeLoop, kKpHighLooper, kKpShuttleLoop, kKpSliceLoop, kKpLoopBreaker, kKpKp2Looper, kKpVinylLoop,
     // 4 MOD — Sweep Noise (с хвостом дилея и ревёрба) + программы Modulation KP3+
     kKpSweepNoise, kKpVinylBreak, kKpBreakVerb, kKpRingModHpf, kKpManuPhaser, kKpTalkFilter, kKpDigiTalk, kKpDuckComp, kKpCompressor, kKpPitchDelay,
-    // 5 LFO — LFO.1 … LF.10 (вместо LFO.8 — LF.26 Audio Gate & LPF)
-    kKpJagFilter, kKpLfoLpf, kKpLfoHpf, kKpLfoBpf, kKpLfoHpfDelay, kKpInfiniteHpf, kKpRandomLpf, kKpGateLpf, kKpBitCrush, kKpDistortion,
+    // 5 LFO — программы LFO KP3+, два комбо-эффекта, Audio Gate & LPF, Bit Crush и Distortion
+    kKpDistBpfDelay, kKpLfoLpf, kKpRepeatCrushDelay, kKpLfoBpf, kKpLfoHpfDelay, kKpInfiniteHpf, kKpRandomLpf, kKpGateLpf, kKpBitCrush, kKpDistortion,
     kKpCount
 };
 

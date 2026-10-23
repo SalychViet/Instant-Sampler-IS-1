@@ -58,10 +58,10 @@ object Kaoss {
         KaossProgram("Mod.8", "DUCKING COMP", "SENSITIVITY", "DEPTH"),
         KaossProgram("Mod.9", "COMPRESSOR", "SENSITIVITY", "ATTACK"),
         KaossProgram("Md.18", "PITCH SHIFTER & DELAY", "PITCH SHIFT", "DELAY DEPTH"),
-        // 5 LFO — LFO.1 … LF.10 (вместо LFO.8 — LF.26)
-        KaossProgram("LFO.1", "JAG FILTER", "LFO SPEED", "REV < > FWD"),
+        // 5 LFO — программы LFO KP3+, два комбо-эффекта, Audio Gate & LPF, Bit Crush и Distortion
+        KaossProgram("Cmb.1", "DIST + BPF + DELAY", "DELAY TIME", "BPF CUT&RESO"),
         KaossProgram("LFO.2", "LFO LPF", "LFO SPEED", "RESONANCE"),
-        KaossProgram("LFO.3", "LFO HPF", "LFO SPEED", "RESONANCE"),
+        KaossProgram("Cmb.2", "REPEAT + CRUSH + PP DLY", "LOOPER BEAT", "CRUSH & DELAY"),
         KaossProgram("LFO.4", "LFO BPF+", "LFO SPEED", "RESONANCE"),
         KaossProgram("LFO.5", "LFO HPF+ & DELAY", "DELAY TIME", "HPF & DELAY"),
         KaossProgram("LFO.6", "INFINITE LFO HPF+", "LFO SPEED", "RESONANCE"),
