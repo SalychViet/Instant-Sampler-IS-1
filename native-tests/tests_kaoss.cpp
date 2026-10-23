@@ -198,3 +198,17 @@ TEST(KaossTest, AudioGateMutesOffSteps) {
     for (int i = 25000; i < 29000; ++i) o = std::max(o, std::fabs(buf[2 * i]));
     EXPECT_GT(o, 0.2f);   // шаг 5 (24000..30000) открыт
 }
+
+TEST(KaossTest, DistortionKeepsLoudnessAtFullDrive) {
+    KaossFx fx;
+    fx.setSampleRate(kSr);
+    fx.setProgram(kKpDistortion);
+    fx.setXY(1.0f, 0.8f);
+    fx.setTouch(true);
+    auto buf = sine(kSr, 220.0f, 0.3f);
+    const auto in = buf;
+    run(fx, buf);
+    double ein = 0, eout = 0;
+    for (int i = kSr / 2; i < kSr; ++i) { ein += in[2 * i] * in[2 * i]; eout += buf[2 * i] * buf[2 * i]; }
+    EXPECT_LT(std::fabs(10.0 * std::log10(eout / ein)), 3.0);   // ±3 дБ от исходной громкости
+}

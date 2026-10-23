@@ -67,8 +67,8 @@ object Kaoss {
         KaossProgram("LFO.6", "INFINITE LFO HPF+", "LFO SPEED", "RESONANCE"),
         KaossProgram("LFO.7", "RANDOM LFO LPF", "LFO SPEED", "LFO DEPTH"),
         KaossProgram("LF.26", "AUDIO GATE & LPF", "GATE PATTERN", "LPF CUT&RESO"),
-        KaossProgram("LFO.9", "YOI YOI", "LFO SPEED", "YOI LEVEL"),
-        KaossProgram("LF.10", "FLANGER", "LFO SPEED", "FEEDBACK"),
+        KaossProgram("LoF.1", "BIT CRUSH", "RATE", "BITS"),
+        KaossProgram("LoF.2", "DISTORTION", "DRIVE", "TONE"),
     )
 }
 

@@ -107,6 +107,7 @@ void KaossFx::resetState() {
     gateEnv_ = 0;
     gateHold_ = 0;
     compGain_ = 1;
+    agIn_ = agOut_ = 0;
     compEnv_ = 0;
     lfoCycle_ = -1;
     grainSlot_ = -1;
@@ -171,6 +172,16 @@ float KaossFx::pitchTap(int ch, double& phase, double ratio, double win, bool ad
     const float g1 = std::sin(kPi * static_cast<float>(phase));
     const float g2 = std::sin(kPi * static_cast<float>(ph2));
     return hist(ch, base - phase * win) * g1 + hist(ch, base - ph2 * win) * g2;
+}
+
+// Перегруз делает звук громче — подтягиваем выход к громкости входа (RMS, ~60 мс).
+void KaossFx::autoGain(float inL, float inR, float& l, float& r) {
+    const float c = 1.0f - std::exp(-1.0f / (0.06f * static_cast<float>(sr_)));
+    agIn_ += ((inL * inL + inR * inR) * 0.5f - agIn_) * c;
+    agOut_ += ((l * l + r * r) * 0.5f - agOut_) * c;
+    const float g = std::clamp(std::sqrt((agIn_ + 1e-9f) / (agOut_ + 1e-9f)), 0.05f, 1.5f);
+    l *= g;
+    r *= g;
 }
 
 float KaossFx::histAt(int ch, int64_t pos) const {
@@ -853,27 +864,28 @@ void KaossFx::process(float* io, int n, float bpm) {
                 orr = fr * ampEnv_;
                 break;
             }
-            case kKpYoiYoi: {
-                // LFO.9: «йой-йой» — высота и громкость качаются по темпу. X — скорость, Y — сила.
-                const float s = static_cast<float>(std::sin(kTwoPi * lfoStep(x)));
-                const float d = 2.0f + (0.5f + 0.5f * s) * y * 0.008f * sr;
-                ol = delayRead(0, d);
-                orr = delayRead(1, d);
-                delayWrite(l, r);
-                const float g = 1.0f - y * 0.35f * (0.5f - 0.5f * s);
-                ol *= g;
-                orr *= g;
+            case kKpBitCrush: {
+                // BIT CRUSH: X — понижение частоты дискретизации, Y — меньше бит.
+                const float hold = 1.0f + x * x * 47.0f;
+                crushCount_ += 1.0f;
+                if (crushCount_ >= hold) {
+                    crushCount_ -= hold;
+                    const float bits = 16.0f - y * 13.0f;
+                    const float step = 2.0f / std::pow(2.0f, bits);
+                    crushHold_[0] = std::round(l / step) * step;
+                    crushHold_[1] = std::round(r / step) * step;
+                }
+                ol = crushHold_[0];
+                orr = crushHold_[1];
                 break;
             }
-            case kKpFlanger: {
-                // LF.10: X — скорость LFO (по темпу), Y — обратная связь.
-                const float m = 0.5f + 0.5f * static_cast<float>(std::sin(kTwoPi * lfoStep(x)));
-                const float d = (0.0006f + m * 0.006f) * sr;
-                const float fb = y * 0.9f;
-                const float dL = delayRead(0, d), dR = delayRead(1, d + 3.0f);
-                delayWrite(l + dL * fb, r + dR * fb);
-                ol = (l + dL) * 0.65f;
-                orr = (r + dR) * 0.65f;
+            case kKpDistortion: {
+                // DISTORTION: X — драйв, Y — тембр. Громкость возвращается к исходной (autoGain).
+                const float drive = 1.0f + x * x * 50.0f;
+                if (upd) fc_.set(700.0f * std::pow(2.0f, y * 4.5f), 0.7f, sr);
+                ol = svf(f_[0], fc_, std::tanh(l * drive), SvfOut::Low);
+                orr = svf(f_[1], fc_, std::tanh(r * drive), SvfOut::Low);
+                autoGain(l, r, ol, orr);
                 break;
             }
             default: break;
