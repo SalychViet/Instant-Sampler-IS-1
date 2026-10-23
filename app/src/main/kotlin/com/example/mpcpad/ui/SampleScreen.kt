@@ -44,6 +44,7 @@ import com.example.mpcpad.capture.CaptureStatus
 import com.example.mpcpad.sample.SampleViewModel
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 private val WaveBg = Color(0xFF111113)
@@ -157,22 +158,24 @@ fun SampleBody(
         ) {
             WaveformView(vm, Modifier.weight(1f).fillMaxSize())
             // Высота выбранного пада: PITCH — полутоны, DETUNE — центы между ними.
+            // Отпустил ручку — сразу слышно выделение с новой высотой.
             val pu = app.pads[app.selected]
-            Column(
-                Modifier.fillMaxHeight(),
-                verticalArrangement = Arrangement.SpaceEvenly,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Knob("PITCH", (pu.pitch + 12f) / 24f, { n ->
-                    val v = (n * 24f - 12f).roundToInt().toFloat()
-                    app.setParam(app.selected, PadParam.PITCH, v) { it.copy(pitch = v) }
-                }, diameter = 38.dp, defaultValue = 0.5f)
-                Text("%+.0f ST".format(pu.pitch), color = TextMain, fontSize = 10.sp)
-                Knob("DETUNE", (pu.detune + 50f) / 100f, { n ->
-                    val v = (n * 100f - 50f).roundToInt().toFloat()
-                    app.setParam(app.selected, PadParam.DETUNE, v) { it.copy(detune = v) }
-                }, diameter = 38.dp, defaultValue = 0.5f)
-                Text("%+.0f CT".format(pu.detune), color = TextMain, fontSize = 10.sp)
+            vm.previewRate = 2f.pow((pu.pitch + pu.detune / 100f) / 12f)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Knob("PITCH", (pu.pitch + 12f) / 24f, { n ->
+                        val v = (n * 24f - 12f).roundToInt().toFloat()
+                        app.setParam(app.selected, PadParam.PITCH, v) { it.copy(pitch = v) }
+                    }, diameter = 34.dp, defaultValue = 0.5f, onTouch = { down -> if (!down) vm.previewSelection() })
+                    Text("%+.0f ST".format(pu.pitch), color = TextMain, fontSize = 10.sp)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Knob("DETUNE", (pu.detune + 50f) / 100f, { n ->
+                        val v = (n * 100f - 50f).roundToInt().toFloat()
+                        app.setParam(app.selected, PadParam.DETUNE, v) { it.copy(detune = v) }
+                    }, diameter = 34.dp, defaultValue = 0.5f, onTouch = { down -> if (!down) vm.previewSelection() })
+                    Text("%+.0f CT".format(pu.detune), color = TextMain, fontSize = 10.sp)
+                }
             }
         }
 
@@ -265,6 +268,8 @@ private fun WaveformView(vm: SampleViewModel, modifier: Modifier = Modifier) {
                             val f = offset.x / size.width
                             which = if (abs(f - vm.selStart) <= abs(f - vm.selEnd)) 1 else 2
                         },
+                        // отпустил границу выделения — сразу слышно, что осталось
+                        onDragEnd = { if (vm.clip != null) vm.previewSelection() },
                         onDrag = { change, _ ->
                             change.consume()
                             if (vm.clip != null) {

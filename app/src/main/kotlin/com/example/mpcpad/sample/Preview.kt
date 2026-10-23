@@ -2,6 +2,7 @@ package com.example.mpcpad.sample
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 
 /** Прослушивание фрагмента семпла в редакторе (мимо движка). */
@@ -12,7 +13,8 @@ class Preview {
 
     private var track: AudioTrack? = null
 
-    fun play(clip: SampleClip, startFrame: Int, endFrame: Int) {
+    /** [rate] — скорость/высота как у пада: 2^((PITCH + DETUNE/100) / 12). */
+    fun play(clip: SampleClip, startFrame: Int, endFrame: Int, rate: Float = 1f) {
         stop()
         val s = startFrame.coerceIn(0, clip.frames)
         val e = endFrame.coerceIn(s, minOf(clip.frames, s + clip.sampleRate * MAX_SECONDS))
@@ -38,6 +40,9 @@ class Preview {
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .build()
             t.write(clip.data, clip.channels * s, count, AudioTrack.WRITE_BLOCKING)
+            if (rate != 1f) {
+                t.playbackRate = (clip.sampleRate * rate).toInt().coerceIn(4000, 2 * AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_MUSIC))
+            }
             t.play()
             track = t
         } catch (ex: Exception) {
