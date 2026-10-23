@@ -16,7 +16,7 @@ enum KaossProgram : int {
     // 3 REPEAT — LoP.1 … LP.10
     kKpLooperFR, kKpBreakLoop, kKpLoopRvsDelay, kKpFreezeLoop, kKpHighLooper, kKpShuttleLoop, kKpSliceLoop, kKpLoopBreaker, kKpKp2Looper, kKpVinylLoop,
     // 4 MOD — Sweep Noise (с хвостом дилея и ревёрба) + программы Modulation KP3+
-    kKpSweepNoise, kKpVinylBreak, kKpBreakVerb, kKpJetMinus, kKpManuPhaser, kKpTalkFilter, kKpDigiTalk, kKpDuckComp, kKpCompressor, kKpPitchDelay,
+    kKpSweepNoise, kKpVinylBreak, kKpBreakVerb, kKpRingModHpf, kKpManuPhaser, kKpTalkFilter, kKpDigiTalk, kKpDuckComp, kKpCompressor, kKpPitchDelay,
     // 5 LFO — LFO.1 … LF.10 (вместо LFO.8 — LF.26 Audio Gate & LPF)
     kKpJagFilter, kKpLfoLpf, kKpLfoHpf, kKpLfoBpf, kKpLfoHpfDelay, kKpInfiniteHpf, kKpRandomLpf, kKpGateLpf, kKpYoiYoi, kKpFlanger,
     kKpCount
@@ -140,6 +140,7 @@ private:
     float compEnv_ = 0;
     float sh_ = 0, shS_ = 0;
     double pitchPh_ = 0;
+    double osc_ = 0;
     int64_t lfoCycle_ = -1;
     int64_t grainSrc_ = 0;
     int64_t grainSlot_ = -1;

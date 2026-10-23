@@ -475,13 +475,12 @@ void KaossFx::process(float* io, int n, float bpm) {
                 orr = r + rr * 2.4f * y * gateEnv_;
                 break;
             }
-            case kKpJetSpace:
-            case kKpJetMinus: {
-                // Mod.3 JET+ / Mod.4 JET-: «реактивный» флэнджер без LFO. X — задержка, Y — обратная связь.
+            case kKpJetSpace: {
+                // Mod.3 JET+: «реактивный» флэнджер без LFO. X — задержка, Y — обратная связь.
                 const float target = (0.0002f + x * x * 0.009f) * sr;
                 if (dlTime_ <= 0) dlTime_ = target;
                 dlTime_ += (target - dlTime_) * 0.003f;
-                const float fb = (prog == kKpJetMinus ? -1.0f : 1.0f) * y * 0.93f;
+                const float fb = y * 0.93f;
                 const float dL = delayRead(0, dlTime_), dR = delayRead(1, dlTime_ + 2.0f);
                 delayWrite(l + dL * fb, r + dR * fb);
                 ol = (l + dL) * 0.65f;
@@ -686,6 +685,17 @@ void KaossFx::process(float* io, int n, float bpm) {
                 }
                 ol = vl;
                 orr = vr;
+                break;
+            }
+            case kKpRingModHpf: {
+                // Md.15: кольцевая модуляция (металл, «робот») + ФВЧ. X — частота модуляции, Y — ФВЧ (частота и резонанс).
+                osc_ += 30.0 * std::pow(2.0, x * 7.0) / sr_;   // 30 Гц … 3.8 кГц
+                osc_ -= std::floor(osc_);
+                const float m = static_cast<float>(std::sin(kTwoPi * osc_));
+                float fl, fr;
+                yFilter(1, l * m * 1.4f, r * m * 1.4f, fl, fr);
+                ol = fl;
+                orr = fr;
                 break;
             }
             case kKpManuPhaser: {

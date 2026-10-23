@@ -51,7 +51,7 @@ object Kaoss {
         KaossProgram("SWP.1", "SWEEP NOISE", "SWEEP", "TAIL (DLY+RVB)"),
         KaossProgram("Mod.1", "VINYL BREAK", "BREAK TIME", "SCRATCH"),
         KaossProgram("Mod.2", "BREAK REVERB", "BREAK TIME", "SCRATCH"),
-        KaossProgram("Mod.4", "JET -", "DELAY TIME", "FEEDBACK"),
+        KaossProgram("Md.15", "RING MOD & HPF", "RING MOD FREQ", "HPF CUT&RESO"),
         KaossProgram("Mod.5", "MANUAL PHASER", "FREQUENCY", "RESONANCE"),
         KaossProgram("Mod.6", "TALK FILTER", "1ST FORMANT", "2ND FORMANT"),
         KaossProgram("Mod.7", "DIGI TALK", "1ST FORMANT", "2ND FORMANT"),
