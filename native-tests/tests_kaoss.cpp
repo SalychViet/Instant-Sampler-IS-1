@@ -155,3 +155,46 @@ TEST(KaossTest, MixZeroIsDry) {
     for (int i = kSr / 2; i < kSr; ++i) d = std::max(d, std::fabs(buf[2 * i] - ref[2 * i]));
     EXPECT_LT(d, 1e-3f);
 }
+
+TEST(KaossTest, SweepNoiseTailFollowsY) {
+    // Y внизу — хвоста нет, вверху — шум тянется после отпускания (дилей + ревёрб).
+    float tailAt[2];
+    int k = 0;
+    for (float y : {0.0f, 1.0f}) {
+        KaossFx fx;
+        fx.setSampleRate(kSr);
+        fx.setProgram(kKpSweepNoise);
+        fx.setXY(0.6f, y);
+        fx.setTouch(true);
+        std::vector<float> buf(2 * kSr / 2, 0.0f);
+        run(fx, buf);
+        float m = 0;
+        for (float v : buf) m = std::max(m, std::fabs(v));
+        EXPECT_GT(m, 0.05f);   // шум слышен поверх тишины
+        fx.setTouch(false);
+        std::vector<float> tail(2 * kSr, 0.0f);
+        run(fx, tail);
+        float t = 0;
+        for (int i = kSr / 4; i < kSr; ++i) t = std::max(t, std::fabs(tail[2 * i]));
+        tailAt[k++] = t;
+    }
+    EXPECT_LT(tailAt[0], 0.001f);
+    EXPECT_GT(tailAt[1], 0.01f);
+}
+
+TEST(KaossTest, AudioGateMutesOffSteps) {
+    KaossFx fx;
+    fx.setSampleRate(kSr);
+    fx.setProgram(kKpGateLpf);
+    fx.setXY(0.0f, 0.0f);   // ритм 1000100010001000: звучит только каждая 4-я шестнадцатая
+    fx.setTouch(true);
+    auto buf = sine(kSr, 440.0f);
+    run(fx, buf);
+    // 120 BPM: 1/16 = 6000 кадров. Шаг 2 (кадры 6000..12000) закрыт.
+    float m = 0;
+    for (int i = 7000; i < 11000; ++i) m = std::max(m, std::fabs(buf[2 * i]));
+    EXPECT_LT(m, 0.01f);
+    float o = 0;
+    for (int i = 25000; i < 29000; ++i) o = std::max(o, std::fabs(buf[2 * i]));
+    EXPECT_GT(o, 0.2f);   // шаг 5 (24000..30000) открыт
+}

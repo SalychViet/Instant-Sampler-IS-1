@@ -15,10 +15,10 @@ enum KaossProgram : int {
     kKpDelay, kKpEchoBreak, kKpTapeEcho, kKpDubEcho, kKpPingPong, kKpPumpReverb, kKpFreezeReverb, kKpGateReverb, kKpJetSpace, kKpGrainShift,
     // 3 REPEAT — LoP.1 … LP.10
     kKpLooperFR, kKpBreakLoop, kKpLoopRvsDelay, kKpFreezeLoop, kKpHighLooper, kKpShuttleLoop, kKpSliceLoop, kKpLoopBreaker, kKpKp2Looper, kKpVinylLoop,
-    // 4 MOD — Mod.1 … Md.10
-    kKpVinylBreak, kKpBreakVerb, kKpJetPlus, kKpJetMinus, kKpManuPhaser, kKpTalkFilter, kKpDigiTalk, kKpDuckComp, kKpCompressor, kKpLowComp,
-    // 5 LFO — LFO.1 … LF.10
-    kKpJagFilter, kKpLfoLpf, kKpLfoHpf, kKpLfoBpf, kKpLfoHpfDelay, kKpInfiniteHpf, kKpRandomLpf, kKpRandomHpf, kKpYoiYoi, kKpFlanger,
+    // 4 MOD — Sweep Noise (с хвостом дилея и ревёрба) + программы Modulation KP3+
+    kKpSweepNoise, kKpVinylBreak, kKpBreakVerb, kKpJetMinus, kKpManuPhaser, kKpTalkFilter, kKpDigiTalk, kKpDuckComp, kKpCompressor, kKpPitchDelay,
+    // 5 LFO — LFO.1 … LF.10 (вместо LFO.8 — LF.26 Audio Gate & LPF)
+    kKpJagFilter, kKpLfoLpf, kKpLfoHpf, kKpLfoBpf, kKpLfoHpfDelay, kKpInfiniteHpf, kKpRandomLpf, kKpGateLpf, kKpYoiYoi, kKpFlanger,
     kKpCount
 };
 
@@ -60,6 +60,7 @@ private:
     static void svf3(Svf& s, const SvfCoef& c, float v0, float& lo, float& bp, float& hp);
     float loopLen(float x, float bpm) const;   // Looper Beat по X, кадры
     void compress(float level, float thresh, float attackMs, float releaseMs);
+    float pitchTap(int ch, double& phase, double ratio, double win, bool advance);
 
     void resetState();
     float hist(int ch, double pos) const;   // чтение истории с интерполяцией (абсолютная позиция)
@@ -138,6 +139,7 @@ private:
     float compGain_ = 1;
     float compEnv_ = 0;
     float sh_ = 0, shS_ = 0;
+    double pitchPh_ = 0;
     int64_t lfoCycle_ = -1;
     int64_t grainSrc_ = 0;
     int64_t grainSlot_ = -1;

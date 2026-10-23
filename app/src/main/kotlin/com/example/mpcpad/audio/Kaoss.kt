@@ -47,18 +47,18 @@ object Kaoss {
         KaossProgram("LoP.8", "LOOP BREAKER", "LOOPER BEAT", "SCRATCH"),
         KaossProgram("LoP.9", "KP2 LOOPER", "LOOPER BEAT", "LPF CUTOFF"),
         KaossProgram("LP.10", "VINYL LOOPER", "LOOPER BEAT", "REV < > FWD"),
-        // 4 MOD — Mod.1 … Md.10
+        // 4 MOD — Sweep Noise + программы Modulation KP3+
+        KaossProgram("SWP.1", "SWEEP NOISE", "SWEEP", "TAIL (DLY+RVB)"),
         KaossProgram("Mod.1", "VINYL BREAK", "BREAK TIME", "SCRATCH"),
         KaossProgram("Mod.2", "BREAK REVERB", "BREAK TIME", "SCRATCH"),
-        KaossProgram("Mod.3", "JET +", "DELAY TIME", "FEEDBACK"),
         KaossProgram("Mod.4", "JET -", "DELAY TIME", "FEEDBACK"),
         KaossProgram("Mod.5", "MANUAL PHASER", "FREQUENCY", "RESONANCE"),
         KaossProgram("Mod.6", "TALK FILTER", "1ST FORMANT", "2ND FORMANT"),
         KaossProgram("Mod.7", "DIGI TALK", "1ST FORMANT", "2ND FORMANT"),
         KaossProgram("Mod.8", "DUCKING COMP", "SENSITIVITY", "DEPTH"),
         KaossProgram("Mod.9", "COMPRESSOR", "SENSITIVITY", "ATTACK"),
-        KaossProgram("Md.10", "LOW COMPRESSOR", "SENSITIVITY", "ATTACK"),
-        // 5 LFO — LFO.1 … LF.10
+        KaossProgram("Md.18", "PITCH SHIFTER & DELAY", "PITCH SHIFT", "DELAY DEPTH"),
+        // 5 LFO — LFO.1 … LF.10 (вместо LFO.8 — LF.26)
         KaossProgram("LFO.1", "JAG FILTER", "LFO SPEED", "REV < > FWD"),
         KaossProgram("LFO.2", "LFO LPF", "LFO SPEED", "RESONANCE"),
         KaossProgram("LFO.3", "LFO HPF", "LFO SPEED", "RESONANCE"),
@@ -66,7 +66,7 @@ object Kaoss {
         KaossProgram("LFO.5", "LFO HPF+ & DELAY", "DELAY TIME", "HPF & DELAY"),
         KaossProgram("LFO.6", "INFINITE LFO HPF+", "LFO SPEED", "RESONANCE"),
         KaossProgram("LFO.7", "RANDOM LFO LPF", "LFO SPEED", "LFO DEPTH"),
-        KaossProgram("LFO.8", "RANDOM LFO HPF+", "LFO SPEED", "LFO DEPTH"),
+        KaossProgram("LF.26", "AUDIO GATE & LPF", "GATE PATTERN", "LPF CUT&RESO"),
         KaossProgram("LFO.9", "YOI YOI", "LFO SPEED", "YOI LEVEL"),
         KaossProgram("LF.10", "FLANGER", "LFO SPEED", "FEEDBACK"),
     )
