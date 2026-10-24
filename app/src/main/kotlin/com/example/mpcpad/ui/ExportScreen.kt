@@ -130,8 +130,10 @@ fun ExportScreen(app: AppViewModel, modifier: Modifier = Modifier) {
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text("EXPORT MASTER", style = Skin.Lcd.copy(fontSize = 10.sp))
+                // Что пишем и сколько — двумя строками: в одну широкий шрифт LCD не помещается.
+                Text(what, style = Skin.Lcd.copy(fontSize = 15.sp), maxLines = 1)
                 Text(
-                    String.format("%s · %d BAR%s · %.1f S", what, bars, if (bars == 1) "" else "S", seconds),
+                    String.format("%d BAR%s · %.1f S", bars, if (bars == 1) "" else "S", seconds),
                     style = Skin.Lcd.copy(fontSize = 15.sp),
                     maxLines = 1,
                 )
