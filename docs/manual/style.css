@@ -243,3 +243,63 @@ ol.toc li .tn { flex: none; }
 .flow3 > div > .crop { overflow: hidden; }
 
 body.en .page::after { content: "IS-1 · User Manual"; }
+
+/* ---------------- инструкция по установке ---------------- */
+body.install .page::after { content: "IS-1 · установка на телефон"; }
+.apkcard { display: flex; align-items: center; gap: 4mm; background: #fff; border-radius: 3mm; padding: 4mm 6mm; box-shadow: 0 2mm 6mm rgba(0,0,0,.15); text-align: left; margin-bottom: 10mm; }
+.apkcard b { display: block; font-size: 13pt; } .apkcard span { color: var(--dim); font-size: 10pt; }
+.apkic { width: 14mm; height: 14mm; border-radius: 3mm; background: #3ddc84; color: #073; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 10pt; }
+.cover-steps { display: flex; align-items: center; gap: 3mm; }
+.cover-steps > div:not(.farrow) { position: relative; background: #fff; border-radius: 2.5mm; padding: 4mm 5mm; font-size: 10.5pt; box-shadow: 0 1mm 3mm rgba(0,0,0,.1); }
+.cover-steps.small > div:not(.farrow) { font-size: 9.5pt; padding: 4mm 3mm 3mm 5mm; flex: 1; }
+.sumcard { background: #f4f5f6; border-radius: 3mm; padding: 4mm; margin-top: 4mm; }
+.sumcard h4 { margin-top: 0; }
+.ways { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4mm; margin-bottom: 4mm; }
+.way { background: #f4f5f6; border-radius: 3mm; padding: 4mm; position: relative; font-size: 9.8pt; }
+.way.best { background: #eef7ff; box-shadow: inset 0 0 0 0.5mm var(--blue); }
+.wh { font-weight: 700; font-size: 11.5pt; margin-bottom: 2mm; }
+.badge { position: absolute; top: -2.5mm; right: 3mm; background: var(--blue); color: #fff; font-size: 7.5pt; padding: 0.6mm 2mm; border-radius: 2mm; }
+.phones { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm; margin: 2mm 0 4mm; }
+.phonewrap { text-align: center; }
+.phone { position: relative; width: 44mm; height: 82mm; margin: 0 auto; background: #f2f3f5; border: 1.6mm solid #1d2024; border-radius: 5mm; overflow: visible; display: flex; flex-direction: column; }
+.ph-bar { display: flex; justify-content: space-between; font-size: 6pt; color: #555; padding: 1mm 2.5mm 0.5mm; }
+.ph-screen { flex: 1; position: relative; padding: 2mm; display: flex; flex-direction: column; justify-content: center; font-size: 7.6pt; text-align: left; overflow: hidden; border-radius: 0 0 3.4mm 3.4mm; }
+.ph-cap { font-size: 8.8pt; margin-top: 2mm; color: #33383e; }
+.phone > .mark { width: 5.5mm; height: 5.5mm; font-size: 9pt; background: var(--red); }
+.ph-txt { font-size: 7.6pt; line-height: 1.35; }
+.pc { font-size: 22pt; text-align: center; margin-bottom: 2mm; }
+.dlg-and { background: #fff; border-radius: 3mm; padding: 3mm; box-shadow: 0 1mm 4mm rgba(0,0,0,.18); }
+.dl-icon { font-size: 14pt; text-align: center; margin-bottom: 1mm; }
+.dl-icon .appicon { margin: 0 auto; }
+.dl-t { font-weight: 700; font-size: 8.6pt; text-align: center; margin-bottom: 1.5mm; }
+.dl-x { font-size: 7.2pt; color: #555; text-align: center; margin-bottom: 2mm; }
+.dl-b { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 1.5mm; font-size: 7pt; font-weight: 700; }
+.dl-b.solo { justify-content: center; margin-top: 3mm; }
+.dl-b .pa { color: #5d636b; padding: 1mm 1.5mm; }
+.dl-b .pb { color: #fff; background: #1a73e8; border-radius: 3mm; padding: 1mm 2.2mm; white-space: nowrap; }
+.dl-b .pa { white-space: nowrap; }
+.appicon { width: 11mm; height: 11mm; border-radius: 2.6mm; overflow: hidden; background: #fff; box-shadow: 0 0.5mm 1.5mm rgba(0,0,0,.25); display: flex; align-items: center; }
+.appicon .crop { box-shadow: none; border-radius: 0; }
+.tg-head, .set-head { position: absolute; top: 0; left: 0; right: 0; background: #fff; padding: 2mm; font-weight: 700; font-size: 7.6pt; border-bottom: 0.3mm solid #ddd; }
+.tg-msg { align-self: flex-end; background: #dcf8c6; border-radius: 2.5mm; padding: 2mm; width: 92%; }
+.tg-file { display: flex; gap: 2mm; align-items: center; }
+.tg-file b { width: 8mm; height: 8mm; border-radius: 50%; background: #3390ec; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 7pt; flex: none; }
+.tg-file.wide { background: #fff; border-radius: 2mm; padding: 2mm; margin-top: 4mm; }
+.tg-file.wide b { border-radius: 1.5mm; background: #3ddc84; color: #073; }
+.tg-name { font-size: 6.8pt; font-weight: 700; word-break: break-all; } .tg-size { font-size: 6.4pt; color: #666; }
+.tg-time { text-align: right; font-size: 6pt; color: #4a8; margin-top: 1mm; }
+.set-app { display: flex; gap: 2mm; align-items: center; margin-top: 6mm; margin-bottom: 3mm; }
+.set-app small { display: block; color: #777; font-size: 6.4pt; }
+.set-ic { width: 8mm; height: 8mm; border-radius: 50%; background: #3390ec; color: #fff; display: flex; align-items: center; justify-content: center; }
+.set-row { display: flex; align-items: center; gap: 2mm; background: #fff; border-radius: 2mm; padding: 2mm; font-size: 7.2pt; }
+.set-row span:first-child { flex: 1; }
+.tg-sw { width: 8mm; height: 4.4mm; border-radius: 3mm; background: #1a73e8; position: relative; flex: none; }
+.tg-sw i { position: absolute; right: 0.5mm; top: 0.5mm; width: 3.4mm; height: 3.4mm; border-radius: 50%; background: #fff; }
+.set-note { font-size: 6.4pt; color: #777; margin-top: 2mm; }
+.scan { text-align: center; } .scan b { display: block; font-size: 8.4pt; margin-top: 2mm; } .scan small { color: #2fbf5b; font-size: 7pt; }
+.scan-c { width: 16mm; height: 16mm; border-radius: 50%; border: 1mm solid #2fbf5b; color: #2fbf5b; font-size: 16pt; display: flex; align-items: center; justify-content: center; margin: 0 auto; }
+.done-ic { display: flex; justify-content: center; margin-bottom: 2mm; } .done-t { text-align: center; display: block; margin-bottom: 4mm; font-size: 8.6pt; }
+.home { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; justify-items: center; }
+.hic { width: 9mm; height: 9mm; border-radius: 2.4mm; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 11pt; box-shadow: 0 0.4mm 1mm rgba(0,0,0,.15); }
+.hic.me { width: auto; height: auto; background: none; box-shadow: none; flex-direction: column; font-size: 6.5pt; grid-column: 2; }
+.landscape { font-size: 30pt; text-align: center; color: var(--accent); }
