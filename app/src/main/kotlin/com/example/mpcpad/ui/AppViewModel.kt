@@ -20,6 +20,7 @@ import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.sample.BankStore
 import com.example.mpcpad.sample.PadLibrary
 import com.example.mpcpad.sample.PadStore
+import com.example.mpcpad.sample.ProjectFile
 import com.example.mpcpad.sample.SampleClip
 import android.content.Context
 import android.net.Uri
@@ -330,6 +331,96 @@ class AppViewModel : ViewModel() {
     fun setLoopDiv(pad: Int, div: Int, bpm: Float) {
         update(pad) { it.copy(loopDiv = div) }
         applyLoopDiv(pad, bpm)
+    }
+
+    // ---- PRJCT: проект целиком в файл .sal и из него ----
+    var projectOpen by mutableStateOf(false)
+    /** Имя проекта — по имени файла .sal, который сохранили или открыли последним. */
+    var projectName by mutableStateOf(ProjectStore.name)
+    var projectBusy by mutableStateOf(false)
+
+    /** Сохранить весь проект (семплы, параметры, паттерны, песня, эффекты, темп) в [uri]. */
+    fun saveProject(context: Context, uri: Uri, fileName: String) {
+        val newName = fileName.substringBeforeLast('.')
+        val prevName = projectName
+        projectName = newName
+        val json = ProjectStore.toJson(this)   // движок читаем здесь, в UI-потоке
+        projectBusy = true
+        viewModelScope.launch {
+            val n = try {
+                withContext(Dispatchers.IO) { ProjectFile.save(context, uri, json) }
+            } catch (_: Exception) {
+                -1
+            }
+            projectBusy = false
+            if (n < 0) projectName = prevName
+            flash(if (n < 0) "PROJECT: SAVE FAILED" else "PROJECT SAVED · $n PADS", 2500)
+        }
+    }
+
+    /** Открыть проект .sal: текущий проект целиком заменяется. */
+    fun loadProject(context: Context, uri: Uri, fileName: String) {
+        projectBusy = true
+        flash("LOADING PROJECT…", 5000)
+        viewModelScope.launch {
+            val bundle = try {
+                withContext(Dispatchers.IO) { ProjectFile.load(context, uri) }
+            } catch (_: Exception) {
+                null
+            }
+            if (bundle == null) {
+                projectBusy = false
+                flash("NOT AN IS-1 PROJECT (.sal)", 2500)
+                return@launch
+            }
+            // Паттерны пишутся в движок напрямую — только при остановленном звуке.
+            AudioEngine.seqStop()
+            AudioEngine.seqSetRecording(false)
+            AudioEngine.allNotesOff()
+            AudioEngine.stop()
+            for (p in 0 until 64) AudioEngine.seqLoadPattern(p, LongArray(0), LongArray(0), 1)
+            AudioEngine.songClear()
+            AudioEngine.songEnable(false)
+            ProjectStore.applyJson(bundle.json)
+
+            var n = 0
+            for (pad in 0 until 64) {
+                val clip = bundle.clips[pad]
+                if (clip != null && AudioEngine.loadSample(pad, clip.data, clip.channels, clip.sampleRate)) {
+                    PadLibrary.set(pad, bundle.names[pad], clip)
+                    n++
+                } else {
+                    PadStore.delete(context, pad)
+                }
+            }
+            val saved = ProjectStore.pads
+            for (i in 0 until 64) pads[i] = saved?.getOrNull(i) ?: PadUi()
+            kaossMix.clear(); kaossMix.addAll(ProjectStore.kaossMix)
+            kaossProgram = ProjectStore.kaossProgram.coerceIn(0, 49)
+            motionPlaying = -1
+            motionRecording = -1
+            motions.clear(); motions.addAll(ProjectStore.motions)
+            fxAuto = ProjectStore.fxAuto
+            seqPattern = ProjectStore.pattern
+            undoStack.clear()
+            canUndo = false
+            projectName = fileName.substringBeforeLast('.')
+
+            val bpm = bundle.json.optDouble("bpm", com.example.mpcpad.Settings.bpm.toDouble()).toFloat().coerceIn(30f, 300f)
+            com.example.mpcpad.Settings.bpm = bpm
+            AudioEngine.start()
+            AudioEngine.seqSetBpm(bpm)
+            resyncLoops(bpm)
+
+            // Семплы на диск — в фоне, звук уже играет.
+            withContext(Dispatchers.IO) {
+                for (pad in 0 until 64) bundle.clips[pad]?.let { PadStore.save(context, pad, it, bundle.names[pad]) }
+            }
+            ProjectStore.save(context, this@AppViewModel)
+            projectBusy = false
+            projectOpen = false
+            flash("PROJECT ${projectName.uppercase()} · $n PADS", 2500)
+        }
     }
 
     // ---- SETUP: банки в файл и из файла ----

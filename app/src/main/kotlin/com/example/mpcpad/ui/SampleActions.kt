@@ -15,4 +15,8 @@ interface SampleActions {
     fun saveBank(bank: Int)
     /** SETUP → IMPORT BANK: выбрать файл банка и загрузить его в банк [bank] (0–3). */
     fun importBank(bank: Int)
+    /** PRJCT: выбрать, куда сохранить проект (.sal). */
+    fun saveProject()
+    /** PRJCT: выбрать файл проекта .sal и открыть его. */
+    fun openProject()
 }

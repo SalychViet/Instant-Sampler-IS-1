@@ -1091,6 +1091,9 @@ fun MpcRoot(actions: SampleActions) {
                         app.setupOpen = true
                     }
                 }
+                HwButton("PRJCT", Modifier.fillMaxWidth(), led = app.projectOpen, height = 24.dp) {
+                    app.projectOpen = true
+                }
             }
         }
 
@@ -1110,6 +1113,9 @@ fun MpcRoot(actions: SampleActions) {
 
         // ---- ввод темпа цифрами ----
         if (app.tempoEntry) TempoEntry(app, Modifier.fillMaxSize())
+
+        // ---- PRJCT: сохранить / открыть проект ----
+        if (app.projectOpen) ProjectScreen(app, actions, Modifier.fillMaxSize())
 
         // ---- EXPORT мастера ----
         if (app.exportOpen) ExportScreen(app, Modifier.fillMaxSize())

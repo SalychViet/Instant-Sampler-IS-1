@@ -95,6 +95,16 @@ class MainActivity : ComponentActivity(), SampleActions {
             if (uri != null) appVm.importBank(applicationContext, uri, pendingBank)
         }
 
+    private val saveProjectLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+            if (uri != null) appVm.saveProject(applicationContext, uri, displayName(uri) ?: "IS-1.sal")
+        }
+
+    private val openProjectLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) appVm.loadProject(applicationContext, uri, displayName(uri) ?: "IS-1.sal")
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)   // экран не засыпает
@@ -200,6 +210,26 @@ class MainActivity : ComponentActivity(), SampleActions {
         pendingBank = bank
         // Мессенджеры и облака часто отдают zip как octet-stream — показываем все файлы.
         importBankLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+    }
+
+    override fun saveProject() {
+        val base = appVm.projectName.ifBlank {
+            "IS-1_" + java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
+        }
+        saveProjectLauncher.launch("$base.sal")
+    }
+
+    override fun openProject() {
+        // .sal — свой формат, у системы нет для него MIME-типа: показываем все файлы.
+        openProjectLauncher.launch(arrayOf("*/*"))
+    }
+
+    /** Имя выбранного файла (как его видит пользователь). */
+    private fun displayName(uri: android.net.Uri): String? = try {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+    } catch (_: Exception) {
+        null
     }
 
     private fun withMicPermission(action: () -> Unit) {

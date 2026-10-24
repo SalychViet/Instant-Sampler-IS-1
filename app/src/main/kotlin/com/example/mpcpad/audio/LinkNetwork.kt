@@ -20,6 +20,9 @@ object LinkNetwork {
         Settings.linkEnabled = on
         if (on) acquire(context) else release()
         AudioEngine.linkSetEnabled(on)
+        // Новая сессия Link стартует со 120 BPM — отдаём ей свой темп. Если в сети уже есть
+        // участники, Link всё равно подстроит нас под общий темп сессии.
+        if (on) AudioEngine.seqSetBpm(Settings.bpm)
     }
 
     fun setLatency(ms: Float) {
