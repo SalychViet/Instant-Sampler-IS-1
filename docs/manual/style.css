@@ -241,3 +241,5 @@ ol.toc li .tn { flex: none; }
 .crop.small .mark { width: 5mm; height: 5mm; font-size: 7.5pt; border-width: 0.45mm; }
 .fn { z-index: 6; }
 .flow3 > div > .crop { overflow: hidden; }
+
+body.en .page::after { content: "IS-1 · User Manual"; }

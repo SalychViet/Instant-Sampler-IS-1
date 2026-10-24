@@ -1,60 +1,10 @@
-# Сборка руководства IS-1: python3 build.py -> manual.html; PDF печатает headless Chrome.
-# Координаты выносок — в пикселях скриншота panel.png, приведённого к 2000x900.
-import html
-
-W, H = 2000, 900
-
-
-def pct(v, total):
-    return f"{v / total * 100:.3f}%"
-
-
-def crop(x, y, w, h, marks=(), cls="", src="panel.png"):
-    """Кусок скриншота (x, y, w, h в координатах 2000x900) с номерами-выносками."""
-    img = (f'<img src="{src}" style="width:{W / w * 100:.3f}%;'
-           f'left:{-x / w * 100:.3f}%;top:{-y / h * 100:.3f}%">')
-    m = "".join(
-        f'<span class="mark" style="left:{pct(mx - x, w)};top:{pct(my - y, h)}">{n}</span>'
-        for n, mx, my in marks)
-    return f'<div class="crop {cls}" style="aspect-ratio:{w}/{h}">{img}{m}</div>'
-
-
-def legend(items):
-    return '<ol class="legend">' + "".join(
-        f'<li><b class="num">{n}</b><div><b>{html.escape(t)}</b> — {d}</div></li>' for n, t, d in items) + "</ol>"
-
-
-def table(head, rows, cls=""):
-    h = "".join(f"<th>{c}</th>" for c in head)
-    b = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
-    return f'<table class="{cls}"><thead><tr>{h}</tr></thead><tbody>{b}</tbody></table>'
-
-
-def btn(t, on=False, red=False, w=None):
-    st = f' style="min-width:{w}px"' if w else ""
-    return f'<span class="btn{" on" if on else ""}{" red" if red else ""}"{st}>{t}</span>'
+# Русское руководство IS-1: python3 build.py -> manual.html; PDF печатает headless Chrome.
+from parts import btn, crop, fx_tables, legend, mock_pads, page, pads_order, table, write
 
 
 def tip(t, kind="tip"):
     label = {"tip": "Совет", "warn": "Важно", "hold": "Удержание"}[kind]
     return f'<div class="note {kind}"><b>{label}.</b> {t}</div>'
-
-
-# ---------------------------------------------------------------- иллюстрации
-
-def mock_pads(cells, title=None):
-    """Сетка 4x4 падов: cells — 16 кортежей (текст, класс) сверху вниз (13..16 первым рядом)."""
-    out = '<div class="padgrid">'
-    for t, c in cells:
-        out += f'<div class="mpad {c}">{t}</div>'
-    out += "</div>"
-    if title:
-        out = f'<div class="mockcap">{title}</div>' + out
-    return out
-
-
-def pads_order():
-    return [13, 14, 15, 16, 9, 10, 11, 12, 5, 6, 7, 8, 1, 2, 3, 4]
 
 
 # ---------------------------------------------------------------- эффекты
@@ -127,20 +77,10 @@ TAILS = {"FLt.6", "FLt.7", "FLt.8", "FLt.9", "FL.10", "dLY.1", "dLY.2", "dLY.6",
 
 
 def fx_pages():
-    out = ""
-    for bank, sub, progs in FX:
-        rows = [(f'<b>{i + 1}</b>', f'<span class="code">{c}</span>', f"<b>{n}</b>" + (' <span class="tail">хвост</span>' if c in TAILS else ""), x, y)
-                for i, (c, n, x, y) in enumerate(progs)]
-        out += f'<h3 class="fxh"><span class="bank">{bank}</span> {sub}</h3>'
-        out += table(["#", "Код", "Программа", "Ось X (влево → вправо)", "Ось Y (вниз → вверх)"], rows, "fx")
-    return out
+    return fx_tables(FX, TAILS, ["#", "Код", "Программа", "Ось X (влево → вправо)", "Ось Y (вниз → вверх)"], "хвост")
 
 
 # ---------------------------------------------------------------- страницы
-
-def page(content, cls=""):
-    return f'<section class="page {cls}">{content}</section>'
-
 
 pages = []
 STARTS = {'1': 3, '2': 4, '3': 5, '4': 6, '5': 7, '6': 8, '7': 9, '8': 10, '9': 11, '10': 12, '11': 13, '12': 14, '13': 15, '14': 17, '15': 20, '16': 21, '17': 22, '18': 23}
@@ -590,8 +530,4 @@ pages.append(page(f'''
     ["все эффекты на 100 %", "три тапа по DRY/WET"],
 ], "plain cheat")}'''))
 
-CSS = open("style.css", encoding="utf-8").read()
-doc = f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>IS-1 — руководство пользователя</title>
-<style>{CSS}</style></head><body>{"".join(pages)}</body></html>'''
-open("manual.html", "w", encoding="utf-8").write(doc)
-print("pages:", len(pages))
+write("manual.html", "ru", "IS-1 — руководство пользователя", "ru", pages)
