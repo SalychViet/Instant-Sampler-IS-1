@@ -17,11 +17,17 @@ import com.example.mpcpad.audio.FxAutomation
 import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.capture.CaptureSource
+import com.example.mpcpad.sample.BankStore
 import com.example.mpcpad.sample.PadLibrary
+import com.example.mpcpad.sample.PadStore
 import com.example.mpcpad.sample.SampleClip
+import android.content.Context
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** PAD — пады играют звуки; SEQ — каждый пад = паттерн (а в режиме STEP — шаг 1–16 выбранного звука). */
 enum class Mode { PAD, SEQ }
@@ -324,6 +330,59 @@ class AppViewModel : ViewModel() {
     fun setLoopDiv(pad: Int, div: Int, bpm: Float) {
         update(pad) { it.copy(loopDiv = div) }
         applyLoopDiv(pad, bpm)
+    }
+
+    // ---- SETUP: банки в файл и из файла ----
+    /** Идёт сохранение/загрузка банка: кнопки в SETUP неактивны. */
+    var bankBusy by mutableStateOf(false)
+
+    /** Сохранить 16 падов банка [bank] (звуки + параметры) в выбранный файл. */
+    fun saveBank(context: Context, uri: Uri, bank: Int) {
+        val snapshot = pads.toList()
+        bankBusy = true
+        viewModelScope.launch {
+            val n = try {
+                withContext(Dispatchers.IO) { BankStore.save(context, uri, bank, snapshot) }
+            } catch (_: Exception) {
+                -1
+            }
+            bankBusy = false
+            flash(if (n < 0) "BANK ${'A' + bank}: SAVE FAILED" else "BANK ${'A' + bank} SAVED · $n PADS", 2500)
+        }
+    }
+
+    /** Загрузить файл банка в банк [bank]: все 16 падов заменяются (пустые слоты очищают пад). */
+    fun importBank(context: Context, uri: Uri, bank: Int) {
+        bankBusy = true
+        viewModelScope.launch {
+            val slots = try {
+                withContext(Dispatchers.IO) { BankStore.load(context, uri) }
+            } catch (_: Exception) {
+                null
+            }
+            if (slots == null) {
+                bankBusy = false
+                flash("NOT AN IS-1 BANK FILE", 2500)
+                return@launch
+            }
+            var n = 0
+            for ((slot, s) in slots.withIndex()) {
+                val pad = bank * 16 + slot
+                val clip = s.clip
+                if (clip != null && AudioEngine.loadSample(pad, clip.data, clip.channels, clip.sampleRate)) {
+                    PadLibrary.set(pad, s.name, clip)
+                    withContext(Dispatchers.IO) { PadStore.save(context, pad, clip, s.name) }
+                    applyPadUi(pad, s.ui)
+                    n++
+                } else {
+                    PadStore.delete(context, pad)
+                    applyPadUi(pad, PadUi())
+                }
+            }
+            resyncLoops(com.example.mpcpad.Settings.bpm)   // петли по темпу — под текущий BPM
+            bankBusy = false
+            flash("BANK ${'A' + bank} LOADED · $n PADS", 2500)
+        }
     }
 
     fun applyLoopDiv(pad: Int, bpm: Float) {

@@ -11,4 +11,8 @@ interface SampleActions {
     /** Взвести захват для записи в пады удержанием (источник — [AppViewModel.sampleSource]). */
     fun armPadCapture()
     fun disarmPadCapture()
+    /** SETUP → SAVE BANK: выбрать, куда сохранить файл банка [bank] (0–3). */
+    fun saveBank(bank: Int)
+    /** SETUP → IMPORT BANK: выбрать файл банка и загрузить его в банк [bank] (0–3). */
+    fun importBank(bank: Int)
 }

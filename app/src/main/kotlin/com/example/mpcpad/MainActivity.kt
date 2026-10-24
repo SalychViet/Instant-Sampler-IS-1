@@ -38,6 +38,8 @@ class MainActivity : ComponentActivity(), SampleActions {
     private var pendingArm = false
     /** Куда класть файл, выбранный в системном диалоге импорта (-1 — в редактор). */
     private var pendingImportPad = -1
+    /** Банк (0–3) для открытого диалога SAVE/IMPORT BANK. */
+    private var pendingBank = 0
 
     /** Что выполнить после выдачи разрешения на микрофон. */
     private var afterMicPermission: (() -> Unit)? = null
@@ -81,6 +83,16 @@ class MainActivity : ComponentActivity(), SampleActions {
             if (uri != null) {
                 if (pad >= 0) sampleVm.importToPad(uri, pad) else sampleVm.importUri(uri)
             }
+        }
+
+    private val saveBankLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            if (uri != null) appVm.saveBank(applicationContext, uri, pendingBank)
+        }
+
+    private val importBankLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) appVm.importBank(applicationContext, uri, pendingBank)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -176,6 +188,18 @@ class MainActivity : ComponentActivity(), SampleActions {
         pendingImportPad = -1
         // «*/*»: часть файловых менеджеров не помечает AIFF/FLAC/OPUS как audio/*; формат проверяется по содержимому.
         importLauncher.launch(arrayOf("*/*"))
+    }
+
+    override fun saveBank(bank: Int) {
+        pendingBank = bank
+        val date = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
+        saveBankLauncher.launch("IS-1_BANK_${'A' + bank}_$date.zip")
+    }
+
+    override fun importBank(bank: Int) {
+        pendingBank = bank
+        // Мессенджеры и облака часто отдают zip как octet-stream — показываем все файлы.
+        importBankLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
     }
 
     private fun withMicPermission(action: () -> Unit) {

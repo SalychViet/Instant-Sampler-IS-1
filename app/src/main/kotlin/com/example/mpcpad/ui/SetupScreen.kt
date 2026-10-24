@@ -25,11 +25,12 @@ import androidx.compose.ui.unit.sp
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.LinkNetwork
+import com.example.mpcpad.sample.PadLibrary
 import kotlin.math.roundToInt
 
-/** Экран SETUP: синхронизация с Ableton Link и сдвиг задержки. */
+/** Экран SETUP: банки в файл и из файла, синхронизация с Ableton Link и сдвиг задержки. */
 @Composable
-fun SetupScreen(app: AppViewModel, modifier: Modifier = Modifier) {
+fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Column(
         modifier
@@ -43,6 +44,40 @@ fun SetupScreen(app: AppViewModel, modifier: Modifier = Modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("SETUP", color = TextMain, fontSize = 15.sp, modifier = Modifier.weight(1f))
             Chip("ЗАКРЫТЬ", active = true, compact = true) { app.setupOpen = false }
+        }
+
+        // 1. IMPORT BANK — 2. SAVE BANK: 16 семплов банка вместе с параметрами (громкость, пан, высота…)
+        Column(
+            Modifier
+                .widthIn(max = 560.dp)
+                .background(Panel, RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("1. IMPORT BANK", color = TextMain, fontSize = 14.sp)
+            Text(
+                "Выберите банк, затем файл банка IS-1 (.zip): все 16 падов банка заменятся звуками и настройками из файла.",
+                color = TextDim,
+                fontSize = 12.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (b in 0 until 4) Chip(('A' + b).toString(), enabled = !app.bankBusy) { actions.importBank(b) }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text("2. SAVE BANK", color = TextMain, fontSize = 14.sp)
+            Text(
+                "Выберите банк — его семплы и параметры (VOL, PAN, PITCH, DETUNE, START/END, ATK/REL, режим, CHOKE) " +
+                    "сохранятся в один файл. В скобках — сколько падов со звуком.",
+                color = TextDim,
+                fontSize = 12.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (b in 0 until 4) {
+                    val n = (b * 16 until b * 16 + 16).count { PadLibrary.infos[it] != null }
+                    Chip("${'A' + b} ($n)", enabled = !app.bankBusy && n > 0) { actions.saveBank(b) }
+                }
+            }
+            if (app.bankBusy) Text("Работаю с файлом банка…", color = Color(0xFFFFB020), fontSize = 12.sp)
         }
 
         Column(

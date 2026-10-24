@@ -1116,7 +1116,7 @@ fun MpcRoot(actions: SampleActions) {
 
         // ---- настройки (Ableton Link, latency) ----
         if (app.setupOpen) {
-            SetupScreen(app, Modifier.fillMaxSize())
+            SetupScreen(app, actions, Modifier.fillMaxSize())
         }
 
         // ---- редактор семпла (waveform, маркеры, chop) поверх всего ----

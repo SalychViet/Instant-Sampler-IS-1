@@ -168,13 +168,13 @@ object ProjectStore {
         AudioEngine.setParam(pad, PadParam.RELEASE_MS, u.releaseMs)
     }
 
-    private fun padToJson(u: PadUi) = JSONObject()
+    internal fun padToJson(u: PadUi) = JSONObject()
         .put("vol", u.volume.toDouble()).put("pan", u.pan.toDouble()).put("pitch", u.pitch.toDouble()).put("detune", u.detune.toDouble())
         .put("start", u.start.toDouble()).put("end", u.end.toDouble()).put("mode", u.mode)
         .put("rev", u.reverse).put("choke", u.choke).put("rel", u.releaseMs.toDouble())
         .put("atk", u.attackMs.toDouble()).put("loopDiv", u.loopDiv)
 
-    private fun padFromJson(o: JSONObject) = PadUi(
+    internal fun padFromJson(o: JSONObject) = PadUi(
         volume = o.optDouble("vol", 1.0).toFloat(),
         pan = o.optDouble("pan", 0.0).toFloat(),
         pitch = o.optDouble("pitch", 0.0).toFloat(),
