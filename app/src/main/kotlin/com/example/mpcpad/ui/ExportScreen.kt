@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mpcpad.Edition
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.BAR_TICKS
@@ -49,7 +50,10 @@ fun ExportScreen(app: AppViewModel, modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     // Длина фиксируется при открытии: во время записи цепочка не меняется.
-    val ticks = remember { app.songLengthTicks() }
+    // Free: пишется только первая минута.
+    val fullTicks = remember { app.songLengthTicks() }
+    val maxTicks = (Edition.exportSeconds * Settings.bpm * PPQ / 60f).toInt()
+    val ticks = minOf(fullTicks, maxTicks)
     val bars = ticks / BAR_TICKS
     val isSong = remember { app.songIndex >= 0 && app.song.isNotEmpty() }
     val what = if (isSong) "SONG · ${app.song.size} PAT" else "PATTERN ${patternName(app.seqPattern)}"
@@ -140,7 +144,7 @@ fun ExportScreen(app: AppViewModel, modifier: Modifier = Modifier) {
                 val status = busy ?: message ?: when (state) {
                     1, 2 -> String.format("● RECORDING %d%%", (progress * 100).toInt())
                     3 -> "DONE · SAVE OR SEND TO PAD"
-                    else -> "PLAYS FROM START WITH FX · RECORDS"
+                    else -> if (ticks < fullTicks) "FREE: FIRST ${Edition.exportSeconds} S ONLY" else "PLAYS FROM START WITH FX · RECORDS"
                 }
                 Text(status, style = Skin.Lcd.copy(fontSize = 11.sp), maxLines = 1)
                 // полоса прогресса
@@ -152,9 +156,14 @@ fun ExportScreen(app: AppViewModel, modifier: Modifier = Modifier) {
             when (state) {
                 3 -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        HwButton("WAV", Modifier.weight(1f), enabled = idle, height = 36.dp) { save(false) }
+                        // Free: только MP3 128 кбит/с; WAV и TO PAD — в Pro.
+                        HwButton(if (Edition.FREE) "WAV·PRO" else "WAV", Modifier.weight(1f), enabled = idle, height = 36.dp) {
+                            if (Edition.FREE) message = Edition.pro("WAV") else save(false)
+                        }
                         HwButton("MP3", Modifier.weight(1f), enabled = idle, height = 36.dp) { save(true) }
-                        HwButton("TO PAD", Modifier.weight(1f), enabled = idle, height = 36.dp) { toPad() }
+                        HwButton(if (Edition.FREE) "PAD·PRO" else "TO PAD", Modifier.weight(1f), enabled = idle, height = 36.dp) {
+                            if (Edition.FREE) message = Edition.pro("TO PAD") else toPad()
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         HwButton("AGAIN", Modifier.weight(1f), enabled = idle, height = 30.dp) {

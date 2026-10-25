@@ -1,7 +1,7 @@
 package com.example.mpcpad.audio
 
 /**
- * Программа KAOSS: код и имя как на KORG KAOSS PAD KP3+, что делают оси X и Y.
+ * Программа KAOSS: короткий код (набор + номер), имя и что делают оси X и Y.
  * Порядок ДОЛЖЕН совпадать с KaossProgram в KaossFx.h.
  */
 class KaossProgram(val code: String, val name: String, val x: String, val y: String) {
@@ -14,61 +14,61 @@ object Kaoss {
     const val PER_BANK = 10
 
     val PROGRAMS = listOf(
-        // 1 FILTER — FLt.1 … FL.10
-        KaossProgram("FLt.1", "MORPHING FILTER", "CUTOFF", "RESONANCE"),
-        KaossProgram("FLt.2", "LOW PASS FILTER", "CUTOFF", "RESONANCE"),
-        KaossProgram("FLt.3", "HIGH PASS FILTER", "CUTOFF", "RESONANCE"),
-        KaossProgram("FLt.4", "BAND PASS FILTER", "CUTOFF", "MIX"),
-        KaossProgram("FLt.5", "72dB/oct LPF", "CUTOFF", "RESONANCE"),
-        KaossProgram("FLt.6", "LPF & DELAY", "DELAY TIME", "LPF CUT&RESO"),
-        KaossProgram("FLt.7", "HPF & DELAY", "DELAY TIME", "HPF CUT&RESO"),
-        KaossProgram("FLt.8", "BPF+ & DELAY", "DELAY TIME", "BPF CUT&RESO"),
-        KaossProgram("FLt.9", "LPF & REVERB", "REVERB DEPTH", "LPF CUT&RESO"),
-        KaossProgram("FL.10", "HPF & REVERB", "REVERB DEPTH", "HPF CUT&RESO"),
-        // 2 SPACE — дилеи, ревербы и особые программы KP3+
-        KaossProgram("dLY.1", "DELAY", "DELAY TIME", "DEPTH"),
-        KaossProgram("dLY.2", "ECHO BREAK", "DELAY TIME", "FEEDBACK"),
-        KaossProgram("dLY.6", "TAPE ECHO", "DELAY TIME", "DEPTH"),
-        KaossProgram("dLY.7", "DUB ECHO", "DELAY TIME", "TONE"),
-        KaossProgram("dL.11", "PING PONG DELAY", "DELAY TIME", "DEPTH"),
-        KaossProgram("rEV.1", "PUMP REVERB", "REVERB TIME", "PUMP DEPTH"),
-        KaossProgram("rEV.2", "FREEZE REVERB", "TONE", "MIX"),
-        KaossProgram("rEV.7", "GATE REVERB", "GATE TIME", "DEPTH"),
-        KaossProgram("Mod.3", "JET +", "DELAY TIME", "FEEDBACK"),
-        KaossProgram("Grn.1", "GRAIN SHIFTER", "CYCLE SPEED", "LENGTH"),
-        // 3 REPEAT — LoP.1 … LP.10
-        KaossProgram("LoP.1", "LOOPER FWD/REV", "LOOPER BEAT", "REV < > FWD"),
-        KaossProgram("LoP.2", "BREAK LOOPER", "LOOPER BEAT", "BREAK TIME"),
-        KaossProgram("LoP.3", "LOOPER & REV DELAY", "LOOPER BEAT", "HPF CUTOFF"),
-        KaossProgram("LoP.4", "FREEZE LOOPER", "LOOPER BEAT", "MIX"),
-        KaossProgram("LoP.5", "HIGH LOOPER", "LOOPER BEAT", "MIX"),
-        KaossProgram("LoP.6", "SHUTTLE LOOPER", "LOOPER BEAT", "LPF CUTOFF"),
-        KaossProgram("LoP.7", "SLICE LOOPER", "LOOPER BEAT", "SLICE POS"),
-        KaossProgram("LoP.8", "LOOP BREAKER", "LOOPER BEAT", "SCRATCH"),
-        KaossProgram("LoP.9", "KP2 LOOPER", "LOOPER BEAT", "LPF CUTOFF"),
-        KaossProgram("LP.10", "VINYL LOOPER", "LOOPER BEAT", "REV < > FWD"),
-        // 4 MOD — Sweep Noise + программы Modulation KP3+
-        KaossProgram("SWP.1", "SWEEP NOISE", "SWEEP", "TAIL (DLY+RVB)"),
-        KaossProgram("Mod.1", "VINYL BREAK", "BREAK TIME", "SCRATCH"),
-        KaossProgram("Mod.2", "BREAK REVERB", "BREAK TIME", "SCRATCH"),
-        KaossProgram("Md.15", "RING MOD & HPF", "RING MOD FREQ", "HPF CUT&RESO"),
-        KaossProgram("Mod.5", "MANUAL PHASER", "FREQUENCY", "RESONANCE"),
-        KaossProgram("Mod.6", "TALK FILTER", "1ST FORMANT", "2ND FORMANT"),
-        KaossProgram("Mod.7", "DIGI TALK", "1ST FORMANT", "2ND FORMANT"),
-        KaossProgram("Mod.8", "DUCKING COMP", "SENSITIVITY", "DEPTH"),
-        KaossProgram("Mod.9", "COMPRESSOR", "SENSITIVITY", "ATTACK"),
-        KaossProgram("Md.18", "PITCH SHIFTER & DELAY", "PITCH SHIFT", "DELAY DEPTH"),
-        // 5 LFO — программы LFO KP3+, два комбо-эффекта, Audio Gate & LPF, Bit Crush и Distortion
-        KaossProgram("Cmb.1", "DIST + BPF + DELAY", "DELAY TIME", "BPF CUT&RESO"),
-        KaossProgram("LFO.2", "LFO LPF", "LFO SPEED", "RESONANCE"),
-        KaossProgram("Cmb.2", "REPEAT + CRUSH + PP DLY", "LOOPER BEAT", "CRUSH & DELAY"),
-        KaossProgram("LFO.4", "LFO BPF+", "LFO SPEED", "RESONANCE"),
-        KaossProgram("LFO.5", "LFO HPF+ & DELAY", "DELAY TIME", "HPF & DELAY"),
-        KaossProgram("LFO.6", "INFINITE LFO HPF+", "LFO SPEED", "RESONANCE"),
-        KaossProgram("LFO.7", "RANDOM LFO LPF", "LFO SPEED", "LFO DEPTH"),
-        KaossProgram("LF.26", "AUDIO GATE & LPF", "GATE PATTERN", "LPF CUT&RESO"),
-        KaossProgram("LoF.1", "BIT CRUSH", "RATE", "BITS"),
-        KaossProgram("LoF.2", "DISTORTION", "DRIVE", "TONE"),
+        // 1 FILTER
+        KaossProgram("F01", "MORPH SWEEP", "CUTOFF", "RESONANCE"),
+        KaossProgram("F02", "LOWPASS", "CUTOFF", "RESONANCE"),
+        KaossProgram("F03", "HIGHPASS", "CUTOFF", "RESONANCE"),
+        KaossProgram("F04", "BANDPASS", "CUTOFF", "MIX"),
+        KaossProgram("F05", "STEEP LOWPASS", "CUTOFF", "RESONANCE"),
+        KaossProgram("F06", "DARK ECHO", "DELAY TIME", "LPF CUT&RESO"),
+        KaossProgram("F07", "THIN ECHO", "DELAY TIME", "HPF CUT&RESO"),
+        KaossProgram("F08", "BAND ECHO", "DELAY TIME", "BPF CUT&RESO"),
+        KaossProgram("F09", "DARK HALL", "REVERB DEPTH", "LPF CUT&RESO"),
+        KaossProgram("F10", "AIR HALL", "REVERB DEPTH", "HPF CUT&RESO"),
+        // 2 SPACE
+        KaossProgram("S01", "SYNC DELAY", "DELAY TIME", "DEPTH"),
+        KaossProgram("S02", "ECHO DROP", "DELAY TIME", "FEEDBACK"),
+        KaossProgram("S03", "TAPE DELAY", "DELAY TIME", "DEPTH"),
+        KaossProgram("S04", "DUB SPACE", "DELAY TIME", "TONE"),
+        KaossProgram("S05", "PING PONG", "DELAY TIME", "DEPTH"),
+        KaossProgram("S06", "PUMP VERB", "REVERB TIME", "PUMP DEPTH"),
+        KaossProgram("S07", "ICE VERB", "TONE", "MIX"),
+        KaossProgram("S08", "GATED VERB", "GATE TIME", "DEPTH"),
+        KaossProgram("S09", "JET SWOOSH", "DELAY TIME", "FEEDBACK"),
+        KaossProgram("S10", "GRAIN SPRAY", "CYCLE SPEED", "LENGTH"),
+        // 3 REPEAT
+        KaossProgram("R01", "FLIP LOOP", "LOOP LENGTH", "REV < > FWD"),
+        KaossProgram("R02", "BRAKE LOOP", "LOOP LENGTH", "BRAKE TIME"),
+        KaossProgram("R03", "MIRROR LOOP", "LOOP LENGTH", "HPF CUTOFF"),
+        KaossProgram("R04", "HOLD LOOP", "LOOP LENGTH", "MIX"),
+        KaossProgram("R05", "OCTAVE LOOP", "LOOP LENGTH", "MIX"),
+        KaossProgram("R06", "SHUTTLE LOOP", "LOOP LENGTH", "LPF CUTOFF"),
+        KaossProgram("R07", "SLICE PICK", "SLICE LENGTH", "SLICE POS"),
+        KaossProgram("R08", "SCRATCH LOOP", "LOOP LENGTH", "SCRATCH"),
+        KaossProgram("R09", "WARM LOOP", "LOOP LENGTH", "LPF CUTOFF"),
+        KaossProgram("R10", "VINYL LOOP", "LOOP LENGTH", "REV < > FWD"),
+        // 4 MOD
+        KaossProgram("M01", "NOISE RISER", "SWEEP", "TAIL (DLY+RVB)"),
+        KaossProgram("M02", "RECORD STOP", "BRAKE TIME", "SCRATCH"),
+        KaossProgram("M03", "STOP & VERB", "BRAKE TIME", "SCRATCH"),
+        KaossProgram("M04", "METAL RING", "RING FREQ", "HPF CUT&RESO"),
+        KaossProgram("M05", "HAND PHASER", "FREQUENCY", "RESONANCE"),
+        KaossProgram("M06", "TALK BOX", "1ST FORMANT", "2ND FORMANT"),
+        KaossProgram("M07", "ROBO TALK", "1ST FORMANT", "2ND FORMANT"),
+        KaossProgram("M08", "SIDE PUMP", "SENSITIVITY", "DEPTH"),
+        KaossProgram("M09", "SQUASH", "SENSITIVITY", "ATTACK"),
+        KaossProgram("M10", "PITCH ECHO", "PITCH SHIFT", "DELAY DEPTH"),
+        // 5 LFO
+        KaossProgram("L01", "DIRTY ECHO", "DELAY TIME", "BPF CUT&RESO"),
+        KaossProgram("L02", "WOBBLE LP", "LFO SPEED", "RESONANCE"),
+        KaossProgram("L03", "CRUSH STUTTER", "LOOP LENGTH", "CRUSH & DELAY"),
+        KaossProgram("L04", "WOBBLE BAND", "LFO SPEED", "RESONANCE"),
+        KaossProgram("L05", "SWEEP ECHO", "DELAY TIME", "HPF & DELAY"),
+        KaossProgram("L06", "ENDLESS RISE", "LFO SPEED", "RESONANCE"),
+        KaossProgram("L07", "RANDOM STEP", "LFO SPEED", "LFO DEPTH"),
+        KaossProgram("L08", "RHYTHM GATE", "GATE PATTERN", "LPF CUT&RESO"),
+        KaossProgram("L09", "BIT CRUSH", "RATE", "BITS"),
+        KaossProgram("L10", "DRIVE", "DRIVE", "TONE"),
     )
 }
 

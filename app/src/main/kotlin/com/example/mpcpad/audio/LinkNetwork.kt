@@ -12,7 +12,7 @@ object LinkNetwork {
     private var lock: WifiManager.MulticastLock? = null
 
     fun apply(context: Context) {
-        setEnabled(context, Settings.linkEnabled)
+        setEnabled(context, Settings.linkEnabled && !com.example.mpcpad.Edition.FREE)   // во Free Link нет
         AudioEngine.linkSetLatency(Settings.latencyMs)
     }
 

@@ -1,3 +1,3 @@
 <resources>
-    <string name="app_name">IS-1</string>
+    <!-- app_name задаётся во flavors (app/build.gradle.kts): IS-1 и IS-1 FREE. -->
 </resources>

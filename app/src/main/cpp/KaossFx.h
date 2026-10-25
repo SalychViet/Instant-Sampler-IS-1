@@ -5,7 +5,7 @@
 
 namespace mpc {
 
-// Программы KAOSS — по образцу KORG KAOSS PAD KP3+ (имена и оси X/Y — из таблицы программ KP3+).
+// Программы KAOSS (имена и оси X/Y — в Kaoss.PROGRAMS в Kotlin).
 // Значения ДОЛЖНЫ совпадать с Kaoss.PROGRAMS в Kotlin.
 // Пять наборов по 10 (кнопки 1–5): номер программы = набор * 10 + позиция.
 enum KaossProgram : int {

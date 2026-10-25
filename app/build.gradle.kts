@@ -34,6 +34,25 @@ android {
     buildFeatures {
         compose = true
         prefab = true          // Oboe поставляется как prefab-пакет
+        buildConfig = true
+    }
+
+    // Две версии из одного кода: pro — полная, free — бесплатная с ограничениями (см. Edition.kt).
+    // У free свой applicationId, поэтому обе можно поставить на один телефон.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("pro") {
+            dimension = "edition"
+            buildConfigField("boolean", "FREE", "false")
+            resValue("string", "app_name", "IS-1")
+        }
+        create("free") {
+            dimension = "edition"
+            applicationIdSuffix = ".free"
+            versionNameSuffix = "-free"
+            buildConfigField("boolean", "FREE", "true")
+            resValue("string", "app_name", "IS-1 FREE")
+        }
     }
 
     compileOptions {

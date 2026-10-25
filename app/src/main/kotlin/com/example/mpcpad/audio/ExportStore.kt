@@ -13,13 +13,13 @@ import java.util.Locale
 object ExportStore {
     const val FOLDER = "Music/IS-1"
 
-    /** Сохранить WAV (16 бит) или MP3 (320 kbps). Возвращает имя файла или null. Не из UI-потока. */
+    /** Сохранить WAV (16 бит) или MP3 (320 kbps, во Free — 128). Возвращает имя файла или null. Не из UI-потока. */
     fun save(ctx: Context, mp3: Boolean): String? {
         val ext = if (mp3) "mp3" else "wav"
         val name = "IS-1_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + "." + ext
         val tmp = File(ctx.cacheDir, "export.$ext")
         try {
-            if (!AudioEngine.exportWrite(tmp.absolutePath, mp3)) return null
+            if (!AudioEngine.exportWrite(tmp.absolutePath, mp3, com.example.mpcpad.Edition.mp3Kbps)) return null
             val cr = ctx.contentResolver
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, name)

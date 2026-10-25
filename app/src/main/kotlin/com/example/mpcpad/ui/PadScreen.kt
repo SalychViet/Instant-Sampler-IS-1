@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mpcpad.R
+import com.example.mpcpad.Edition
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.Kaoss
@@ -135,6 +136,7 @@ fun MpcRoot(actions: SampleActions) {
                 app.seqLinkWaiting = st.linkWaiting
                 app.songIndex = st.songIndex
                 if (app.resampling && !AudioEngine.resampling()) finishResample()   // 30 с набралось
+                if (app.resampling && AudioEngine.resampleFrames() >= Edition.resampleSeconds * AudioEngine.sampleRate()) finishResample()
 
                 if (now - lastSlow > 120_000_000L) {
                     lastSlow = now
@@ -472,6 +474,9 @@ fun MpcRoot(actions: SampleActions) {
                 // SEQ: пад = паттерн
                 val src = app.copySource
                 when {
+                    app.songRec && app.songDraft.size >= Edition.maxSong -> {
+                        app.flash(Edition.pro("SONG > ${Edition.maxSong} PATTERNS"), 2000)
+                    }
                     app.songRec -> {
                         // Запись цепочки: паттерны идут в том порядке, в каком их касаются.
                         AudioEngine.songAppend(global)
@@ -621,10 +626,11 @@ fun MpcRoot(actions: SampleActions) {
                     for (b in Kaoss.BANKS.indices) {
                         val cur = app.kaossProgram / Kaoss.PER_BANK
                         SoftKey(b + 1, Kaoss.BANKS[b], Modifier.weight(1f), active = cur == b) {
+                            val n = Edition.kaossPerBank   // Free: программы 1–5 набора
                             app.kaossProgram = if (cur == b) {
-                                b * Kaoss.PER_BANK + (app.kaossProgram % Kaoss.PER_BANK + 1) % Kaoss.PER_BANK
+                                b * Kaoss.PER_BANK + (app.kaossProgram % Kaoss.PER_BANK + 1) % n
                             } else {
-                                b * Kaoss.PER_BANK + kaossLast[b]
+                                b * Kaoss.PER_BANK + kaossLast[b].coerceAtMost(n - 1)
                             }
                             kaossLast[b] = app.kaossProgram % Kaoss.PER_BANK
                             flash(Kaoss.PROGRAMS[app.kaossProgram].title)
@@ -702,7 +708,9 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.allNotesOff()
                     }
                     HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn || app.songRec || app.fxRecording, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
-                        if (app.kaossMode) {
+                        if (app.kaossMode && Edition.FREE) {
+                            flash(Edition.pro("FX RECORDING"))
+                        } else if (app.kaossMode) {
                             // KAOSS: REC пишет все манипуляции с эффектами на одну длину Song.
                             if (app.fxRecording) {
                                 app.fxRecording = false
@@ -779,7 +787,7 @@ fun MpcRoot(actions: SampleActions) {
                         flash(if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
                     }
                     HwButton("LEN", Modifier.weight(1f), height = 28.dp) {
-                        val bars = app.patternBars % MAX_UI_BARS + 1
+                        val bars = app.patternBars % Edition.maxBars + 1
                         val pat = app.seqPattern
                         val old = app.patternBars
                         app.pushUndo("LENGTH") { AudioEngine.seqSetLength(pat, old) }
@@ -893,7 +901,7 @@ fun MpcRoot(actions: SampleActions) {
                         } else {
                             AudioEngine.resampleStart()
                             app.resampling = true
-                            app.flash("● RESAMPLING (MAX 30 S) · PRESS TO STOP", 3000)
+                            app.flash("● RESAMPLING (MAX ${Edition.resampleSeconds} S) · PRESS TO STOP", 3000)
                         }
                     } else HwButton(
                         "SAMPLE", Modifier.weight(1f),
@@ -960,7 +968,11 @@ fun MpcRoot(actions: SampleActions) {
                         },
                         enabled = !pageMode || b < app.patternBars,
                         height = 44.dp,
-                        onPress = { down -> if (app.kaossMode) motionButton(b, down) },
+                        onPress = { down ->
+                            if (app.kaossMode) {
+                                if (b < Edition.motions) motionButton(b, down) else if (down) flash(Edition.pro("MOTION B–D"))
+                            }
+                        },
                     ) {
                         when {
                             app.kaossMode -> {}   // MOTION: обрабатывается в onPress
@@ -969,6 +981,7 @@ fun MpcRoot(actions: SampleActions) {
                                 app.stepBar = b
                                 flash("PAGE ${b + 1}/${app.patternBars}")
                             }
+                            b >= Edition.banks -> flash(Edition.pro("BANKS B–D"))
                             else -> app.bank = b
                         }
                     }

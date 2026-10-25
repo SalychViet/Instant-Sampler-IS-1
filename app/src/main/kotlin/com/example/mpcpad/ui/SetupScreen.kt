@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mpcpad.Edition
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.LinkNetwork
@@ -61,7 +62,7 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 fontSize = 12.sp,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (b in 0 until 4) Chip(('A' + b).toString(), enabled = !app.bankBusy) { actions.importBank(b) }
+                for (b in 0 until Edition.banks) Chip(('A' + b).toString(), enabled = !app.bankBusy) { actions.importBank(b) }
             }
             Spacer(Modifier.height(6.dp))
             Text("2. SAVE BANK", color = TextMain, fontSize = 14.sp)
@@ -71,7 +72,9 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 color = TextDim,
                 fontSize = 12.sp,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (Edition.FREE) {
+                Text("Сохранение банков — в IS-1 PRO.", color = Color(0xFFFFB020), fontSize = 12.sp)
+            } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (b in 0 until 4) {
                     val n = (b * 16 until b * 16 + 16).count { PadLibrary.infos[it] != null }
                     Chip("${'A' + b} ($n)", enabled = !app.bankBusy && n > 0) { actions.saveBank(b) }
@@ -89,7 +92,9 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Ableton Link", color = TextMain, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Chip(if (Settings.linkEnabled) "ВКЛ" else "ВЫКЛ", active = Settings.linkEnabled) {
+                if (Edition.FREE) {
+                    Chip("PRO", enabled = false) {}
+                } else Chip(if (Settings.linkEnabled) "ВКЛ" else "ВЫКЛ", active = Settings.linkEnabled) {
                     LinkNetwork.setEnabled(context, !Settings.linkEnabled)
                     app.flash("ABLETON LINK " + if (Settings.linkEnabled) "ON" else "OFF")
                 }
