@@ -23,10 +23,15 @@ let calls = [];
 let invoices = {};
 let nextInvoice = 1000;
 globalThis.fetch = async (url, init) => {
-  const body = init && init.body ? JSON.parse(init.body) : {};
+  if (url.startsWith("https://api.telegram.org/file/")) return new Response(new Uint8Array([0xff, 0xd8, 0xff]));
+  const isForm = init && init.body instanceof FormData;
+  const body = isForm ? Object.fromEntries([...init.body.keys()].map((k) => [k, init.body.get(k)])) : init && init.body ? JSON.parse(init.body) : {};
   if (url.startsWith("https://api.telegram.org/")) {
     const method = url.split("/").pop();
     calls.push({ method, body });
+    if (method === "getFile") return new Response(JSON.stringify({ ok: true, result: { file_path: "documents/x.jpg" } }));
+    if (method === "getMe") return new Response(JSON.stringify({ ok: true, result: { username: "IS1_sampler_bot" } }));
+    if (method === "sendPhoto" && isForm) return new Response(JSON.stringify({ ok: true, result: { photo: [{ file_id: "SMALL" }, { file_id: "BANNER_PHOTO" }] } }));
     return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
   }
   if (url.startsWith("https://pay.crypt.bot/api/")) {
@@ -45,7 +50,9 @@ globalThis.fetch = async (url, init) => {
   throw new Error("unexpected fetch " + url);
 };
 
-const env = { BOT_TOKEN: "123:abc", WEBHOOK_SECRET: SECRET, ADMIN_ID: String(ADMIN), PRICE_STARS: "750", PRICE_USDT: "9.99", CRYPTO_PAY_TOKEN: CP_TOKEN, DB: makeKV() };
+const FUTURE = new Date(Date.now() + 30 * 864e5).toISOString();
+const env = { BOT_TOKEN: "123:abc", WEBHOOK_SECRET: SECRET, PRICE_USD: "9.99", SALE_PRICE_USD: "8.99", SALE_UNTIL: FUTURE,
+              PROMO_CODES: "salychmusic=7.99", STARS_PER_USD: "50", CRYPTO_PAY_TOKEN: CP_TOKEN, DB: makeKV() };
 
 async function post(update, secret = SECRET) {
   calls = [];
@@ -72,9 +79,9 @@ await test("rejects webhook without secret", async () => {
 await test("/start shows RU menu with price", async () => {
   await post(msg(user(USER), "/start"));
   const m = sent("sendMessage")[0];
-  assert.match(m.body.text, /IS-1 PRO/);
-  assert.match(m.body.text, /750 ⭐/);
-  assert.match(m.body.text, /9\.99 USDT/);
+  assert.match(m.body.text, /<b>PRO<\/b>/);
+  assert.match(m.body.text, /<s>\$9\.99<\/s> <b>\$8\.99<\/b> · <b>450 ⭐<\/b>/);
+  assert.match(m.body.text, /Скидка до/);
   assert.equal(m.body.reply_markup.inline_keyboard[0][0].callback_data, "free");
 });
 
@@ -86,7 +93,6 @@ await test("/start in English for non-RU users", async () => {
 await test("free download before files are uploaded → 'not ready' + admin alert", async () => {
   await post(cb(user(USER), "free"));
   assert.match(texts(), /ещё загружаются/);
-  assert.ok(sent("sendMessage").some((c) => c.body.chat_id === String(ADMIN)));
   assert.equal(sent("sendMediaGroup").length, 0);
 });
 
@@ -95,15 +101,43 @@ await test("non-admin documents are ignored", async () => {
   assert.equal(await env.DB.get("file:pro_apk"), null);
 });
 
+await test("admin claim: wrong key refused, right key works once", async () => {
+  await post(msg(user(ADMIN), "/claim nope"));
+  assert.match(texts(), /Неверный ключ/);
+  await post(msg(user(ADMIN), "/claim " + SECRET));
+  assert.match(texts(), /Вы администратор/);
+  await post(msg(user(OTHER), "/claim " + SECRET));
+  assert.match(texts(), /уже назначен/);
+  assert.equal(await env.DB.get("admin"), String(ADMIN));
+});
+
 await test("admin uploads all release files", async () => {
   const names = ["IS-1_FREE_0.4.0.apk", "IS-1_FREE_Install_RU.pdf", "IS-1_FREE_Manual.pdf", "IS-1_FREE_Manual_EN.pdf",
                  "IS-1_PRO_0.4.0.apk", "IS-1_PRO_Install_RU.pdf", "IS-1_PRO_Manual.pdf", "IS-1_PRO_Manual_EN.pdf"];
   for (const n of names) await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: n, file_id: "ID_" + n } } });
-  assert.match(texts(), /Все файлы на месте/);
+  assert.match(texts(), /Осталось: 2/);
   await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "random.zip", file_id: "X" } } });
   assert.match(texts(), /Не знаю файл/);
   await post(msg(user(ADMIN), "/files"));
-  assert.equal((texts().match(/✅/g) || []).length, 8);
+  assert.equal((texts().match(/✅/g) || []).length, 8 - 0);
+});
+
+await test("admin uploads banner and avatar → photo file_id stored, avatar set", async () => {
+  await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "IS-1_bot_banner.jpg", file_id: "DOC_BANNER" } } });
+  assert.equal(await env.DB.get("img:banner"), "BANNER_PHOTO");
+  await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "IS-1_bot_avatar.jpg", file_id: "DOC_AVATAR" } } });
+  const av = sent("setMyProfilePhoto")[0].body;
+  assert.equal(JSON.parse(av.photo).photo, "attach://avatar");
+  assert.ok(av.avatar instanceof Blob);
+  assert.match(texts(), /Всё на месте/);
+});
+
+await test("welcome uses the banner photo once uploaded", async () => {
+  await post(msg(user(USER), "/start"));
+  const ph = sent("sendPhoto")[0].body;
+  assert.equal(ph.photo, "BANNER_PHOTO");
+  assert.match(ph.caption, /8\.99/);
+  assert.ok(ph.caption.length <= 1024);
 });
 
 await test("FREE download sends 4 FREE documents, no PRO", async () => {
@@ -133,19 +167,21 @@ await test("Stars invoice uses XTR, empty provider, right price", async () => {
   const inv = sent("sendInvoice")[0].body;
   assert.equal(inv.currency, "XTR");
   assert.equal(inv.provider_token, "");
-  assert.deepEqual(inv.prices, [{ label: "IS-1 PRO", amount: 750 }]);
-  assert.equal(inv.payload, "pro:750");
+  assert.deepEqual(inv.prices, [{ label: "IS-1 PRO", amount: 450 }]);
+  assert.equal(inv.payload, "pro:450:");
 });
 
 await test("pre-checkout: right amount ok, wrong amount rejected", async () => {
-  await post({ pre_checkout_query: { id: "pc1", from: user(USER), currency: "XTR", total_amount: 750, invoice_payload: "pro:750" } });
+  await post({ pre_checkout_query: { id: "pc1", from: user(USER), currency: "XTR", total_amount: 450, invoice_payload: "pro:450:" } });
   assert.equal(sent("answerPreCheckoutQuery")[0].body.ok, true);
-  await post({ pre_checkout_query: { id: "pc2", from: user(USER), currency: "XTR", total_amount: 1, invoice_payload: "pro:1" } });
+  await post({ pre_checkout_query: { id: "pc2", from: user(USER), currency: "XTR", total_amount: 1, invoice_payload: "pro:1:" } });
   assert.equal(sent("answerPreCheckoutQuery")[0].body.ok, false);
+  await post({ pre_checkout_query: { id: "pc3", from: user(USER), currency: "XTR", total_amount: 400, invoice_payload: "pro:400:fakecode" } });
+  assert.equal(sent("answerPreCheckoutQuery")[0].body.ok, false, "unknown promo can't lower the price");
 });
 
 await test("successful Stars payment delivers PRO and notifies admin once", async () => {
-  const pay = { message: { from: user(USER), chat: { id: USER }, successful_payment: { currency: "XTR", total_amount: 750, invoice_payload: "pro:750", telegram_payment_charge_id: "CHG1" } } };
+  const pay = { message: { from: user(USER), chat: { id: USER }, successful_payment: { currency: "XTR", total_amount: 450, invoice_payload: "pro:450:", telegram_payment_charge_id: "CHG1" } } };
   await post(pay);
   assert.match(texts(), /Спасибо за покупку/);
   assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_IS-1_PRO_0.4.0.apk");
@@ -164,8 +200,8 @@ await test("USDT: invoice, unpaid check, foreign user can't claim, paid check de
   await post(cb(user(OTHER, "en"), "pay_usdt"));
   const ci = calls.find((c) => c.method === "cp.createInvoice").body;
   assert.equal(ci.asset, "USDT");
-  assert.equal(ci.amount, "9.99");
-  assert.equal(ci.payload, `pro:${OTHER}:${OTHER}:en`);
+  assert.equal(ci.amount, "8.99");
+  assert.equal(ci.payload, `pro:${OTHER}:${OTHER}:en:`);
   const invId = Object.keys(invoices).pop();
   await post(cb(user(OTHER, "en"), "chk:" + invId));
   assert.match(texts(), /not arrived yet/);
@@ -187,7 +223,7 @@ async function cryptoHook(bodyObj, sign = true) {
 
 await test("Crypto Pay webhook: bad signature rejected, good one delivers, retry silent", async () => {
   const NEW = 444;
-  const inv = { invoice_id: 77, status: "paid", asset: "USDT", amount: "9.99", payload: `pro:${NEW}:${NEW}:ru` };
+  const inv = { invoice_id: 77, status: "paid", asset: "USDT", amount: "8.99", payload: `pro:${NEW}:${NEW}:ru:` };
   const upd = { update_id: 1, update_type: "invoice_paid", request_date: new Date().toISOString(), payload: inv };
   assert.equal((await cryptoHook(upd, false)).status, 401);
   assert.equal(calls.length, 0);
@@ -235,6 +271,54 @@ await test("without Crypto Pay token only Stars is offered", async () => {
   assert.deepEqual(sent("sendMessage")[0].body.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ["pay_stars"]);
   assert.doesNotMatch(texts(), /USDT/);
   env.CRYPTO_PAY_TOKEN = saved;
+});
+
+await test("promo code: /promo and deep link give $7.99 / 400 ⭐, any case", async () => {
+  await post(msg(user(USER), "/promo SalychMusic"));
+  assert.match(texts(), /Промокод <b>salychmusic<\/b> применён/);
+  assert.match(texts(), /\$7\.99/);
+  const btns = sent("sendMessage")[0].body.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
+  assert.deepEqual(btns, ["pay_stars:salychmusic", "pay_usdt:salychmusic"]);
+  await post(cb(user(USER), "pay_stars:salychmusic"));
+  const inv = sent("sendInvoice")[0].body;
+  assert.equal(inv.prices[0].amount, 400);
+  assert.equal(inv.payload, "pro:400:salychmusic");
+  await post({ pre_checkout_query: { id: "pc9", from: user(USER), currency: "XTR", total_amount: 400, invoice_payload: "pro:400:salychmusic" } });
+  assert.equal(sent("answerPreCheckoutQuery")[0].body.ok, true);
+  await post(msg(user(OTHER, "en"), "/start salychmusic"));
+  assert.match(texts(), /Promo code <b>salychmusic<\/b> applied/);
+  await post(cb(user(OTHER, "en"), "pay_usdt:salychmusic"));
+  assert.equal(calls.find((c) => c.method === "cp.createInvoice").body.amount, "7.99");
+  await post(msg(user(USER), "/promo wrongcode"));
+  assert.match(texts(), /нет/);
+});
+
+await test("after the sale ends: $9.99 / 500 ⭐, promo still $7.99", async () => {
+  const saved = env.SALE_UNTIL;
+  env.SALE_UNTIL = new Date(Date.now() - 1000).toISOString();
+  await post(cb(user(USER), "buy"));
+  assert.match(texts(), /Цена PRO: <b>\$9\.99<\/b> · <b>500 ⭐<\/b>/);
+  await post(cb(user(USER), "pay_stars"));
+  assert.equal(sent("sendInvoice")[0].body.prices[0].amount, 500);
+  await post({ pre_checkout_query: { id: "pcA", from: user(USER), currency: "XTR", total_amount: 450, invoice_payload: "pro:450:" } });
+  assert.equal(sent("answerPreCheckoutQuery")[0].body.ok, false, "old sale invoice rejected after the sale");
+  await post(msg(user(USER), "/promo salychmusic"));
+  assert.match(texts(), /\$7\.99/);
+  env.SALE_UNTIL = saved;
+});
+
+await test("sale date shown as 31 December for 2027-01-01 00:00 MSK", async () => {
+  const saved = env.SALE_UNTIL;
+  env.SALE_UNTIL = "2027-01-01T00:00:00+03:00";
+  const realNow = Date.now;
+  Date.now = () => Date.parse("2026-11-15T12:00:00Z");
+  await post(msg(user(USER), "/start"));
+  assert.match(sent("sendPhoto")[0].body.caption, /Скидка до 31 декабря/);
+  Date.now = () => Date.parse("2026-12-31T21:00:00Z"); // = 2027-01-01 00:00 MSK
+  await post(msg(user(USER), "/start"));
+  assert.match(sent("sendPhoto")[0].body.caption, /\$9\.99<\/b> · <b>500 ⭐/);
+  Date.now = realNow;
+  env.SALE_UNTIL = saved;
 });
 
 console.log(`\n${passed} tests passed · KV writes used: ${env.DB.writes}`);

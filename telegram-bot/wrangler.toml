@@ -1,12 +1,17 @@
+# IS-1 Telegram bot — Cloudflare Workers config (works with the "Deploy to Cloudflare" button)
 name = "is1-bot"
 main = "worker.js"
-compatibility_date = "2026-10-01"
+compatibility_date = "2026-09-01"
+workers_dev = true
 
+# Storage for file ids, purchases and settings. The deploy button creates a new namespace and replaces the id.
 [[kv_namespaces]]
 binding = "DB"
-id = "REPLACE_WITH_YOUR_KV_ID"
+id = "00000000000000000000000000000000"
 
 [vars]
-PRICE_STARS = "750"
-PRICE_USDT = "9.99"
-ADMIN_ID = ""
+PRICE_USD = "9.99"
+SALE_PRICE_USD = "8.99"
+SALE_UNTIL = "2027-01-01T00:00:00+03:00"
+PROMO_CODES = "salychmusic=7.99"
+STARS_PER_USD = "50"

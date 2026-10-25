@@ -1,2 +1,5 @@
 webhook_secret.txt
+branding/
 .wrangler/
+node_modules/
+.dev.vars

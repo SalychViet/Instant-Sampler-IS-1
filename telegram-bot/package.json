@@ -1,0 +1,27 @@
+{
+  "name": "is1-bot",
+  "version": "0.4.0",
+  "private": true,
+  "description": "IS-1 Telegram bot: IS-1 FREE download and IS-1 PRO sales for Telegram Stars / USDT",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "test": "node test/run.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "BOT_TOKEN": { "description": "Token of your bot from **@BotFather** (`/newbot`). Looks like `123456789:AA...`." },
+      "WEBHOOK_SECRET": { "description": "Random string of letters, digits, `_` and `-` (16+ chars). Use the one from `webhook_secret.txt`. Keep it — you need it for `/setup` and `/claim`." },
+      "DB": { "description": "Storage for file ids, purchases and settings. Created automatically." },
+      "PRICE_USD": { "description": "Regular IS-1 PRO price in USD." },
+      "SALE_PRICE_USD": { "description": "Sale price in USD (leave empty for no sale)." },
+      "SALE_UNTIL": { "description": "When the sale ends (ISO time), e.g. `2027-01-01T00:00:00+03:00`." },
+      "PROMO_CODES": { "description": "Promo codes as `code=price`, comma separated, e.g. `salychmusic=7.99`." },
+      "STARS_PER_USD": { "description": "How many Telegram Stars per 1 USD (≈ what buyers pay per Star)." }
+    }
+  }
+}
