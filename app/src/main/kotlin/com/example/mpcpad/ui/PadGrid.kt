@@ -50,6 +50,8 @@ fun PadGrid(
     onPadDown: (globalPad: Int, velocity: Float) -> Unit,
     onPadUp: (globalPad: Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** Крупная метка в центре пада (номер группы CHOKE, пока кнопка удерживается); null — без метки. */
+    badge: (globalPad: Int) -> String? = { null },
 ) {
     val currentBank by rememberUpdatedState(bank)
     val currentFull by rememberUpdatedState(fullLevel)
@@ -61,6 +63,10 @@ fun PadGrid(
         TextStyle(color = Color(0xFFE8E8EA), fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
     val labels = remember(measurer) { (1..16).map { measurer.measure(it.toString(), labelStyle) } }
+    val badgeStyle = remember {
+        TextStyle(color = Skin.LedRed, fontSize = 22.sp, fontWeight = FontWeight.Black)
+    }
+    val badgeCache = remember(measurer) { HashMap<String, androidx.compose.ui.text.TextLayoutResult>() }
 
     Canvas(
         modifier = modifier.pointerInput(Unit) {
@@ -142,6 +148,16 @@ fun PadGrid(
                         Size(sz.width - 4.dp.toPx(), sz.height - 4.dp.toPx()), radius, style = Stroke(1.5.dp.toPx()))
                 }
                 drawText(labels[padInBank], topLeft = Offset(topLeft.x + 8.dp.toPx(), topLeft.y + 5.dp.toPx()))
+                badge(global)?.let { t ->
+                    val m = badgeCache.getOrPut(t) { measurer.measure(t, badgeStyle) }
+                    drawText(
+                        m,
+                        topLeft = Offset(
+                            topLeft.x + (sz.width - m.size.width) / 2f,
+                            topLeft.y + (sz.height - m.size.height) / 2f + 4.dp.toPx(),
+                        ),
+                    )
+                }
             }
         }
     }

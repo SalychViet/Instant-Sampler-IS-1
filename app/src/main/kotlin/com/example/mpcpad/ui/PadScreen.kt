@@ -1021,6 +1021,8 @@ fun MpcRoot(actions: SampleActions) {
                     }
                 },
                 recPad = { holdPad.intValue },
+                // Пока держат CHOKE — на падах номер группы (G1…G4), чтобы разные группы было видно.
+                badge = { g -> if (app.chokeHold && app.pads[g].choke > 0) "G${app.pads[g].choke}" else null },
                 onPadDown = ::padDown,
                 onPadUp = ::padUp,
                 modifier = Modifier.fillMaxHeight().aspectRatio(1f),

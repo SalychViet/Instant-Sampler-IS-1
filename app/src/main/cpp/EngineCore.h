@@ -118,7 +118,9 @@ private:
     void collectGarbageLocked();
 
     std::mutex producerMutex_;
-    SpscQueue<Command, 1024> commands_;   // control -> audio
+    // control -> audio. При старте, пока поток вывода ещё не запущен, сюда разом попадают параметры
+    // всех 64 падов (~700 команд), песня и семплы — с запасом, чтобы ничего не терялось.
+    SpscQueue<Command, 4096> commands_;
     SpscQueue<Sample*, 256> garbage_;     // audio -> control (на удаление)
 
     PadParams pads_[kNumPads];
