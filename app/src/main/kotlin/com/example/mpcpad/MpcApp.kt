@@ -11,6 +11,7 @@ class MpcApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Settings.init(this)
+        DefaultProject.installIfFresh(this)   // Pro: при первом запуске — проект из коробки
         PadSampler.init(this)
         AudioEngine.create()
         AudioEngine.setMasterVolume(Settings.master)
