@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Salavat (SALYCH MUSIC). IS-1 — see LICENSE.
+
 package com.example.mpcpad.ui
 
 import androidx.compose.foundation.background
@@ -20,8 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mpcpad.BuildConfig
 import com.example.mpcpad.Edition
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
@@ -152,5 +157,45 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
             }
             Text("С Ableton Link отсчёт не нужен: старт идёт по такту сессии.", color = TextDim, fontSize = 12.sp)
         }
+
+        AboutPanel()
+    }
+}
+
+/** О программе: версия, лицензия GPLv3 и ссылка на исходный код (этого требует GPL). */
+@Composable
+private fun AboutPanel() {
+    val uri = LocalUriHandler.current
+    Column(
+        Modifier
+            .widthIn(max = 560.dp)
+            .background(Panel, RoundedCornerShape(12.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("О программе", color = TextMain, fontSize = 14.sp)
+        Text(
+            "IS-1 ${BuildConfig.VERSION_NAME} · © 2026 Salavat (SALYCH MUSIC)",
+            color = TextDim,
+            fontSize = 12.sp,
+        )
+        Text(
+            "Свободная программа: её можно распространять и изменять по лицензии GNU GPL версии 3 " +
+                "или (на ваш выбор) любой более поздней. Предоставляется БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ.",
+            color = TextDim,
+            fontSize = 12.sp,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("ИСХОДНЫЙ КОД", compact = true) { runCatching { uri.openUri(BuildConfig.SOURCE_URL) } }
+            Chip("ЛИЦЕНЗИЯ GPLv3", compact = true) { runCatching { uri.openUri("https://www.gnu.org/licenses/gpl-3.0.html") } }
+        }
+        Text(BuildConfig.SOURCE_URL, color = TextDim, fontSize = 11.sp)
+        Text(
+            "Использует: Ableton Link (GPL-2.0+), Asio (Boost 1.0), LAME MP3 encoder (LGPL-2.0+, lame.sourceforge.io), " +
+                "Oboe, AndroidX, Jetpack Compose, Kotlin (Apache-2.0). Ableton Link — товарный знак Ableton AG; " +
+                "IS-1 не связан с Ableton. Подробности — THIRD_PARTY_NOTICES.md в исходном коде.",
+            color = TextDim,
+            fontSize = 11.sp,
+        )
     }
 }

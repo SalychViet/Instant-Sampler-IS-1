@@ -80,3 +80,17 @@ SampleViewModel ── SampleOps (C++: peaks, normalize, fade, reverse, тран
 - Внутренний звук: DRM-приложения могут запрещать захват.
 - Swing, note repeat, проекты, эффекты, экспорт, SONG, MIDI — этап 5.
 - Параметры падов (ручки) не сохраняются между запусками.
+
+## Лицензия / License
+
+IS-1 — свободная программа. © 2026 Salavat (SALYCH MUSIC).
+
+Код распространяется по лицензии **GNU General Public License версии 3 или (на ваш выбор) любой более поздней** (`GPL-3.0-or-later`). Полный текст — в файле [`LICENSE`](LICENSE). Программа предоставляется без каких-либо гарантий.
+
+- Сторонние библиотеки и их лицензии перечислены в [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md): Ableton Link (GPL-2.0-or-later), Asio (Boost 1.0), LAME (LGPL-2.0-or-later), Oboe, AndroidX, Jetpack Compose и Kotlin (Apache-2.0).
+- Почему GPLv3, а не GPLv2: Ableton Link разрешает «v2 или любую более позднюю», а библиотеки под Apache-2.0 совместимы только с GPLv3.
+- Каждый, кто получил APK (FREE или PRO), имеет право получить исходный код этой версии. Ссылка на исходники показывается в приложении: SETUP → «О программе». Адрес задаётся в `app/build.gradle.kts` (`SOURCE_URL`).
+- Название «IS-1», логотипы IS-1 и SALYCH MUSIC — знаки автора; лицензия на код не даёт права выпускать изменённые версии под этим названием и с этими логотипами.
+- «Ableton Link» — товарный знак Ableton AG. IS-1 не связан с Ableton и не одобрен ею.
+
+IS-1 is free software licensed under GPL-3.0-or-later. See `LICENSE` and `THIRD_PARTY_NOTICES.md`.

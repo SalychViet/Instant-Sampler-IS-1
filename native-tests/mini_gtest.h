@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Salavat (SALYCH MUSIC). IS-1 — see LICENSE.
+
 // Минимальная замена GoogleTest для сборки тестов без сети (-DMPC_MINI_GTEST=ON).
 #pragma once
 #include <cmath>

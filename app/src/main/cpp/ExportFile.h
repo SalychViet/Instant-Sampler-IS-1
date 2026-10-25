@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Salavat (SALYCH MUSIC). IS-1 — see LICENSE.
+
 #pragma once
 #include <cstdint>
 

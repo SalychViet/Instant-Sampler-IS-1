@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Salavat (SALYCH MUSIC). IS-1 — see LICENSE.
+
 // Host-тесты KAOSS: все программы устойчивы, без касания звук не меняется, ключевые эффекты делают своё.
 #ifdef MPC_MINI_GTEST
 #include "mini_gtest.h"
