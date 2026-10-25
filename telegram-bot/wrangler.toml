@@ -1,0 +1,12 @@
+name = "is1-bot"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[[kv_namespaces]]
+binding = "DB"
+id = "REPLACE_WITH_YOUR_KV_ID"
+
+[vars]
+PRICE_STARS = "750"
+PRICE_USDT = "9.99"
+ADMIN_ID = ""
