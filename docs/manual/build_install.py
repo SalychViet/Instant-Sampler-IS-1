@@ -5,7 +5,7 @@ import os
 
 APK = "IS-1_FREE_0.4.0.apk" if FREE else "IS-1_PRO_0.4.0.apk"
 # Размер APK в МБ (передаётся при сборке: IS1_APK_MB=31,3 python3 build_install.py)
-MB = os.environ.get("IS1_APK_MB", "31,3" if FREE else "46")
+MB = os.environ.get("IS1_APK_MB", "32,2" if FREE else "45,6")
 
 
 def tip(t, kind="tip"):
