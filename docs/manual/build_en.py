@@ -10,70 +10,69 @@ def tip(t, kind="tip"):
 # ---------------------------------------------------------------- effects
 
 FX = [
-    ("1 · FILTER", "KP3+ filters (FLt.1–FL.10)", [
-        ("FLt.1", "MORPHING FILTER", "Frequency; the shape morphs LPF → band → HPF", "Resonance"),
-        ("FLt.2", "LOW PASS FILTER", "Cutoff", "Resonance"),
-        ("FLt.3", "HIGH PASS FILTER", "Cutoff", "Resonance"),
-        ("FLt.4", "BAND PASS FILTER", "Band frequency", "Dry/filter balance"),
-        ("FLt.5", "72dB/oct LPF", "Cutoff (very steep)", "Resonance"),
-        ("FLt.6", "LPF &amp; DELAY", "Delay time (tempo-synced)", "LPF cutoff and resonance"),
-        ("FLt.7", "HPF &amp; DELAY", "Delay time (tempo-synced)", "HPF cutoff and resonance"),
-        ("FLt.8", "BPF+ &amp; DELAY", "Delay time (tempo-synced)", "Overdriven band"),
-        ("FLt.9", "LPF &amp; REVERB", "Reverb depth", "LPF cutoff and resonance"),
-        ("FL.10", "HPF &amp; REVERB", "Reverb depth", "HPF cutoff and resonance"),
+    ("1 · FILTER", "Filters (F01–F10)", [
+        ("F01", "MORPH SWEEP", "Frequency; the shape morphs LPF → band → HPF", "Resonance"),
+        ("F02", "LOWPASS", "Cutoff", "Resonance"),
+        ("F03", "HIGHPASS", "Cutoff", "Resonance"),
+        ("F04", "BANDPASS", "Band frequency", "Dry/filter balance"),
+        ("F05", "STEEP LOWPASS", "Cutoff (very steep)", "Resonance"),
+        ("F06", "DARK ECHO", "Delay time (tempo-synced)", "LPF cutoff and resonance"),
+        ("F07", "THIN ECHO", "Delay time (tempo-synced)", "HPF cutoff and resonance"),
+        ("F08", "BAND ECHO", "Delay time (tempo-synced)", "Overdriven band"),
+        ("F09", "DARK HALL", "Reverb depth", "LPF cutoff and resonance"),
+        ("F10", "AIR HALL", "Reverb depth", "HPF cutoff and resonance"),
     ]),
     ("2 · SPACE", "Delays, reverbs and special programs", [
-        ("dLY.1", "DELAY", "Time (tempo-synced)", "Depth: repeats and level"),
-        ("dLY.2", "ECHO BREAK", "Time (tempo-synced)", "Repeats. While you hold, the dry sound is cut and only the echo plays"),
-        ("dLY.6", "TAPE ECHO", "Time; changing it bends the pitch like tape", "Depth"),
-        ("dLY.7", "DUB ECHO", "Time (tempo-synced), long repeats", "Tone of the repeats"),
-        ("dL.11", "PING PONG DELAY", "Time (tempo-synced), the echo bounces L↔R", "Depth"),
-        ("rEV.1", "PUMP REVERB", "Reverb length", "Pumping depth on every beat"),
-        ("rEV.2", "FREEZE REVERB", "Tone", "Balance. While you hold, the tail freezes"),
-        ("rEV.7", "GATE REVERB", "Gate time", "Reverb depth"),
-        ("Mod.3", "JET +", "Delay (manual jet flanger)", "Feedback"),
-        ("Grn.1", "GRAIN SHIFTER", "Grain speed (tempo-synced)", "Grain length"),
+        ("S01", "SYNC DELAY", "Time (tempo-synced)", "Depth: repeats and level"),
+        ("S02", "ECHO DROP", "Time (tempo-synced)", "Repeats. While you hold, the dry sound is cut and only the echo plays"),
+        ("S03", "TAPE DELAY", "Time; changing it bends the pitch like tape", "Depth"),
+        ("S04", "DUB SPACE", "Time (tempo-synced), long repeats", "Tone of the repeats"),
+        ("S05", "PING PONG", "Time (tempo-synced), the echo bounces L↔R", "Depth"),
+        ("S06", "PUMP VERB", "Reverb length", "Pumping depth on every beat"),
+        ("S07", "ICE VERB", "Tone", "Balance. While you hold, the tail freezes"),
+        ("S08", "GATED VERB", "Gate time", "Reverb depth"),
+        ("S09", "JET SWOOSH", "Delay (manual jet flanger)", "Feedback"),
+        ("S10", "GRAIN SPRAY", "Grain speed (tempo-synced)", "Grain length"),
     ]),
-    ("3 · REPEAT", "KP3+ loopers (LoP.1–LP.10). X is the loop length: 4 beats on the left, 1/16 on the right", [
-        ("LoP.1", "LOOPER FWD/REV", "Loop length", "Bottom: reversed, top: forward"),
-        ("LoP.2", "BREAK LOOPER", "Loop length", "Brake time: every pass slows down"),
-        ("LoP.3", "LOOPER &amp; REV DELAY", "Loop length", "HPF; the loop's mirror image is mixed in"),
-        ("LoP.4", "FREEZE LOOPER", "Loop length", "Live sound / loop balance"),
-        ("LoP.5", "HIGH LOOPER", "Loop length", "Balance; the loop plays an octave up"),
-        ("LoP.6", "SHUTTLE LOOPER", "Loop length", "LPF; the loop runs back and forth"),
-        ("LoP.7", "SLICE LOOPER", "Slice length", "Which slice of the last bar plays"),
-        ("LoP.8", "LOOP BREAKER", "Loop length", "Scratch: move your finger up and down"),
-        ("LoP.9", "KP2 LOOPER", "Loop length", "LPF (open at the top)"),
-        ("LP.10", "VINYL LOOPER", "Loop length", "Speed: bottom reverse, centre stop, top ×2"),
+    ("3 · REPEAT", "Loopers (R01–R10). X is the loop length: 4 beats on the left, 1/16 on the right", [
+        ("R01", "FLIP LOOP", "Loop length", "Bottom: reversed, top: forward"),
+        ("R02", "BRAKE LOOP", "Loop length", "Brake time: every pass slows down"),
+        ("R03", "MIRROR LOOP", "Loop length", "HPF; the loop's mirror image is mixed in"),
+        ("R04", "HOLD LOOP", "Loop length", "Live sound / loop balance"),
+        ("R05", "OCTAVE LOOP", "Loop length", "Balance; the loop plays an octave up"),
+        ("R06", "SHUTTLE LOOP", "Loop length", "LPF; the loop runs back and forth"),
+        ("R07", "SLICE PICK", "Slice length", "Which slice of the last bar plays"),
+        ("R08", "SCRATCH LOOP", "Loop length", "Scratch: move your finger up and down"),
+        ("R09", "WARM LOOP", "Loop length", "LPF (open at the top)"),
+        ("R10", "VINYL LOOP", "Loop length", "Speed: bottom reverse, centre stop, top ×2"),
     ]),
-    ("4 · MOD", "Sweep Noise and KP3+ Modulation programs", [
-        ("SWP.1", "SWEEP NOISE", "Noise frequency, rising to the right", "Tail: how much noise goes into delay + reverb"),
-        ("Mod.1", "VINYL BREAK", "Record brake time", "Scratch with finger movement"),
-        ("Mod.2", "BREAK REVERB", "Brake time (tempo-synced)", "Scratch; plus reverb with a tail"),
-        ("Md.15", "RING MOD &amp; HPF", "Modulation frequency: wobble → metal → ring", "HPF cutoff and resonance"),
-        ("Mod.5", "MANUAL PHASER", "Phaser frequency", "Resonance"),
-        ("Mod.6", "TALK FILTER", "First formant (the vowel)", "Second formant"),
-        ("Mod.7", "DIGI TALK", "First formant", "Second formant; digital sound"),
-        ("Mod.8", "DUCKING COMP", "Sensitivity", "Pumping depth from the hits"),
-        ("Mod.9", "COMPRESSOR", "Sensitivity (amount of squash)", "Attack: at the top the hit keeps its click"),
-        ("Md.18", "PITCH SHIFTER &amp; DELAY", "Pitch −12…+12 semitones", "Delay depth"),
+    ("4 · MOD", "Noise, record stops, modulation and compression", [
+        ("M01", "NOISE RISER", "Noise frequency, rising to the right", "Tail: how much noise goes into delay + reverb"),
+        ("M02", "RECORD STOP", "Record brake time", "Scratch with finger movement"),
+        ("M03", "STOP &amp; VERB", "Brake time (tempo-synced)", "Scratch; plus reverb with a tail"),
+        ("M04", "METAL RING", "Modulation frequency: wobble → metal → ring", "HPF cutoff and resonance"),
+        ("M05", "HAND PHASER", "Phaser frequency", "Resonance"),
+        ("M06", "TALK BOX", "First formant (the vowel)", "Second formant"),
+        ("M07", "ROBO TALK", "First formant", "Second formant; digital sound"),
+        ("M08", "SIDE PUMP", "Sensitivity", "Pumping depth from the hits"),
+        ("M09", "SQUASH", "Sensitivity (amount of squash)", "Attack: at the top the hit keeps its click"),
+        ("M10", "PITCH ECHO", "Pitch −12…+12 semitones", "Delay depth"),
     ]),
     ("5 · LFO", "Moving filters, combo effects and grit", [
-        ("Cmb.1", "DIST + BPF + DELAY", "Delay time (tempo-synced)", "Band cutoff and resonance"),
-        ("LFO.2", "LFO LPF", "Sweep speed (tempo-synced)", "Resonance"),
-        ("Cmb.2", "REPEAT + CRUSH + PP DLY", "Repeat length", "Bit-crush grit and ping-pong depth"),
-        ("LFO.4", "LFO BPF+", "Sweep speed", "Resonance"),
-        ("LFO.5", "LFO HPF+ &amp; DELAY", "Delay time", "HPF level and delay depth"),
-        ("LFO.6", "INFINITE LFO HPF+", "Speed of the endless rise", "Resonance"),
-        ("LFO.7", "RANDOM LFO LPF", "Speed of the random jumps", "Depth"),
-        ("LF.26", "AUDIO GATE &amp; LPF", "One of 8 gate patterns in 1/16 steps", "LPF cutoff and resonance"),
-        ("LoF.1", "BIT CRUSH", "Sample-rate reduction", "Fewer bits, dirtier sound"),
-        ("LoF.2", "DISTORTION", "Drive amount (level is kept)", "Tone"),
+        ("L01", "DIRTY ECHO", "Delay time (tempo-synced)", "Band cutoff and resonance"),
+        ("L02", "WOBBLE LP", "Sweep speed (tempo-synced)", "Resonance"),
+        ("L03", "CRUSH STUTTER", "Repeat length", "Bit-crush grit and ping-pong depth"),
+        ("L04", "WOBBLE BAND", "Sweep speed", "Resonance"),
+        ("L05", "SWEEP ECHO", "Delay time", "HPF level and delay depth"),
+        ("L06", "ENDLESS RISE", "Speed of the endless rise", "Resonance"),
+        ("L07", "RANDOM STEP", "Speed of the random jumps", "Depth"),
+        ("L08", "RHYTHM GATE", "One of 8 gate patterns in 1/16 steps", "LPF cutoff and resonance"),
+        ("L09", "BIT CRUSH", "Sample-rate reduction", "Fewer bits, dirtier sound"),
+        ("L10", "DRIVE", "Drive amount (level is kept)", "Tone"),
     ]),
 ]
 
-TAILS = {"FLt.6", "FLt.7", "FLt.8", "FLt.9", "FL.10", "dLY.1", "dLY.2", "dLY.6", "dLY.7", "dL.11", "rEV.1",
-         "rEV.2", "rEV.7", "SWP.1", "Mod.2", "Md.18", "Cmb.1", "Cmb.2", "LFO.5"}
+TAILS = {"F06", "F07", "F08", "F09", "F10", "S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08", "M01", "M03", "M10", "L01", "L03", "L05"}
 
 
 def fx_pages():
@@ -395,12 +394,16 @@ pages.append(page(f'''
 # 13. KAOSS
 pages.append(page(f'''
 <h2><span class="sn">13</span>KAOSS: effects on the whole mix</h2>
-<p class="lead">Press <b>KAOSS</b> and the display turns into a touch pad, like a KORG KAOSS PAD. Touch it to switch the effect on; move your finger to change two parameters at once: horizontally (X) and vertically (Y).</p>
+<p class="lead">Press <b>KAOSS</b> and the display turns into an effects touch pad, like a hardware X/Y pad. Touch it to switch the effect on; move your finger to change two parameters at once: horizontally (X) and vertically (Y).</p>
 <div class="fig">{crop(70, 0, 1930, 900, [(1, 610, 80), (2, 545, 150), (3, 600, 300), (4, 662, 405), (5, 92, 482),
-                                            (6, 224, 806), (7, 343, 733), (8, 756, 292), (9, 756, 792), (10, 343, 658)], src="kaoss.png", cls="small")}</div>
+                                            (6, 224, 806), (7, 343, 733), (8, 756, 292), (9, 756, 792), (10, 343, 658)], src="kaoss.png", cls="small", overlays=[
+    (118, 56, 450, 48, "3·REPEAT  8/10  R08", 33, "color:#29b6ff"),
+    (118, 118, 400, 66, "SCRATCH LOOP", 50, "color:#b3e5fc;font-weight:700"),
+    (118, 383, 545, 46, "X LOOP LENGTH  68   Y SCRATCH", 29, "color:rgba(179,229,252,.75)"),
+])}</div>
 <div class="cols2">
 {legend([
-    (1, "Set, number and code", "3·REPEAT 8/10 LoP.8. The status appears on the right of this line: <b>● FX REC 42%</b>, <b>▶ MOTION B</b> or <b>▶ FX AUTO</b>."),
+    (1, "Set, number and code", "3·REPEAT 8/10 R08. The status appears on the right of this line: <b>● FX REC 42%</b>, <b>▶ MOTION B</b> or <b>▶ FX AUTO</b>."),
     (2, "Effect name", "in large letters."),
     (3, "Finger", "a bright dot and crosshair; the lights around it show the intensity."),
     (4, "Axes", "what X and Y do right now and their values 0–100."),
@@ -435,12 +438,12 @@ pages.append(page(f'''
   <svg viewBox="0 0 600 90"><rect x="20" y="58" width="220" height="16" class="fin"/><text x="24" y="52">finger on the pad</text>
   <path d="M20 30 L240 30" class="wv"/><path d="M240 30 C 300 32, 330 60, 580 78" class="wv dash"/><text x="300" y="30">echo and reverb ring out</text></svg>
 </div>
-<p>Effects marked <span class="tail">tail</span> in the table (delays, reverbs, Sweep Noise…) let their repeats and reverb fade out naturally after you lift your finger. The others stop at once.</p>
+<p>Effects marked <span class="tail">tail</span> in the table (delays, reverbs, Noise Riser…) let their repeats and reverb fade out naturally after you lift your finger. The others stop at once.</p>
 {tip("<b>DRY/WET</b> is stored per effect. Three quick taps on the knob set every effect to 100 %.")}'''))
 
 # 14. Effects
 pages.append(page('<h2><span class="sn">14</span>All 50 effects</h2>'
-                  '<p class="lead">The effects are modelled on the KORG KAOSS PAD KP3+: codes and names match the hardware. '
+                  '<p class="lead">A code is the set letter plus a number (R08 = REPEAT, effect 8). '
                   'X is your finger left/right, Y is down/up. "Tempo-synced" means the time follows the BPM.</p>'
                   + fx_pages().split('<h3 class="fxh"><span class="bank">3')[0], "fxpage"))
 rest = fx_pages()
@@ -450,7 +453,7 @@ pages.append(page('<h2><span class="sn">14</span>All 50 effects (continued)</h2>
 pages.append(page('<h2><span class="sn">14</span>All 50 effects (end)</h2>' + rest[i5:] + tip(
     "The loopers (REPEAT) don't repeat straight away: the first pass after you touch is recorded, then the sound loops. "
     "So touch slightly before the beat you want.") + tip(
-    "Want to repeat something that already played? <b>SLICE LOOPER</b> (LoP.7) takes a slice of the last bar <b>before</b> your touch."), "fxpage"))
+    "Want to repeat something that already played? <b>SLICE PICK</b> (R07) takes a slice of the last bar <b>before</b> your touch."), "fxpage"))
 
 # 15. EDIT
 pages.append(page(f'''

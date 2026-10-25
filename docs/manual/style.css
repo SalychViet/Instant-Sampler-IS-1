@@ -303,3 +303,9 @@ body.install .page::after { content: "IS-1 · установка на телеф
 .hic { width: 9mm; height: 9mm; border-radius: 2.4mm; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 11pt; box-shadow: 0 0.4mm 1mm rgba(0,0,0,.15); }
 .hic.me { width: auto; height: auto; background: none; box-shadow: none; flex-direction: column; font-size: 6.5pt; grid-column: 2; }
 .landscape { font-size: 30pt; text-align: center; color: var(--accent); }
+
+/* надпись поверх скриншота: текст в приложении поменялся после съёмки */
+.crop { container-type: inline-size; }
+.patch { position: absolute; background: #07080c; font-family: Menlo, "DejaVu Sans Mono", monospace; display: flex; align-items: center;
+  white-space: pre; padding-left: 0.4cqw; z-index: 3; }
+.fxpage td { padding-top: 1.2mm; padding-bottom: 1.2mm; }

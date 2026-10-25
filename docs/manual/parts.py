@@ -9,14 +9,22 @@ def pct(v, total):
     return f"{v / total * 100:.3f}%"
 
 
-def crop(x, y, w, h, marks=(), cls="", src="panel.png"):
-    """Кусок скриншота (x, y, w, h в координатах 2000x900) с номерами-выносками."""
+def crop(x, y, w, h, marks=(), cls="", src="panel.png", overlays=()):
+    """Кусок скриншота (x, y, w, h в координатах 2000x900) с номерами-выносками.
+
+    overlays — надписи поверх скриншота (когда текст в приложении поменялся после съёмки):
+    (ox, oy, ow, oh, текст, размер шрифта в единицах 2000x900, CSS-стиль).
+    """
     img = (f'<img src="{src}" style="width:{W / w * 100:.3f}%;'
            f'left:{-x / w * 100:.3f}%;top:{-y / h * 100:.3f}%">')
     m = "".join(
         f'<span class="mark" style="left:{pct(mx - x, w)};top:{pct(my - y, h)}">{n}</span>'
         for n, mx, my in marks)
-    return f'<div class="crop {cls}" style="aspect-ratio:{w}/{h}">{img}{m}</div>'
+    o = "".join(
+        f'<span class="patch" style="left:{pct(ox - x, w)};top:{pct(oy - y, h)};width:{pct(ow, w)};height:{pct(oh, h)};'
+        f'font-size:{fs / w * 100:.3f}cqw;{st}">{t}</span>'
+        for ox, oy, ow, oh, t, fs, st in overlays)
+    return f'<div class="crop {cls}" style="aspect-ratio:{w}/{h}">{img}{o}{m}</div>'
 
 
 def legend(items):
