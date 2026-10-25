@@ -82,7 +82,7 @@ def fx_pages():
 # ---------------------------------------------------------------- pages
 
 pages = []
-STARTS = {'1': 3, '2': 4, '3': 5, '4': 6, '5': 7, '6': 8, '7': 9, '8': 10, '9': 11, '10': 12, '11': 13, '12': 14, '13': 15, '14': 17, '15': 20, '16': 21, '17': 22, '18': 23}
+STARTS = {'1': 3, '2': 4, '3': 5, '4': 6, '5': 7, '6': 8, '7': 9, '8': 10, '9': 11, '10': 12, '11': 13, '12': 14, '13': 15, '14': 17, '15': 20, '16': 21, '17': 22, '18': 23, '19': 24}
 
 # Cover
 pages.append(page(f'''
@@ -102,6 +102,7 @@ toc = [
     ("10", "Sequencer: patterns (SEQ)"), ("11", "Step input (STEP)"), ("12", "Song (SONG) and UNDO"),
     ("13", "KAOSS: effects on the whole mix"), ("14", "All 50 effects"), ("15", "The EDIT window"),
     ("16", "EXPORT: save your track"), ("17", "SETUP: Ableton Link and latency"), ("18", "Cheat sheet"),
+    ("19", "IS-1 FREE and IS-1 Pro"),
 ]
 pages.append(page('<h2>Contents</h2><ol class="toc">' + "".join(
     f'<li><span class="tn">{n}</span>{t}<span class="tp">{STARTS[n]}</span></li>' for n, t in toc) + '</ol>' + tip(
@@ -532,5 +533,29 @@ pages.append(page(f'''
     ["reset a knob", "double-tap the knob"],
     ["set all effects to 100 %", "three taps on DRY/WET"],
 ], "plain cheat")}'''))
+
+# 19. FREE and Pro
+pages.append(page(f'''
+<h2><span class="sn">19</span>IS-1 FREE and IS-1 Pro</h2>
+<p class="lead">IS-1 comes in two editions. <b>IS-1 FREE</b> costs nothing: you can record sounds, program beats and play with effects. <b>IS-1</b> (Pro) is the full version without limits. Everything in this manual describes Pro; in FREE some features are locked.</p>
+{table(["Feature", "IS-1 FREE", "IS-1 Pro"], [
+    ["Pads", "1 bank (A), 16 sounds", "4 banks (A–D), 64 sounds"],
+    ["Sample recording, EDIT, IMPORT", "full", "full"],
+    ["Sequencer, STEP, step parameters, CHOKE, UNDO", "full", "full"],
+    ["Patterns", "16 (A01–A16), up to 2 bars", "64, up to 4 bars"],
+    ["Song (SONG)", "up to 4 patterns", "unlimited"],
+    ["KAOSS effects", "programs 1–5 in every set (25 effects)", "all 50"],
+    ["KAOSS MOTION", "1 memory (A)", "4 memories (A–D)"],
+    ["KAOSS effects recording (FX REC)", "—", "yes"],
+    ["RESAMPLE", "up to 10 seconds", "up to 30 seconds"],
+    ["EXPORT", "MP3 128 kbps, first minute", "WAV and MP3 320 kbps, up to 10 minutes, TO PAD"],
+    ["PRJCT: .sal project files", "— (the project is saved automatically)", "save and load"],
+    ["SETUP: banks", "IMPORT BANK into bank A", "IMPORT and SAVE BANK, A–D"],
+    ["Ableton Link", "—", "yes"],
+], "plain freepro")}
+<div class="row2">
+  <div>{tip("Locked buttons are not hidden. If you press something that is Pro-only, the display shows a hint such as <b>BANKS B–D · IS-1 PRO</b>.")}</div>
+  <div>{tip("FREE and Pro are separate apps: both can be installed on the same phone, each with its own pads and projects. A bank saved in Pro (SAVE BANK) can be loaded into FREE with IMPORT BANK.")}</div>
+</div>'''))
 
 write("manual_en.html", "en", "IS-1 User Manual", "en", pages)

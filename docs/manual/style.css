@@ -309,3 +309,5 @@ body.install .page::after { content: "IS-1 · установка на телеф
 .patch { position: absolute; background: #07080c; font-family: Menlo, "DejaVu Sans Mono", monospace; display: flex; align-items: center;
   white-space: pre; padding-left: 0.4cqw; z-index: 3; }
 .fxpage td { padding-top: 1.2mm; padding-bottom: 1.2mm; }
+table.freepro td:first-child { width: 58mm; font-weight: 600; }
+table.freepro td:nth-child(3) { color: #0b67a8; }
