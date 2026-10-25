@@ -15,7 +15,7 @@ android {
         versionCode = 4
         versionName = "0.4.0"
         // Где лежит исходный код (GPL требует дать к нему доступ). Замените на адрес своего репозитория.
-        buildConfigField("String", "SOURCE_URL", "\"https://github.com/salych/IS-1\"")
+        buildConfigField("String", "SOURCE_URL", "\"https://github.com/SalychViet/Instant-Sampler-IS-1\"")
 
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
         externalNativeBuild {
