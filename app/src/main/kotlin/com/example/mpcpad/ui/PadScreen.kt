@@ -3,6 +3,8 @@
 
 package com.example.mpcpad.ui
 
+import androidx.compose.ui.text.style.TextAlign
+import android.annotation.SuppressLint
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -1033,16 +1035,30 @@ fun MpcRoot(actions: SampleActions) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Image(
-                        painterResource(R.drawable.logo_salych), "SALYCH MUSIC",
-                        Modifier.height(42.dp).aspectRatio(613f / 814f),
-                        contentScale = ContentScale.Fit,
-                    )
-                    Image(
-                        painterResource(R.drawable.logo_is1), "IS-1",
-                        Modifier.width(78.dp),
-                        contentScale = ContentScale.Fit,
-                    )
+                    // Логотипы есть только в фирменной сборке PRO: они лежат в приватной папке branding/
+                    // (её нет в открытом коде). Без неё — просто название текстом.
+                    val logoSalych = brandingDrawable("logo_salych")
+                    val logoIs1 = brandingDrawable("logo_is1")
+                    if (logoSalych != 0 && logoIs1 != 0) {
+                        Image(
+                            painterResource(logoSalych), "SALYCH MUSIC",
+                            Modifier.height(42.dp).aspectRatio(613f / 814f),
+                            contentScale = ContentScale.Fit,
+                        )
+                        Image(
+                            painterResource(logoIs1), "IS-1",
+                            Modifier.width(78.dp),
+                            contentScale = ContentScale.Fit,
+                        )
+                    } else {
+                        Text(
+                            if (Edition.FREE) "IS-1 FREE" else "IS-1",
+                            color = TextMain,
+                            fontSize = 15.sp,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
                 Row(
                     Modifier.weight(1f).fillMaxWidth(),
@@ -1170,3 +1186,14 @@ fun MpcRoot(actions: SampleActions) {
 
 /** Тиков в одном такте (страница шагов = один такт). */
 private const val BAR_TICKS_PAGE = STEPS_PER_BAR * STEP_TICKS
+
+/**
+ * Id картинки из приватной папки branding/ или 0, если её нет в этой сборке.
+ * Ищем по имени, чтобы открытый код собирался без фирменных логотипов.
+ */
+@SuppressLint("DiscouragedApi")
+@Composable
+private fun brandingDrawable(name: String): Int {
+    val context = LocalContext.current
+    return remember(name) { context.resources.getIdentifier(name, "drawable", context.packageName) }
+}

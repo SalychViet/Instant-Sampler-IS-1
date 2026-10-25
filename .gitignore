@@ -11,3 +11,5 @@
 .externalNativeBuild
 *.apk
 /build-tests
+# Фирменные логотипы IS-1 / SALYCH MUSIC — только для сборки PRO, в открытый код не попадают
+/branding

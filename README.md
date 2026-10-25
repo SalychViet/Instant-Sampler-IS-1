@@ -90,7 +90,8 @@ IS-1 — свободная программа. © 2026 Salavat (SALYCH MUSIC).
 - Сторонние библиотеки и их лицензии перечислены в [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md): Ableton Link (GPL-2.0-or-later), Asio (Boost 1.0), LAME (LGPL-2.0-or-later), Oboe, AndroidX, Jetpack Compose и Kotlin (Apache-2.0).
 - Почему GPLv3, а не GPLv2: Ableton Link разрешает «v2 или любую более позднюю», а библиотеки под Apache-2.0 совместимы только с GPLv3.
 - Каждый, кто получил APK (FREE или PRO), имеет право получить исходный код этой версии. Ссылка на исходники показывается в приложении: SETUP → «О программе». Адрес задаётся в `app/build.gradle.kts` (`SOURCE_URL`).
-- Название «IS-1», логотипы IS-1 и SALYCH MUSIC — знаки автора; лицензия на код не даёт права выпускать изменённые версии под этим названием и с этими логотипами.
+- Фирменные логотипы IS-1 и SALYCH MUSIC не входят в открытый код: они есть только в официальной сборке PRO (приватная папка `branding/`, см. `app/build.gradle.kts`). Сборка из этого репозитория показывает вместо логотипов название текстом.
+- Название «IS-1» и логотипы — знаки автора; лицензия на код не даёт права выпускать изменённые версии под этим названием.
 - «Ableton Link» — товарный знак Ableton AG. IS-1 не связан с Ableton и не одобрен ею.
 
 IS-1 is free software licensed under GPL-3.0-or-later. See `LICENSE` and `THIRD_PARTY_NOTICES.md`.

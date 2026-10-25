@@ -57,6 +57,13 @@ android {
         }
     }
 
+    // Фирменные логотипы лежат в приватной папке branding/ (в .gitignore) и подключаются только к PRO.
+    // Без этой папки (сборка из открытого кода, а также FREE) вместо логотипов показывается название текстом.
+    val branding = rootProject.file("branding/res")
+    if (branding.exists()) {
+        sourceSets.getByName("pro").res.srcDir(branding)
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
