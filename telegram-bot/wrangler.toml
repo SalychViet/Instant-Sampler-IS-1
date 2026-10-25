@@ -1,13 +1,12 @@
 # IS-1 Telegram bot — Cloudflare Workers config (works with the "Deploy to Cloudflare" button)
-name = "is1-bot"
+name = "instant-sampler-is-1"
 main = "worker.js"
 compatibility_date = "2026-09-01"
 workers_dev = true
 
-# Storage for file ids, purchases and settings. The deploy button creates a new namespace and replaces the id.
+# Storage for file ids, purchases and settings. No id: wrangler (4.45+) creates the namespace on the first deploy.
 [[kv_namespaces]]
 binding = "DB"
-id = "00000000000000000000000000000000"
 
 [vars]
 PRICE_USD = "9.99"
