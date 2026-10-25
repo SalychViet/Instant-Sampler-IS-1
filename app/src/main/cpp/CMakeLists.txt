@@ -35,3 +35,5 @@ target_compile_definitions(mp3lame PRIVATE STDC_HEADERS HAVE_STDINT_H ieee754_fl
 target_compile_options(mp3lame PRIVATE -O2 -w)
 
 target_link_libraries(mpcengine oboe::oboe Ableton::Link mp3lame log android)
+# Страницы памяти 16 КБ (Android 15+, требование Google Play). В NDK r28+ это по умолчанию, флаг — на всякий случай.
+target_link_options(mpcengine PRIVATE "-Wl,-z,max-page-size=16384")
