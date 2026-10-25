@@ -1,5 +1,5 @@
 # English IS-1 manual: python3 build_en.py -> manual_en.html; the PDF is printed with headless Chrome.
-from parts import btn, crop, fx_tables, legend, mock_pads, page, pads_order, table, write
+from parts import FREE, NAME, btn, cover_logo, crop, fx_tables, legend, mock_pads, pads_order, page, table, write
 
 
 def tip(t, kind="tip"):
@@ -87,8 +87,8 @@ STARTS = {'1': 3, '2': 4, '3': 5, '4': 6, '5': 7, '6': 8, '7': 9, '8': 10, '9': 
 # Cover
 pages.append(page(f'''
 <div class="cover">
-  <div class="cover-logo">{crop(1638, 40, 300, 115)}</div>
-  <h1>IS-1</h1>
+  {cover_logo()}
+  <h1>{NAME}</h1>
   <div class="cover-sub">Sampler · sequencer · KAOSS effects</div>
   <div class="cover-img">{crop(0, 0, 2000, 900)}</div>
   <div class="cover-foot">User Manual · version of 24 October 2026</div>
@@ -105,7 +105,9 @@ toc = [
     ("19", "IS-1 FREE and IS-1 Pro"),
 ]
 pages.append(page('<h2>Contents</h2><ol class="toc">' + "".join(
-    f'<li><span class="tn">{n}</span>{t}<span class="tp">{STARTS[n]}</span></li>' for n, t in toc) + '</ol>' + tip(
+    f'<li><span class="tn">{n}</span>{t}<span class="tp">{STARTS[n]}</span></li>' for n, t in toc) + '</ol>' + (tip(
+    "This manual is for the free edition, <b>IS-1 FREE</b>. It describes everything IS-1 can do; the features that are "
+    "only in the full IS-1 Pro are listed in the table in section 19.", "warn") if FREE else "") + tip(
     "Button labels in the app are shown in <b>bold</b> in this manual, for example <b>PLAY</b> or <b>ERASE</b>.") + tip(
     "Your project (pads, patterns, song, effects) is saved automatically when you minimise or close the app.", "warn")))
 
@@ -537,7 +539,7 @@ pages.append(page(f'''
 # 19. FREE and Pro
 pages.append(page(f'''
 <h2><span class="sn">19</span>IS-1 FREE and IS-1 Pro</h2>
-<p class="lead">IS-1 comes in two editions. <b>IS-1 FREE</b> costs nothing: you can record sounds, program beats and play with effects. <b>IS-1</b> (Pro) is the full version without limits. Everything in this manual describes Pro; in FREE some features are locked.</p>
+<p class="lead">IS-1 comes in two editions. <b>IS-1 FREE</b> costs nothing: you can record sounds, program beats and play with effects. <b>IS-1</b> (Pro) is the full version without limits. {"This manual is for IS-1 FREE: it covers all of IS-1, and the table below shows what is only in Pro. Screenshots were taken in Pro." if FREE else "Everything in this manual describes Pro; in FREE some features are locked."}</p>
 {table(["Feature", "IS-1 FREE", "IS-1 Pro"], [
     ["Pads", "1 bank (A), 16 sounds", "4 banks (A–D), 64 sounds"],
     ["Sample recording, EDIT, IMPORT", "full", "full"],

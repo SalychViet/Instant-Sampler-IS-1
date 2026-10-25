@@ -81,6 +81,13 @@ SampleViewModel ── SampleOps (C++: peaks, normalize, fade, reverse, тран
 - Swing, note repeat, проекты, эффекты, экспорт, SONG, MIDI — этап 5.
 - Параметры падов (ручки) не сохраняются между запусками.
 
+## Руководства
+
+- `docs/IS-1_FREE_Manual.pdf`, `docs/IS-1_FREE_Manual_EN.pdf`, `docs/IS-1_FREE_Install_RU.pdf` — руководства для IS-1 FREE (без фирменных логотипов).
+- Исходники руководств — `docs/manual` (HTML собирается скриптами, PDF печатает headless Chrome):
+  - FREE: `cd docs/manual && IS1_EDITION=free python3 build.py` (и `build_en.py`, `build_install.py`) → `*_free.html`;
+  - фирменная версия PRO: то же без `IS1_EDITION`; скриншоты с логотипами берутся из приватной папки `branding/manual`, а если её нет — используются копии без логотипов из `docs/manual/free`.
+
 ## Лицензия / License
 
 IS-1 — свободная программа. © 2026 Salavat (SALYCH MUSIC).

@@ -1,5 +1,5 @@
 # Русское руководство IS-1: python3 build.py -> manual.html; PDF печатает headless Chrome.
-from parts import btn, crop, fx_tables, legend, mock_pads, page, pads_order, table, write
+from parts import FREE, NAME, btn, cover_logo, crop, fx_tables, legend, mock_pads, page, pads_order, table, write
 
 
 def tip(t, kind="tip"):
@@ -87,8 +87,8 @@ STARTS = {'1': 3, '2': 4, '3': 5, '4': 6, '5': 7, '6': 8, '7': 9, '8': 10, '9': 
 # Обложка
 pages.append(page(f'''
 <div class="cover">
-  <div class="cover-logo">{crop(1638, 40, 300, 115)}</div>
-  <h1>IS-1</h1>
+  {cover_logo()}
+  <h1>{NAME}</h1>
   <div class="cover-sub">Семплер · секвенсор · KAOSS-эффекты</div>
   <div class="cover-img">{crop(0, 0, 2000, 900)}</div>
   <div class="cover-foot">Руководство пользователя · версия от 24 октября 2026</div>
@@ -105,7 +105,9 @@ toc = [
     ("19", "IS-1 FREE и IS-1 Pro"),
 ]
 pages.append(page('<h2>Содержание</h2><ol class="toc">' + "".join(
-    f'<li><span class="tn">{n}</span>{t}<span class="tp">{STARTS[n]}</span></li>' for n, t in toc) + '</ol>' + tip(
+    f'<li><span class="tn">{n}</span>{t}<span class="tp">{STARTS[n]}</span></li>' for n, t in toc) + '</ol>' + (tip(
+    "Это руководство для бесплатной версии <b>IS-1 FREE</b>. Оно описывает все возможности IS-1; то, что есть только "
+    "в полной версии IS-1 Pro, перечислено в таблице раздела 19.", "warn") if FREE else "") + tip(
     "Все надписи на кнопках в приложении — на английском, как на «железных» семплерах. "
     "В этом руководстве они выделены <b>жирным</b>: например, <b>PLAY</b> или <b>ERASE</b>.") + tip(
     "Проект (пады, паттерны, песня, эффекты) сохраняется сам, когда вы сворачиваете или закрываете приложение.", "warn")))
@@ -537,7 +539,7 @@ pages.append(page(f'''
 # 19. FREE и Pro
 pages.append(page(f'''
 <h2><span class="sn">19</span>IS-1 FREE и IS-1 Pro</h2>
-<p class="lead">IS-1 выходит в двух версиях. <b>IS-1 FREE</b> — бесплатная: в ней можно записывать звуки, программировать биты и играть с эффектами. <b>IS-1</b> (Pro) — полная версия без ограничений. Всё, что описано в этом руководстве, относится к Pro; в FREE часть возможностей закрыта.</p>
+<p class="lead">IS-1 выходит в двух версиях. <b>IS-1 FREE</b> — бесплатная: в ней можно записывать звуки, программировать биты и играть с эффектами. <b>IS-1</b> (Pro) — полная версия без ограничений. {"Это руководство для IS-1 FREE: оно описывает все возможности IS-1, а что из них есть только в Pro — показано в таблице ниже. Скриншоты сделаны в Pro." if FREE else "Всё, что описано в этом руководстве, относится к Pro; в FREE часть возможностей закрыта."}</p>
 {table(["Возможность", "IS-1 FREE", "IS-1 Pro"], [
     ["Пады", "1 банк (A) — 16 звуков", "4 банка (A–D) — 64 звука"],
     ["Запись семплов, EDIT, IMPORT", "полностью", "полностью"],

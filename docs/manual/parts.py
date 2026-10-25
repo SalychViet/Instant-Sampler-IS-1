@@ -1,6 +1,25 @@
 # Общие куски руководства IS-1 (вёрстка, скриншоты с выносками) для русской и английской версий.
 # Координаты выносок — в пикселях скриншота, приведённого к 2000x900.
 import html
+import os
+
+# IS1_EDITION=free python3 build.py  ->  руководство для IS-1 FREE: скриншоты из free/ (без логотипов),
+# обложка без логотипа, файл *_free.html.
+FREE = os.environ.get("IS1_EDITION") == "free"
+NAME = "IS-1 FREE" if FREE else "IS-1"
+
+# Скриншоты с фирменными логотипами лежат в приватной папке branding/manual (её нет в открытом коде).
+# Для FREE и для сборки без branding/ берутся копии без логотипов из free/.
+BRANDING = "../../branding/manual"
+
+
+def image_path(src):
+    if not FREE and os.path.exists(os.path.join(BRANDING, src)):
+        return f"{BRANDING}/{src}"
+    if os.path.exists(os.path.join("free", src)):
+        return "free/" + src
+    return src
+
 
 W, H = 2000, 900
 
@@ -15,6 +34,7 @@ def crop(x, y, w, h, marks=(), cls="", src="panel.png", overlays=()):
     overlays — надписи поверх скриншота (когда текст в приложении поменялся после съёмки):
     (ox, oy, ow, oh, текст, размер шрифта в единицах 2000x900, CSS-стиль).
     """
+    src = image_path(src)
     img = (f'<img src="{src}" style="width:{W / w * 100:.3f}%;'
            f'left:{-x / w * 100:.3f}%;top:{-y / h * 100:.3f}%">')
     m = "".join(
@@ -76,7 +96,18 @@ def fx_tables(fx, tails, head, tail_label):
     return out
 
 
+def cover_logo():
+    """Логотип на обложке — только в фирменном (PRO) руководстве."""
+    if FREE or not image_path("panel.png").startswith(BRANDING):
+        return ""
+    return f'<div class="cover-logo">{crop(1638, 40, 300, 115)}</div>'
+
+
 def write(path, lang, title, body_cls, pages):
+    if FREE:
+        path = path.replace(".html", "_free.html")
+        title = title.replace("IS-1", "IS-1 FREE", 1)
+        body_cls += " free"
     css = open("style.css", encoding="utf-8").read()
     doc = (f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><title>{title}</title>'
            f'<style>{css}</style></head><body class="{body_cls}">{"".join(pages)}</body></html>')

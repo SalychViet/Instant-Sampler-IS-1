@@ -311,3 +311,9 @@ body.install .page::after { content: "IS-1 · установка на телеф
 .fxpage td { padding-top: 1.2mm; padding-bottom: 1.2mm; }
 table.freepro td:first-child { width: 58mm; font-weight: 600; }
 table.freepro td:nth-child(3) { color: #0b67a8; }
+
+/* Руководство для IS-1 FREE (IS1_EDITION=free) */
+body.free .page::after { content: "IS-1 FREE · руководство пользователя"; }
+body.free.en .page::after { content: "IS-1 FREE · User Manual"; }
+body.free.install .page::after { content: "IS-1 FREE · установка на телефон"; }
+body.free .coverpage::after { content: none; }
