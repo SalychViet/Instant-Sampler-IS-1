@@ -3,6 +3,7 @@
 
 package com.example.mpcpad.ui
 
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import android.annotation.SuppressLint
 import androidx.compose.foundation.Image
@@ -1053,8 +1054,9 @@ fun MpcRoot(actions: SampleActions) {
                     } else {
                         Text(
                             if (Edition.FREE) "IS-1 FREE" else "IS-1",
-                            color = TextMain,
-                            fontSize = 15.sp,
+                            color = Skin.Ink,   // тёмная «шелкография» на алюминиевой панели
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Black,
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Center,
                         )
