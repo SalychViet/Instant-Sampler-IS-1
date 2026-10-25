@@ -1,7 +1,11 @@
 # Инструкция по установке IS-1 (APK): python3 build_install.py -> install.html; PDF печатает headless Chrome.
 from parts import FREE, NAME, cover_logo, crop, page, table, write
 
-APK = "IS-1_FREE_0.4.0.apk" if FREE else "IS-1_0.4.0.apk"
+import os
+
+APK = "IS-1_FREE_0.4.0.apk" if FREE else "IS-1_PRO_0.4.0.apk"
+# Размер APK в МБ (передаётся при сборке: IS1_APK_MB=31,3 python3 build_install.py)
+MB = os.environ.get("IS1_APK_MB", "31,3" if FREE else "46")
 
 
 def tip(t, kind="tip"):
@@ -24,7 +28,7 @@ def dialog(title, text, buttons, icon=""):
 
 def chat_file():
     return ('<div class="tg-head">Избранное</div><div class="tg-msg"><div class="tg-file"><b>⬇</b>'
-            f'<div><div class="tg-name">{APK}</div><div class="tg-size">32,1 МБ · APK</div></div></div>'
+            f'<div><div class="tg-name">{APK}</div><div class="tg-size">{MB} МБ · APK</div></div></div>'
             '<div class="tg-time">12:29 ✓✓</div></div>')
 
 
@@ -49,7 +53,7 @@ pages.append(page(f'''
   <div class="cover-sub">Как поставить приложение на телефон Android</div>
   <div class="apkcard">
     <div class="apkic">APK</div>
-    <div><b>{APK}</b><span>32 МБ · версия 0.4.0 · Android 10 и новее</span></div>
+    <div><b>{APK}</b><span>{MB} МБ · версия 0.4.0 · Android 10 и новее</span></div>
   </div>
   <div class="cover-steps">
     <div><span class="fn">1</span>Перенести файл<br>на телефон</div>
@@ -92,7 +96,7 @@ pages.append(page(f'''
 <div class="phones">
   {phone(dialog("Использовать USB для", "◉ Передача файлов<br>○ Передача фото<br>○ Только зарядка", ["OK"], "🔌"), "1. На телефоне выберите «Передача файлов»")}
   {phone('<div class="pc">💻</div><div class="ph-txt">Mac: программа <b>Android File Transfer</b>.<br>Windows: телефон появится в «Этот компьютер».<br><br>Скопируйте <b>' + APK + '</b> в папку <b>Download</b>.</div>', "2. Скопируйте файл в Download")}
-  {phone('<div class="set-head">Файлы › Download</div><div class="tg-file wide"><b>APK</b><div><div class="tg-name">' + APK + '</div><div class="tg-size">32,1 МБ</div></div></div>', "3. Откройте «Файлы» → Download → файл", (14, 26))}
+  {phone('<div class="set-head">Файлы › Download</div><div class="tg-file wide"><b>APK</b><div><div class="tg-name">' + APK + '</div><div class="tg-size">' + MB + ' МБ</div></div></div>', "3. Откройте «Файлы» → Download → файл", (14, 26))}
 </div>
 {tip("С Google Диска всё так же: откройте файл в приложении «Диск» → ⋮ → <b>Скачать</b>, затем коснитесь скачанного файла в уведомлении или в папке Download.")}'''))
 
@@ -145,7 +149,7 @@ pages.append(page(f'''
 <h2><span class="sn">5</span>Если что-то пошло не так</h2>
 {table(["Что видите", "Что делать"], [
     ["«Приложение не установлено» / «Конфликт с существующим пакетом»", "Новая версия подписана другим ключом, чем установленная. Сохраните треки через EXPORT, удалите старую " + NAME + " и установите заново."],
-    ["«Синтаксическая ошибка» / «Ошибка при синтаксическом анализе пакета»", "Файл скачался не полностью. Скачайте его ещё раз (размер должен быть около 32 МБ)."],
+    ["«Синтаксическая ошибка» / «Ошибка при синтаксическом анализе пакета»", "Файл скачался не полностью. Скачайте его ещё раз (размер должен быть около " + MB + " МБ)."],
     ["Файл открывается как документ или архив", "Откройте его через приложение «Файлы» (Download) и выберите «Установщик пакетов»."],
     ["Кнопка «Установить» неактивна", "Закройте плавающие окна и пузыри чатов поверх экрана (например, подсказки Telegram) и попробуйте снова."],
     ["Нет кнопки «Всё равно установить»", "Play Защита → ⋮ → Настройки → временно выключите «Проверять приложения», установите " + NAME + " и включите проверку обратно."],
