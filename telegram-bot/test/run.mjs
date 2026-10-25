@@ -51,7 +51,7 @@ globalThis.fetch = async (url, init) => {
 };
 
 const FUTURE = new Date(Date.now() + 30 * 864e5).toISOString();
-const env = { BOT_TOKEN: "123:abc", WEBHOOK_SECRET: SECRET, PRICE_USD: "9.99", SALE_PRICE_USD: "8.99", SALE_UNTIL: FUTURE,
+const env = { BOT_TOKEN: "123:abc", WEBHOOK_SECRET: SECRET + "\n", PRICE_USD: "9.99", SALE_PRICE_USD: "8.99", SALE_UNTIL: FUTURE,
               PROMO_CODES: "salychmusic=7.99", STARS_PER_USD: "50", CRYPTO_PAY_TOKEN: CP_TOKEN, DB: makeKV() };
 
 async function post(update, secret = SECRET) {

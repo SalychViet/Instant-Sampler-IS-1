@@ -677,7 +677,13 @@ async function setup(request, env) {
 // ------------------------------------------------------------------ entry
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, rawEnv) {
+    // Secrets pasted into the dashboard often carry a trailing newline or spaces — ignore them.
+    const env = Object.assign({}, rawEnv, {
+      BOT_TOKEN: String(rawEnv.BOT_TOKEN || "").trim(),
+      WEBHOOK_SECRET: String(rawEnv.WEBHOOK_SECRET || "").trim(),
+      CRYPTO_PAY_TOKEN: String(rawEnv.CRYPTO_PAY_TOKEN || "").trim(),
+    });
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/telegram") {
       if (!env.WEBHOOK_SECRET || request.headers.get("x-telegram-bot-api-secret-token") !== env.WEBHOOK_SECRET) {
