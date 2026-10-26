@@ -3,7 +3,7 @@ from parts import FREE, NAME, cover_logo, crop, page, table, write
 
 import os
 
-APK = "IS-1_FREE_0.4.0.apk" if FREE else "IS-1_PRO_0.4.0.apk"
+APK = "IS-1_FREE_0.4.1.apk" if FREE else "IS-1_PRO_0.4.1.apk"
 # Размер APK в МБ (передаётся при сборке: IS1_APK_MB=31,3 python3 build_install.py)
 MB = os.environ.get("IS1_APK_MB", "32,2" if FREE else "45,6")
 
@@ -53,7 +53,7 @@ pages.append(page(f'''
   <div class="cover-sub">Как поставить приложение на телефон Android</div>
   <div class="apkcard">
     <div class="apkic">APK</div>
-    <div><b>{APK}</b><span>{MB} МБ · версия 0.4.0 · Android 10 и новее</span></div>
+    <div><b>{APK}</b><span>{MB} МБ · версия 0.4.1 · Android 10 и новее</span></div>
   </div>
   <div class="cover-steps">
     <div><span class="fn">1</span>Перенести файл<br>на телефон</div>

@@ -42,8 +42,8 @@ https://is1-bot.ВАШ-ПОДДОМЕН.workers.dev/setup?key=СТРОКА_ИЗ_
 ### 4. Станьте администратором и загрузите файлы
 1. Напишите боту: `/claim СТРОКА_ИЗ_webhook_secret.txt` → «Вы администратор».
 2. Отправьте боту **как файлы** (скрепка → Файл):
-   - из «IS-1 FREE 0.4.0»: `IS-1_FREE_0.4.0.apk`, `IS-1_FREE_Install_RU.pdf`, `IS-1_FREE_Manual.pdf`, `IS-1_FREE_Manual_EN.pdf`
-   - из «IS-1 PRO 0.4.0»: `IS-1_PRO_0.4.0.apk`, `IS-1_PRO_Install_RU.pdf`, `IS-1_PRO_Manual.pdf`, `IS-1_PRO_Manual_EN.pdf`
+   - из «IS-1 FREE 0.4.1»: `IS-1_FREE_0.4.1.apk`, `IS-1_FREE_Install_RU.pdf`, `IS-1_FREE_Manual.pdf`, `IS-1_FREE_Manual_EN.pdf`
+   - из «IS-1 PRO 0.4.1»: `IS-1_PRO_0.4.1.apk`, `IS-1_PRO_Install_RU.pdf`, `IS-1_PRO_Manual.pdf`, `IS-1_PRO_Manual_EN.pdf`
    - из «IS-1 Telegram Bot/branding»: `IS-1_bot_banner.jpg` (баннер приветствия), `IS-1_bot_avatar.jpg` (аватар бота)
 3. На последнем файле бот напишет «Всё на месте 🎉». Проверка: `/files`.
 

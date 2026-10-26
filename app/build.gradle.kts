@@ -14,8 +14,8 @@ android {
         applicationId = "com.example.mpcpad"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.4.1"
         // Где лежит исходный код (GPL требует дать к нему доступ). Замените на адрес своего репозитория.
         buildConfigField("String", "SOURCE_URL", "\"https://github.com/SalychViet/Instant-Sampler-IS-1\"")
 

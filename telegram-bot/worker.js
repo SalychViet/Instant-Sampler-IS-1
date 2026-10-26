@@ -22,15 +22,15 @@
 // KV binding: DB
 
 const SOURCE_URL = "https://github.com/SalychViet/Instant-Sampler-IS-1";
-const VERSION = "0.4.0";
+const VERSION = "0.4.1";
 
 // Admin sends documents with exactly these names (as in the release folders on the Desktop).
 const FILES = {
-  "IS-1_FREE_0.4.0.apk": "free_apk",
+  "IS-1_FREE_0.4.1.apk": "free_apk",
   "IS-1_FREE_Install_RU.pdf": "free_install",
   "IS-1_FREE_Manual.pdf": "free_manual_ru",
   "IS-1_FREE_Manual_EN.pdf": "free_manual_en",
-  "IS-1_PRO_0.4.0.apk": "pro_apk",
+  "IS-1_PRO_0.4.1.apk": "pro_apk",
   "IS-1_PRO_Install_RU.pdf": "pro_install",
   "IS-1_PRO_Manual.pdf": "pro_manual_ru",
   "IS-1_PRO_Manual_EN.pdf": "pro_manual_en",
@@ -528,7 +528,7 @@ async function claimAdmin(env, m, secret) {
   if (!env.WEBHOOK_SECRET || secret !== env.WEBHOOK_SECRET) return send(env, m.chat.id, "Неверный ключ.");
   await env.DB.put("admin", String(m.from.id));
   return send(env, m.chat.id,
-    "✅ Вы администратор бота.\n\nТеперь отправьте боту <b>как файлы</b> 8 документов из папок «IS-1 FREE 0.4.0» и «IS-1 PRO 0.4.0» " +
+    "✅ Вы администратор бота.\n\nТеперь отправьте боту <b>как файлы</b> 8 документов из папок «IS-1 FREE 0.4.1» и «IS-1 PRO 0.4.1» " +
     "и 2 картинки из папки «IS-1 Telegram Bot/branding»: IS-1_bot_banner.jpg и IS-1_bot_avatar.jpg.\nСписок команд: /admin");
 }
 
