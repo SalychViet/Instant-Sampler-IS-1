@@ -5,7 +5,7 @@ import os
 
 APK = "IS-1_FREE_0.4.1.apk" if FREE else "IS-1_PRO_0.4.1.apk"
 # Размер APK в МБ (передаётся при сборке: IS1_APK_MB=31,3 python3 build_install.py)
-MB = os.environ.get("IS1_APK_MB", "32,2" if FREE else "45,6")
+MB = os.environ.get("IS1_APK_MB", "30,5" if FREE else "45,6")
 
 
 def tip(t, kind="tip"):
@@ -62,7 +62,7 @@ pages.append(page(f'''
     <div class="farrow">→</div>
     <div><span class="fn">3</span>Установить<br>и открыть</div>
   </div>
-  <div class="cover-foot">Займёт около 5 минут · версия инструкции от 24 октября 2026</div>
+  <div class="cover-foot">Займёт около 5 минут · версия инструкции от 26 октября 2026</div>
 </div>''', "coverpage"))
 
 # Перед началом
