@@ -66,7 +66,9 @@ object ProjectStore {
 
         val song = AudioEngine.songList()
         root.put("song", JSONArray(song))
-        root.put("songOn", app.songIndex >= 0)
+        // Цепочка есть — значит, режим SONG включён (другого способа выключить её, кроме ERASE, нет).
+        // Не берём app.songIndex: до первого кадра экрана он ещё -1, и проект сохранялся с выключенной SONG.
+        root.put("songOn", song.isNotEmpty())
 
         root.put("motions", JSONArray().apply {
             for (m in app.motions) put(
@@ -143,7 +145,8 @@ object ProjectStore {
             if (s.length() > 0) {
                 AudioEngine.songClear()
                 for (i in 0 until s.length()) AudioEngine.songAppend(s.getInt(i))
-                AudioEngine.songEnable(root.optBoolean("songOn", true))
+                // Непустая цепочка всегда играет: старые проекты могли сохраниться с "songOn": false по ошибке.
+                AudioEngine.songEnable(true)
             }
         }
         AudioEngine.seqSelect(pattern, immediate = true)
