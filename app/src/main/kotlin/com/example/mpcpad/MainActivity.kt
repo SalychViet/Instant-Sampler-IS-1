@@ -84,7 +84,12 @@ class MainActivity : ComponentActivity(), SampleActions {
             val pad = pendingImportPad
             pendingImportPad = -1
             if (uri != null) {
-                if (pad >= 0) sampleVm.importToPad(uri, pad) else sampleVm.importUri(uri)
+                val name = displayName(uri)
+                if (name?.endsWith(".sal", ignoreCase = true) == true) {
+                    // Файл проекта выбрали через IMPORT — открываем его как проект, а не как семпл.
+                    if (Edition.FREE) appVm.flash(Edition.pro("PROJECT FILES"), 2500)
+                    else appVm.loadProject(applicationContext, uri, name)
+                } else if (pad >= 0) sampleVm.importToPad(uri, pad) else sampleVm.importUri(uri)
             }
         }
 
