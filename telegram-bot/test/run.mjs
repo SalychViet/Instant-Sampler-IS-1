@@ -321,4 +321,63 @@ await test("sale date shown as 31 December for 2027-01-01 00:00 MSK", async () =
   env.SALE_UNTIL = saved;
 });
 
+await test("FAQ: free-text questions get automatic answers (RU/EN)", async () => {
+  const cases = [["Как установить приложение?", /Как установить/], ["Работает на айфоне?", /Android 10/],
+                 ["чем про отличается от фри", /4 банка/], ["Сколько стоит?", /\$8\.99/], ["можно вернуть деньги?", /14 дней/],
+                 ["я оплатил но файлы не пришли", /\/mypro/], ["как подключить к Ableton", /SETUP → Ableton Link/],
+                 ["приложение вылетает", /Перезапустите/]];
+  for (const [q, re] of cases) {
+    await post(msg(user(USER), q));
+    assert.match(texts(), re, q);
+    assert.equal(sent("sendMessage")[0].body.reply_markup.inline_keyboard[0][0].callback_data, "ask");
+  }
+  await post(msg(user(OTHER, "en"), "does it work on iPhone"));
+  assert.match(texts(), /no iPhone/);
+});
+
+await test("FAQ: greeting shows the menu, no question stored", async () => {
+  await env.DB.delete("q:" + USER);
+  await post(msg(user(USER), "Привет!"));
+  assert.ok(sent("sendPhoto").length === 1);
+  assert.equal(await env.DB.get("q:" + USER), null);
+});
+
+await test("FAQ: unknown question → offer, then forwarded to the author only on tap", async () => {
+  await post(msg(user(USER), "Будет ли версия для Windows?"));
+  assert.match(texts(), /Готового ответа/);
+  assert.ok(!calls.some((c) => c.method === "sendMessage" && c.body.chat_id === String(ADMIN)));
+  await post(cb(user(USER), "ask"));
+  const toAdmin = sent("sendMessage").find((c) => String(c.body.chat_id) === String(ADMIN));
+  assert.match(toAdmin.body.text, /ВОПРОС/);
+  assert.match(toAdmin.body.text, /Windows/);
+  assert.match(texts(), /отправлено автору/);
+  await post(cb(user(USER), "ask"));
+  assert.match(texts(), /ещё раз/);
+});
+
+await test("FAQ: menu button, topic buttons and /faq", async () => {
+  await post(msg(user(USER), "/faq"));
+  const rows = sent("sendMessage")[0].body.reply_markup.inline_keyboard;
+  assert.ok(rows.length >= 10);
+  await post(cb(user(USER), "faq:promo"));
+  assert.match(texts(), /\/promo КОД/);
+  await post(cb(user(USER), "faq:pay"));
+  assert.match(texts(), /450 ⭐/);
+});
+
+await test("bot commands are refreshed once after an update (faq added)", async () => {
+  await env.DB.delete("cmds_rev");
+  await post(msg(user(USER), "/start"));
+  const c = sent("setMyCommands");
+  assert.equal(c.length, 2);
+  assert.ok(c[0].body.commands.some((x) => x.command === "faq"));
+  await post(msg(user(USER), "/start"));
+  assert.equal(sent("setMyCommands").length, 0);
+});
+
+await test("admin free text is not treated as a buyer question", async () => {
+  await post(msg(user(ADMIN), "как установить"));
+  assert.match(texts(), /Команды автора/);
+});
+
 console.log(`\n${passed} tests passed · KV writes used: ${env.DB.writes}`);

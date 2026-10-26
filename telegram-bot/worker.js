@@ -154,6 +154,15 @@ const T = {
     promoOk: (p) => `🎟 Промокод <b>${p.promo}</b> применён!\n` + priceLine(p, "ru"),
     promoBad: "Такого промокода нет 🤷 Проверьте написание.",
     promoNoGain: "Промокод действует, но сейчас цена и так ниже 🙂",
+    btnFaq: "❓ Частые вопросы",
+    btnMenu: "🏠 Меню",
+    btnAskAuthor: "📨 Не помогло — спросить автора",
+    btnAsk: "💬 Моего вопроса тут нет",
+    faqTitle: "❓ <b>Частые вопросы</b>\nВыберите тему — или просто напишите вопрос своими словами, я постараюсь ответить сразу.",
+    faqHelped: "Если ответ не помог — нажмите кнопку ниже, и я передам ваш вопрос автору.",
+    faqNoMatch: "Готового ответа на это у меня нет 🤔\nПередать ваше сообщение автору? Он ответит здесь же.",
+    askHow: "Напишите вопрос одним сообщением своими словами — я поищу ответ, а если не найду, предложу отправить его автору.",
+    askExpired: "Не нашёл ваш вопрос — напишите его ещё раз одним сообщением.",
   },
   en: {
     welcome: (p) =>
@@ -200,6 +209,15 @@ const T = {
     promoOk: (p) => `🎟 Promo code <b>${p.promo}</b> applied!\n` + priceLine(p, "en"),
     promoBad: "No such promo code 🤷 Please check the spelling.",
     promoNoGain: "The code is valid, but the current price is already lower 🙂",
+    btnFaq: "❓ FAQ",
+    btnMenu: "🏠 Menu",
+    btnAskAuthor: "📨 Didn't help — ask the author",
+    btnAsk: "💬 My question is not here",
+    faqTitle: "❓ <b>Frequently asked questions</b>\nPick a topic — or just type your question, I will try to answer right away.",
+    faqHelped: "If this did not help, tap the button below and I will pass your question to the author.",
+    faqNoMatch: "I don't have a ready answer for this 🤔\nShall I send your message to the author? The reply will come here.",
+    askHow: "Type your question in one message — I will look for an answer, and if there is none, offer to send it to the author.",
+    askExpired: "I could not find your question — please send it again in one message.",
   },
 };
 
@@ -240,8 +258,219 @@ function mainMenu(t, code) {
     [{ text: t.btnFree, callback_data: "free" }],
     [{ text: t.btnBuy, callback_data: "buy" + codeSuffix(code) }],
     [{ text: t.btnMyPro, callback_data: "mypro" }, { text: t.btnAbout, callback_data: "about" }],
-    [{ text: t.btnSupport, callback_data: "support" }],
+    [{ text: t.btnFaq, callback_data: "faq" }, { text: t.btnSupport, callback_data: "support" }],
   ]);
+}
+
+// ------------------------------------------------------------------ FAQ (automatic answers)
+// Free-text questions are matched against these topics by keywords; the best match is answered at once.
+// No match → the bot offers to forward the question to the author. Edit answers here; keywords are regexes.
+const FAQ = [
+  {
+    id: "install",
+    kw: /установ|устанавл|поставит|install|\bapk\b|неизвестн\w* источник|unknown source/,
+    q: { ru: "Как установить приложение?", en: "How do I install the app?" },
+    a: {
+      ru: "📲 <b>Как установить</b>\n1. Скачайте APK в этом чате: FREE — кнопка «⬇️ Скачать IS-1 FREE», PRO — приходит после оплаты или по /mypro.\n" +
+          "2. Откройте файл на телефоне.\n3. Android попросит разрешить установку из неизвестных источников для Telegram или файлового менеджера — разрешите.\n" +
+          "4. Нажмите «Установить».\n\nЕсли Google Play Protect предупредит о неизвестном приложении: «Подробнее» → «Всё равно установить».\n" +
+          "Пошагово с картинками — в PDF «Install_RU», он приходит вместе с APK.",
+      en: "📲 <b>How to install</b>\n1. Get the APK in this chat: FREE — the “⬇️ Download IS-1 FREE” button, PRO — sent after payment or via /mypro.\n" +
+          "2. Open the file on your phone.\n3. Android will ask to allow installing from unknown sources for Telegram or your file manager — allow it.\n" +
+          "4. Tap “Install”.\n\nIf Google Play Protect warns about an unknown app: “More details” → “Install anyway”.",
+    },
+  },
+  {
+    id: "devices",
+    kw: /iphone|айфон|\bios\b|ipad|айпад|apple|эппл|планшет|tablet|требован|requirement|совмест|compatib|подойд|пойд[её]т|поддерж\w* (мой|телефон|устройств)|android ?\d|андроид ?\d|верси\w* андроид|which (phone|device)/,
+    q: { ru: "На каких устройствах работает?", en: "Which devices are supported?" },
+    a: {
+      ru: "📱 IS-1 работает на <b>Android 10 и новее</b> — телефоны и планшеты. Для iPhone и iPad версии нет.\n\n" +
+          "Проще всего проверить своё устройство так: поставьте бесплатную IS-1 FREE — у неё тот же движок, что и у PRO.",
+      en: "📱 IS-1 runs on <b>Android 10 or newer</b> — phones and tablets. There is no iPhone/iPad version.\n\n" +
+          "The easiest way to check your device: install the free IS-1 FREE — it uses the same engine as PRO.",
+    },
+  },
+  {
+    id: "freepro",
+    kw: /разниц|отлича|отличи|чем .*(pro|про|лучше)|free.*pro|pro.*free|фри|differen|compare|сравн|огранич|limit|что (есть|даёт|дает) (в )?(pro|про)/,
+    q: { ru: "Чем PRO отличается от FREE?", en: "What is the difference between FREE and PRO?" },
+    a: {
+      ru: "⚖️ <b>FREE</b>: 1 банк (16 падов) и 16 паттернов, паттерн до 2 тактов, песня до 4 паттернов, 25 эффектов KAOSS, 1 память MOTION, " +
+          "RESAMPLE до 10 с, экспорт MP3 128 кбит/с до 1 минуты. Без проектов .sal, сохранения банков и Ableton Link.\n\n" +
+          "<b>PRO</b>: 4 банка (64 пада) и 64 паттерна до 4 тактов, песни любой длины, все 50 эффектов, 4 памяти MOTION, запись эффектов, " +
+          "RESAMPLE до 30 с, экспорт WAV и MP3 320 до 10 минут, проекты .sal и банки, Ableton Link и стартовый проект с семплами.",
+      en: "⚖️ <b>FREE</b>: 1 bank (16 pads) and 16 patterns, patterns up to 2 bars, songs up to 4 patterns, 25 KAOSS effects, 1 MOTION memory, " +
+          "RESAMPLE up to 10 s, MP3 128 kbps export up to 1 minute. No .sal projects, bank saving or Ableton Link.\n\n" +
+          "<b>PRO</b>: 4 banks (64 pads) and 64 patterns up to 4 bars, songs of any length, all 50 effects, 4 MOTION memories, effect recording, " +
+          "RESAMPLE up to 30 s, WAV and MP3 320 export up to 10 minutes, .sal projects and banks, Ableton Link and a starter project with samples.",
+    },
+  },
+  {
+    id: "notreceived",
+    kw: /не приш|не получ|после оплат|не приход|не пришл|не отправ|где (мои )?файл|потерял|удалил|оплатил|заплатил|didn.?t (get|receive|come)|not (received|arrived)|where .*(file|apk)|lost|paid/,
+    q: { ru: "Оплатил, но файлы не пришли", en: "I paid but did not get the files" },
+    a: {
+      ru: "📦 Файлы PRO приходят в этот чат сразу после оплаты. Получить их ещё раз можно в любой момент: /mypro или кнопка «📦 Мой IS-1 PRO».\n\n" +
+          "Платили в USDT — откройте сообщение со счётом и нажмите «✅ Проверить оплату».\n" +
+          "Не помогло — напишите <code>/paysupport</code> и опишите, чем и когда платили.",
+      en: "📦 PRO files arrive in this chat right after payment. Get them again any time: /mypro or the “📦 My IS-1 PRO” button.\n\n" +
+          "Paid in USDT — open the invoice message and tap “✅ Check payment”.\n" +
+          "Still nothing — send <code>/paysupport</code> and say how and when you paid.",
+    },
+  },
+  {
+    id: "pay",
+    kw: /оплат|заплат|купит|купить|покупк|звезд|звёзд|stars?\b|usdt|крипт|crypto|карт[аоуы]|card|цена|стоит|стоимост|сколько|price|cost|how much|pay|buy/,
+    q: { ru: "Как оплатить и сколько стоит?", en: "How do I pay and how much is it?" },
+    a: {
+      ru: (p) => "💳 <b>Как купить IS-1 PRO</b>\nКнопка «⭐ Купить IS-1 PRO» → выберите способ:\n" +
+          "• <b>Telegram Stars</b> ⭐ — звёзды покупаются прямо в Telegram;\n• <b>USDT</b> через @CryptoBot.\n\n" +
+          priceLine(p, "ru") + "\nЕсть промокод? <code>/promo КОД</code>",
+      en: (p) => "💳 <b>How to buy IS-1 PRO</b>\nTap “⭐ Buy IS-1 PRO” and choose:\n" +
+          "• <b>Telegram Stars</b> ⭐ — buy Stars right in Telegram;\n• <b>USDT</b> via @CryptoBot.\n\n" +
+          priceLine(p, "en") + "\nHave a promo code? <code>/promo CODE</code>",
+    },
+  },
+  {
+    id: "update",
+    kw: /обнов|нов\w* верси|update|upgrade|new version|переустан|reinstall|друг\w* (телефон|устройств)|нов\w* (телефон|устройств)|сменил телефон|another (phone|device)|new (phone|device)|перенес|перенос|transfer/,
+    q: { ru: "Обновления и новый телефон", en: "Updates and a new phone" },
+    a: {
+      ru: "🔄 Обновления для покупателей PRO бесплатны: /mypro всегда присылает последнюю версию.\n" +
+          "Новую версию ставьте поверх старой — пады, паттерны и настройки сохранятся.\n\n" +
+          "Новый телефон: войдите в тот же Telegram-аккаунт → /mypro → установите APK. Проекты переносите файлами .sal (PRJCT → SAVE, потом LOAD на новом телефоне).",
+      en: "🔄 Updates are free for PRO buyers: /mypro always sends the latest version.\n" +
+          "Install the new version over the old one — pads, patterns and settings are kept.\n\n" +
+          "New phone: use the same Telegram account → /mypro → install the APK. Move projects as .sal files (PRJCT → SAVE, then LOAD on the new phone).",
+    },
+  },
+  {
+    id: "refund",
+    kw: /возврат|верн\w* (деньг|оплат|звезд|звёзд)|refund|money back/,
+    q: { ru: "Можно ли вернуть оплату?", en: "Can I get a refund?" },
+    a: {
+      ru: "↩️ Если IS-1 PRO не запускается на вашем устройстве, напишите в течение 14 дней после покупки: <code>/paysupport ваш текст</code> — оплату вернём.\n" +
+          "Перед покупкой советуем проверить бесплатную IS-1 FREE: движок тот же.",
+      en: "↩️ If IS-1 PRO does not run on your device, write within 14 days of purchase: <code>/paysupport your text</code> — we will refund you.\n" +
+          "Please try the free IS-1 FREE first: it uses the same engine.",
+    },
+  },
+  {
+    id: "link",
+    kw: /ableton|абл?етон|\blink\b|линк|синхрон|sync|\blive\b/,
+    q: { ru: "Как работает Ableton Link?", en: "How does Ableton Link work?" },
+    a: {
+      ru: "🔗 Ableton Link есть в PRO: <b>SETUP → Ableton Link</b> → включить.\n" +
+          "Телефон и компьютер (или другие Link-приложения) должны быть в одной Wi-Fi сети; в Ableton Live включите LINK слева вверху.\n" +
+          "Темп, такт и старт/стоп станут общими. Если звук спешит или отстаёт — подстройте сдвиг задержки там же, в SETUP.",
+      en: "🔗 Ableton Link is in PRO: <b>SETUP → Ableton Link</b> → turn it on.\n" +
+          "The phone and the computer (or other Link apps) must be on the same Wi-Fi; in Ableton Live turn on LINK at the top left.\n" +
+          "Tempo, bar and start/stop become shared. If the sound is early or late, adjust the latency offset in SETUP.",
+    },
+  },
+  {
+    id: "promo",
+    kw: /промо|promo|скидк|discount|купон|coupon/,
+    q: { ru: "Как ввести промокод?", en: "How do I use a promo code?" },
+    a: {
+      ru: (p) => "🎟 Отправьте промокод так: <code>/promo КОД</code> — цена пересчитается сразу.\n" + priceLine(p, "ru"),
+      en: (p) => "🎟 Send your code like this: <code>/promo CODE</code> — the price updates at once.\n" + priceLine(p, "en"),
+    },
+  },
+  {
+    id: "formats",
+    kw: /формат|format|\bwav\b|\bmp3\b|flac|aiff|\bogg\b|импорт|import|семпл|сэмпл|sample|запис\w* (звук|с микрофон|микрофон)|микрофон|microphone|экспорт|export/,
+    q: { ru: "Какие форматы звука поддерживаются?", en: "Which audio formats are supported?" },
+    a: {
+      ru: "🎵 <b>Импорт</b>: WAV, AIFF, MP3, FLAC, OGG, AAC/M4A — кнопка IMPORT загружает файл прямо на выбранный пад.\n" +
+          "<b>Запись</b>: с микрофона и внутренний звук телефона (SAMPLE → SRC:MIC/INT, удерживайте пад).\n" +
+          "<b>Экспорт</b>: FREE — MP3 128 кбит/с до 1 минуты; PRO — WAV и MP3 320 кбит/с до 10 минут.",
+      en: "🎵 <b>Import</b>: WAV, AIFF, MP3, FLAC, OGG, AAC/M4A — the IMPORT button loads a file straight onto the selected pad.\n" +
+          "<b>Recording</b>: microphone and the phone's internal audio (SAMPLE → SRC:MIC/INT, hold a pad).\n" +
+          "<b>Export</b>: FREE — MP3 128 kbps up to 1 minute; PRO — WAV and MP3 320 kbps up to 10 minutes.",
+    },
+  },
+  {
+    id: "safe",
+    kw: /вирус|безопас|virus|malware|\bsafe\b|play protect|google play|play market|play store|плей ?маркет|гугл ?плей|магазин/,
+    q: { ru: "Почему нет в Google Play? Это безопасно?", en: "Why not on Google Play? Is it safe?" },
+    a: {
+      ru: "🛡 IS-1 распространяется файлом APK через этот бот, в Google Play его нет.\n" +
+          "Код приложения полностью открыт (GNU GPL v3), его может проверить любой: " + SOURCE_URL + "\n" +
+          "Предупреждение Play Protect о «неизвестном приложении» — стандартное для любых APK не из магазина: «Подробнее» → «Всё равно установить».",
+      en: "🛡 IS-1 is distributed as an APK through this bot; it is not on Google Play.\n" +
+          "The source code is fully open (GNU GPL v3) and anyone can check it: " + SOURCE_URL + "\n" +
+          "Play Protect's “unknown app” warning is standard for any APK from outside the store: “More details” → “Install anyway”.",
+    },
+  },
+  {
+    id: "trouble",
+    kw: /вылета|краш|крэш|crash|закрыва|не запуска|не открыва|не работает|завис|тормоз|freez|нет звука|не слышно|без звука|тих|no sound|задержк|опаздыва|latency|lag/,
+    q: { ru: "Вылетает, нет звука или задержка", en: "Crashes, no sound or latency" },
+    a: {
+      ru: "🛠 Что проверить:\n1. Перезапустите приложение: смахните его из недавних и откройте снова.\n2. Нужен Android 10 или новее.\n" +
+          "3. Нет звука — громкость телефона, фейдер MAIN справа, и что на паде есть семпл.\n" +
+          "4. Задержка — с проводными наушниками или динамиком она меньше; Bluetooth всегда добавляет задержку.\n\n" +
+          "Не помогло — нажмите кнопку ниже и укажите модель телефона и версию Android.",
+      en: "🛠 Things to check:\n1. Restart the app: swipe it away from recent apps and open it again.\n2. Android 10 or newer is required.\n" +
+          "3. No sound — phone volume, the MAIN fader on the right, and that the pad has a sample.\n" +
+          "4. Latency — it is lower with wired headphones or the speaker; Bluetooth always adds delay.\n\n" +
+          "Still stuck — tap the button below and include your phone model and Android version.",
+    },
+  },
+  {
+    id: "manual",
+    kw: /инструкц|руководств|мануал|manual|guide|как пользоват|как работает|как сдела|как записат|how to (use|make)|tutorial|обучени|язык|language|english|английск|русск/,
+    q: { ru: "Где руководство? Какой язык?", en: "Where is the manual? Which language?" },
+    a: {
+      ru: "📖 Руководство пользователя (RU и EN) и инструкция по установке приходят вместе с APK. Надписи на панели приложения — на английском.",
+      en: "📖 The user manual (EN and RU) and the install guide come with the APK. The app panel labels are in English.",
+    },
+  },
+];
+const FAQ_GREETING = /^(привет\w*|здравствуй\w*|добр\w* (день|утро|вечер)|хай|hi|hello|hey|салам\w*|start|старт|меню|menu)[!. ]*$/;
+
+// JS \w and \b know only Latin letters: let \w also match Cyrillic, and treat ё as е.
+const faqRe = (re) => new RegExp(re.source.replace(/\\w/g, "[\\wа-яё]").replace(/ё/g, "е"), "g");
+
+function faqMatch(text) {
+  const s = text.toLowerCase().replace(/ё/g, "е");
+  let best = null, bestScore = 0;
+  for (const f of FAQ) {
+    const re = faqRe(f.kw);
+    const score = (s.match(re) || []).length;
+    if (score > bestScore) { best = f; bestScore = score; }
+  }
+  return best;
+}
+
+function faqAnswer(env, f, lc, code = "") {
+  const a = f.a[lc];
+  return typeof a === "function" ? a(price(env, code)) : a;
+}
+
+function faqMenu(t, lc) {
+  return kb([...FAQ.map((f) => [{ text: f.q[lc], callback_data: "faq:" + f.id }]), [{ text: t.btnAsk, callback_data: "askhow" }]]);
+}
+
+/** Free text from a buyer: answer from the FAQ, or offer to forward the question to the author. */
+async function onFreeText(env, m, t, text) {
+  const lc = lang(m.from);
+  const chat = m.chat.id;
+  if (text.length < 2 || faqRe(FAQ_GREETING).test(text.toLowerCase().replace(/ё/g, "е"))) return welcome(env, chat, t, "");
+  await env.DB.put("q:" + m.from.id, text.slice(0, 3500), { expirationTtl: 86400 });
+  const f = faqMatch(text);
+  if (f) {
+    return send(env, chat, faqAnswer(env, f, lc) + "\n\n" + t.faqHelped, kb([
+      [{ text: t.btnAskAuthor, callback_data: "ask" }],
+      [{ text: t.btnFaq, callback_data: "faq" }, { text: t.btnMenu, callback_data: "menu" }],
+    ]));
+  }
+  return send(env, chat, t.faqNoMatch, kb([
+    [{ text: t.btnAskAuthor, callback_data: "ask" }],
+    [{ text: t.btnFaq, callback_data: "faq" }, { text: t.btnMenu, callback_data: "menu" }],
+  ]));
 }
 
 // ------------------------------------------------------------------ storage helpers
@@ -363,6 +592,7 @@ async function deliverIfInvoicePaid(env, inv, expectUserId, resendIfDone = true)
 // ------------------------------------------------------------------ Telegram update handling
 
 async function handleUpdate(upd, env) {
+  if ((await env.DB.get("cmds_rev")) !== COMMANDS_REV) await setCommands(env);
   if (upd.pre_checkout_query) return onPreCheckout(upd.pre_checkout_query, env);
   if (upd.callback_query) return onCallback(upd.callback_query, env);
   const m = upd.message;
@@ -410,13 +640,17 @@ async function onText(m, env) {
       return send(env, chat, `Your id: <code>${m.from.id}</code>`);
     case "/claim":
       return claimAdmin(env, m, arg);
+    case "/faq":
+    case "/help":
+      return send(env, chat, t.faqTitle, faqMenu(t, lang(m.from)));
     case "/support":
     case "/paysupport":
       if (!arg) return send(env, chat, cmd === "/paysupport" ? t.paysupport : t.support);
-      return forwardToAdmin(env, m, cmd, arg, t);
+      return forwardToAdmin(env, m.from, chat, cmd, arg, t);
   }
   if (await isAdmin(env, m.from.id)) return onAdminText(m, env, cmd, rest, arg);
-  return welcome(env, chat, t, "");
+  if (cmd.startsWith("/")) return welcome(env, chat, t, "");
+  return onFreeText(env, m, t, text);
 }
 
 async function applyPromo(env, chat, t, code) {
@@ -444,16 +678,16 @@ async function myPro(env, user, chat, t) {
   await sendKit(env, chat, "pro", t);
 }
 
-async function forwardToAdmin(env, m, cmd, text, t) {
+async function forwardToAdmin(env, from, chat, cmd, text, t) {
   const a = await adminChat(env);
   if (!a) return;
-  const who = m.from.username ? "@" + m.from.username : m.from.first_name || "";
-  const bought = await getPurchase(env, m.from.id);
+  const who = from.username ? "@" + from.username : from.first_name || "";
+  const bought = await getPurchase(env, from.id);
   await send(env, a,
-    `${cmd === "/paysupport" ? "🧾 PAYSUPPORT" : "💬 SUPPORT"} от ${escapeHtml(who)} (<code>${m.from.id}</code>)` +
+    `${cmd === "/paysupport" ? "🧾 PAYSUPPORT" : cmd === "ask" ? "❓ ВОПРОС (автоответ не помог)" : "💬 SUPPORT"} от ${escapeHtml(who)} (<code>${from.id}</code>)` +
     (bought ? `\nPRO куплен: ${bought.method} ${escapeHtml(bought.amount)}, ref <code>${escapeHtml(bought.ref)}</code>` : "") +
-    `\n\n${escapeHtml(text)}\n\nОтветить: <code>/reply ${m.from.id} текст</code>`);
-  await send(env, m.chat.id, t.sentToAuthor);
+    `\n\n${escapeHtml(text)}\n\nОтветить: <code>/reply ${from.id} текст</code>`);
+  await send(env, chat, t.sentToAuthor);
 }
 
 async function onCallback(q, env) {
@@ -466,6 +700,20 @@ async function onCallback(q, env) {
   if (d === "mypro") return myPro(env, q.from, chat, t);
   if (d === "about") return send(env, chat, t.about);
   if (d === "support") return send(env, chat, t.support);
+  if (d === "menu") return welcome(env, chat, t, "");
+  if (d === "faq" && !code) return send(env, chat, t.faqTitle, faqMenu(t, lang(q.from)));
+  if (d === "faq") {
+    const f = FAQ.find((x) => x.id === code);
+    if (!f) return send(env, chat, t.faqTitle, faqMenu(t, lang(q.from)));
+    return send(env, chat, faqAnswer(env, f, lang(q.from)), kb([[{ text: t.btnFaq, callback_data: "faq" }, { text: t.btnMenu, callback_data: "menu" }]]));
+  }
+  if (d === "askhow") return send(env, chat, t.askHow);
+  if (d === "ask") {
+    const question = await env.DB.get("q:" + q.from.id);
+    if (!question) return send(env, chat, t.askExpired);
+    await env.DB.delete("q:" + q.from.id);
+    return forwardToAdmin(env, q.from, chat, "ask", question, t);
+  }
   if (d === "pay_stars") {
     const p = price(env, code);
     return tg(env, "sendInvoice", {
@@ -634,6 +882,26 @@ async function onAdminText(m, env, cmd, rest, arg) {
   return send(env, chat, "Команды автора: /admin");
 }
 
+// Bot menu commands. Bump COMMANDS_REV when the list changes — the bot updates Telegram by itself on the next message.
+const COMMANDS_REV = "2";
+async function setCommands(env) {
+  const out = {};
+  const cmds = {
+    ru: [["start", "Меню"], ["free", "Скачать IS-1 FREE"], ["buy", "Купить IS-1 PRO"], ["faq", "Частые вопросы"], ["promo", "Ввести промокод"],
+         ["mypro", "Получить купленный PRO ещё раз"], ["terms", "Условия покупки"], ["paysupport", "Помощь с оплатой"],
+         ["support", "Написать автору"], ["about", "О программе и исходный код"]],
+    en: [["start", "Menu"], ["free", "Download IS-1 FREE"], ["buy", "Buy IS-1 PRO"], ["faq", "Frequently asked questions"], ["promo", "Enter a promo code"],
+         ["mypro", "Get your PRO again"], ["terms", "Purchase terms"], ["paysupport", "Payment help"],
+         ["support", "Contact the author"], ["about", "About and source code"]],
+  };
+  for (const [lc, list] of Object.entries(cmds)) {
+    const commands = list.map(([command, description]) => ({ command, description }));
+    out["commands_" + lc] = await tg(env, "setMyCommands", lc === "en" ? { commands } : { commands, language_code: lc });
+  }
+  if (out.commands_ru.ok && out.commands_en.ok) await env.DB.put("cmds_rev", COMMANDS_REV);
+  return out;
+}
+
 // ------------------------------------------------------------------ setup (run once from the browser)
 
 async function setup(request, env) {
@@ -646,18 +914,7 @@ async function setup(request, env) {
     allowed_updates: ["message", "callback_query", "pre_checkout_query"],
     drop_pending_updates: true,
   });
-  const cmds = {
-    ru: [["start", "Меню"], ["free", "Скачать IS-1 FREE"], ["buy", "Купить IS-1 PRO"], ["promo", "Ввести промокод"],
-         ["mypro", "Получить купленный PRO ещё раз"], ["terms", "Условия покупки"], ["paysupport", "Помощь с оплатой"],
-         ["support", "Написать автору"], ["about", "О программе и исходный код"]],
-    en: [["start", "Menu"], ["free", "Download IS-1 FREE"], ["buy", "Buy IS-1 PRO"], ["promo", "Enter a promo code"],
-         ["mypro", "Get your PRO again"], ["terms", "Purchase terms"], ["paysupport", "Payment help"],
-         ["support", "Contact the author"], ["about", "About and source code"]],
-  };
-  for (const [lc, list] of Object.entries(cmds)) {
-    const commands = list.map(([command, description]) => ({ command, description }));
-    out["commands_" + lc] = await tg(env, "setMyCommands", lc === "en" ? { commands } : { commands, language_code: lc });
-  }
+  Object.assign(out, await setCommands(env));
   out.desc_ru = await tg(env, "setMyDescription", { language_code: "ru",
     description: "🎛 IS-1 — семплер, секвенсор и KAOSS-эффекты для Android от SALYCH MUSIC. Скачайте бесплатную IS-1 FREE или купите IS-1 PRO с Ableton Link, 64 падами и 50 эффектами." });
   out.desc_en = await tg(env, "setMyDescription", {
