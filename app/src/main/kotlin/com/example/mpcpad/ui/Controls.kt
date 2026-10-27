@@ -265,6 +265,8 @@ internal fun HwButton(
     height: Dp = 30.dp,
     /** Нажата/отпущена — для кнопок-модификаторов, которые держат (CHOKE). */
     onPress: ((Boolean) -> Unit)? = null,
+    /** Размер подписи: длинным словам в узких кнопках (LOOPER) — помельче. */
+    labelSize: androidx.compose.ui.unit.TextUnit = 9.sp,
     onClick: () -> Unit,
 ) {
     val source = remember { MutableInteractionSource() }
@@ -308,7 +310,7 @@ internal fun HwButton(
                     }
                 }
             }
-            Text(label, style = Skin.Silk.copy(fontSize = 9.sp, color = ink), maxLines = 1)
+            Text(label, style = Skin.Silk.copy(fontSize = labelSize, color = ink, letterSpacing = if (labelSize < 9.sp) 0.sp else Skin.Silk.letterSpacing), maxLines = 1)
         }
     }
 }

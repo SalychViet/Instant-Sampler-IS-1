@@ -985,7 +985,7 @@ fun MpcRoot(actions: SampleActions) {
 
             // ================= банки =================
             Column(
-                Modifier.width(44.dp).fillMaxHeight(),
+                Modifier.width(if (Edition.LOOPER) 50.dp else 44.dp).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             ) {
                 // DRY/WET эффекта KAOSS: своё значение у каждой программы, 3 тапа — все на 100%.
@@ -1038,6 +1038,7 @@ fun MpcRoot(actions: SampleActions) {
                     led = app.looperMode,
                     ledColor = if (app.loopRecPad >= 0) Skin.LedRed else Skin.LedAmber,
                     height = 30.dp,
+                    labelSize = 7.5.sp,
                 ) {
                     when {
                         app.loopRecPad >= 0 -> flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
