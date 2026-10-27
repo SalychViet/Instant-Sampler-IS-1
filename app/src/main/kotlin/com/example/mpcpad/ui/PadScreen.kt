@@ -446,10 +446,25 @@ fun MpcRoot(actions: SampleActions) {
         return true
     }
 
-    /** ISL-1 LOOPER: первое касание пада — запись петли, второе — конец записи (петля сразу играет). */
+    /**
+     * ISL-1 LOOPER: касание пустого пада — запись петли, второе касание — конец записи (петля сразу играет).
+     * Пад, на котором петля уже есть, касанием включается/выключается — случайно не перезапишется
+     * (перезаписать: сначала ERASE).
+     */
     fun looperTap(global: Int) {
         val rec = app.loopRecPad
+        val hasLoop = app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null
         when {
+            rec < 0 && hasLoop -> {
+                app.loopToggle(global)
+                flash(
+                    "LOOP ${padName(global)} " + when (global) {
+                        in app.loopsPlaying -> "▶"
+                        in app.loopsWaiting -> "▶ NEXT BAR"
+                        else -> "■ · ERASE TO RE-RECORD"
+                    }
+                )
+            }
             !PadCapture.isArmed -> flash(if (PadCapture.isBusy) "LOOPER: PREPARING INPUT…" else "LOOPER: NO INPUT · PRESS LOOPER AGAIN")
             rec < 0 -> {
                 app.loopStop(global)
@@ -973,7 +988,16 @@ fun MpcRoot(actions: SampleActions) {
                         led = cap.armed || cap.arming, ledColor = if (cap.armed) Skin.LedRed else Skin.LedAmber,
                         height = 28.dp,
                     ) {
-                        if (PadCapture.isBusy) {
+                        if (Edition.LOOPER && app.looperMode) {
+                            // ISL-1: вход уже открыт лупером — просто переходим к обычной записи семплов.
+                            if (app.loopRecPad >= 0) {
+                                flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
+                            } else {
+                                app.looperMode = false
+                                if (!PadCapture.isBusy) actions.armPadCapture()
+                                app.flash("SAMPLE: HOLD A PAD TO RECORD · LOOPER OFF", 2500)
+                            }
+                        } else if (PadCapture.isBusy) {
                             actions.disarmPadCapture()
                             flash("SAMPLE OFF")
                         } else {
@@ -1071,7 +1095,7 @@ fun MpcRoot(actions: SampleActions) {
                             app.kaossMode = false
                             if (!PadCapture.isBusy) actions.armPadCapture()
                             app.looperMode = true
-                            app.flash("LOOPER ON · TAP A PAD = REC · TAP AGAIN = PLAY", 3000)
+                            app.flash("LOOPER ON · EMPTY PAD = REC · LOOP PAD = PLAY/STOP", 3000)
                         }
                     }
                 }
