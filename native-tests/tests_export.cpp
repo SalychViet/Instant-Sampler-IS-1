@@ -77,3 +77,30 @@ TEST(LooperTest, NoteOnAtStartsInsideRegion) {
     for (int k = 0; k < 4; ++k) core2.render(ref.data(), 512);
     EXPECT_GT(buf[2 * 511], ref[2 * 511] * 5.0f);   // с середины пилы — заметно громче, чем с начала
 }
+
+// Голосов не хватает — крадётся не играющая петля, а one-shot.
+TEST(LooperTest, VoiceStealingSparesLoops) {
+    EngineCore core;
+    core.setSampleRate(48000);
+    auto loop = std::make_unique<Sample>();
+    loop->frames = 48000;
+    loop->sampleRate = 48000;
+    loop->data.assign(static_cast<size_t>(loop->frames) * 2, 0.3f);
+    ASSERT_TRUE(core.loadSample(0, std::move(loop)));
+    core.setParam(0, kParamMode, 2.0f);          // LOOP
+    for (int pad = 1; pad <= 2; ++pad) {
+        auto s = std::make_unique<Sample>();
+        s->frames = 48000 * 4;
+        s->sampleRate = 48000;
+        s->data.assign(static_cast<size_t>(s->frames) * 2, 0.01f);
+        ASSERT_TRUE(core.loadSample(pad, std::move(s)));
+    }
+    std::vector<float> buf(2 * 64);
+    ASSERT_TRUE(core.noteOn(0, 1.0f));           // петля — самый старый голос
+    core.render(buf.data(), 64);
+    for (int i = 0; i < kMaxVoices + 8; ++i) {   // переполняем пул длинными one-shot
+        core.noteOn(1 + (i % 2), 1.0f);
+        core.render(buf.data(), 64);
+    }
+    EXPECT_TRUE((core.activePadMask() & 1ull) != 0);   // петля на паде 0 всё ещё звучит
+}

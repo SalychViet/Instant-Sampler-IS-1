@@ -354,8 +354,16 @@ class AppViewModel : ViewModel() {
     /** Петли, которые ждут первой доли следующего такта (квантизация запуска). */
     val loopsWaiting = mutableStateMapOf<Int, Job>()
 
+    /** Петля не в группе CHOKE: запуск одной петли не должен глушить другую. */
+    private fun unchokeLoop(pad: Int) {
+        if (pads[pad].choke == 0) return
+        update(pad) { it.copy(choke = 0) }
+        AudioEngine.setParam(pad, PadParam.CHOKE, 0f)
+    }
+
     fun loopStart(pad: Int) {
         loopsWaiting.remove(pad)?.cancel()
+        unchokeLoop(pad)
         AudioEngine.noteOn(pad, 1f)
         loopsPlaying[pad] = System.nanoTime()
     }
@@ -486,7 +494,8 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.START, 0f)
         AudioEngine.setParam(pad, PadParam.END, 1f)
         AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
-        update(pad) { it.copy(start = 0f, end = 1f, mode = PlayMode.LOOP, loopDiv = -1) }
+        AudioEngine.setParam(pad, PadParam.CHOKE, 0f)
+        update(pad) { it.copy(start = 0f, end = 1f, mode = PlayMode.LOOP, loopDiv = -1, choke = 0) }
         val lenNs = target * 1e9 / sr
         val offset = (System.nanoTime() - startNanos).toDouble().mod(lenNs) / lenNs
         loopsWaiting.remove(pad)?.cancel()

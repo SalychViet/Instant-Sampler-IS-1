@@ -20,15 +20,20 @@ void VoicePool::noteOn(const PadParams& p, int pad, float velocity, double offse
         if (!v.active()) { slot = &v; break; }
     }
     if (!slot) {
-        // Крадём: сначала самый старый из уже затухающих, иначе самый старый вообще.
+        // Крадём: сначала самый старый из уже затухающих, потом самый старый не-LOOP, и только если
+        // звучат одни петли — самую старую петлю. Играющая петля — самый «старый» голос, но её
+        // обрыв слышен сильнее всего (ISL-1: круг на паде крутится, а звука нет).
         Voice* oldestReleasing = nullptr;
+        Voice* oldestOneShot = nullptr;
         Voice* oldest = &voices_[0];
         for (auto& v : voices_) {
             if (v.age() < oldest->age()) oldest = &v;
             if (v.releasing() && (!oldestReleasing || v.age() < oldestReleasing->age()))
                 oldestReleasing = &v;
+            if (v.mode() != PlayMode::Loop && (!oldestOneShot || v.age() < oldestOneShot->age()))
+                oldestOneShot = &v;
         }
-        slot = oldestReleasing ? oldestReleasing : oldest;
+        slot = oldestReleasing ? oldestReleasing : oldestOneShot ? oldestOneShot : oldest;
         stealToDying(*slot);
     }
 
