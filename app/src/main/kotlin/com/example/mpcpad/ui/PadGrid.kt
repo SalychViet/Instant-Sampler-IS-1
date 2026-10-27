@@ -27,6 +27,10 @@ val PadIdle = Color(0xFF3A3A40)
 val PadLit = Color(0xFFFF7A1A)
 val PadSelected = Color(0xFFFFC38A)
 
+/** Круг петли на паде (ISL-1): значение loopRing — NaN нет круга, 0..1 фаза играющей петли, или: */
+const val LOOP_RING_STOPPED = -1f
+const val LOOP_RING_REC = -2f
+
 /**
  * Сетка 4×4 (резиновые пады) в одном Canvas с мультитачем: каждый палец — по pointer id.
  * Раскладка как у MPC: пад 1 — слева внизу, пад 13 — слева вверху.
@@ -52,6 +56,8 @@ fun PadGrid(
     modifier: Modifier = Modifier,
     /** Крупная метка в центре пада (номер группы CHOKE, пока кнопка удерживается); null — без метки. */
     badge: (globalPad: Int) -> String? = { null },
+    /** Круг петли (ISL-1): NaN — нет, 0..1 — фаза играющей петли, LOOP_RING_STOPPED / LOOP_RING_REC. */
+    loopRing: (globalPad: Int) -> Float = { Float.NaN },
 ) {
     val currentBank by rememberUpdatedState(bank)
     val currentFull by rememberUpdatedState(fullLevel)
@@ -148,6 +154,30 @@ fun PadGrid(
                         Size(sz.width - 4.dp.toPx(), sz.height - 4.dp.toPx()), radius, style = Stroke(1.5.dp.toPx()))
                 }
                 drawText(labels[padInBank], topLeft = Offset(topLeft.x + 8.dp.toPx(), topLeft.y + 5.dp.toPx()))
+                val ring = loopRing(global)
+                if (!ring.isNaN()) {
+                    // Круг петли: тусклое кольцо — петля стоит; бегущая дуга с точкой — играет; красное — запись.
+                    val c = Offset(topLeft.x + sz.width / 2f, topLeft.y + sz.height * 0.56f)
+                    val rr = minOf(sz.width, sz.height) * 0.27f
+                    val arcTopLeft = Offset(c.x - rr, c.y - rr)
+                    val arcSize = Size(rr * 2f, rr * 2f)
+                    val w = 3.dp.toPx()
+                    when {
+                        ring == LOOP_RING_REC -> {
+                            val pulse = 0.55f + 0.45f * kotlin.math.sin(System.nanoTime() / 1.6e8).toFloat()
+                            drawCircle(Color.White.copy(alpha = 0.85f * pulse), rr, c, style = Stroke(w))
+                            drawCircle(Color.White.copy(alpha = 0.9f * pulse), rr * 0.28f, c)
+                        }
+                        ring < 0f -> drawCircle(Color.White.copy(alpha = 0.22f), rr, c, style = Stroke(w))
+                        else -> {
+                            drawCircle(Color.White.copy(alpha = 0.16f), rr, c, style = Stroke(w))
+                            val sweep = 360f * ring
+                            drawArc(Skin.PadBlue, -90f, sweep, false, arcTopLeft, arcSize, style = Stroke(w))
+                            val a = Math.toRadians((sweep - 90f).toDouble())
+                            drawCircle(Color.White, w * 0.9f, Offset(c.x + rr * kotlin.math.cos(a).toFloat(), c.y + rr * kotlin.math.sin(a).toFloat()))
+                        }
+                    }
+                }
                 badge(global)?.let { t ->
                     val m = badgeCache.getOrPut(t) { measurer.measure(t, badgeStyle) }
                     drawText(

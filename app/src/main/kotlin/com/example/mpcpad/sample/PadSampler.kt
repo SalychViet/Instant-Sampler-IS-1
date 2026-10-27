@@ -29,6 +29,9 @@ sealed interface SamplerEvent {
     ) : SamplerEvent
 
     class Rejected(val pad: Int, val reason: String) : SamplerEvent
+
+    /** ISL-1 LOOPER: запись петли — как есть, без автообрезки (иначе собьётся длина такта). */
+    class LoopRecorded(val pad: Int, val clip: SampleClip, val capped: Boolean) : SamplerEvent
 }
 
 /**
@@ -48,6 +51,9 @@ object PadSampler {
         app = application
     }
 
+    /** Пады, запись на которые идёт в режиме LOOPER: результат уходит событием LoopRecorded. */
+    val loopPads: MutableSet<Int> = java.util.Collections.synchronizedSet(HashSet())
+
     /** Из ArmedCapture (поток записи): 16-bit PCM → float с учётом GAIN. */
     fun onRecorded(
         pad: Int,
@@ -58,6 +64,7 @@ object PadSampler {
         capped: Boolean,
         source: CaptureSource,
     ) {
+        val asLoop = loopPads.remove(pad)
         scope.launch {
             val gain = Math.pow(10.0, (Settings.recGainDb / 20f).toDouble()).toFloat()
             val n = frames * channels
@@ -69,6 +76,10 @@ object PadSampler {
                     "Ничего не записано: тишина"
                 }
                 _events.emit(SamplerEvent.Rejected(pad, reason))
+                return@launch
+            }
+            if (asLoop) {
+                _events.emit(SamplerEvent.LoopRecorded(pad, SampleClip(data, channels, rate), capped))
                 return@launch
             }
             process(pad, SampleClip(data, channels, rate), "REC_" + padName(pad), capped)

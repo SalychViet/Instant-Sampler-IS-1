@@ -12,6 +12,8 @@ package com.example.mpcpad
  */
 object Edition {
     val FREE: Boolean = BuildConfig.FREE
+    /** ISL-1: полная версия + LOOPER (запись петель прямо на пады, первая петля задаёт темп). */
+    val LOOPER: Boolean = BuildConfig.LOOPER
 
     val banks get() = if (FREE) 1 else 4
     val maxBars get() = if (FREE) 2 else 4

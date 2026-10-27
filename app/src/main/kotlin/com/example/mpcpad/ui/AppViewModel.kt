@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -22,6 +23,7 @@ import com.example.mpcpad.audio.PlayMode
 import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.sample.BankStore
 import com.example.mpcpad.sample.PadLibrary
+import com.example.mpcpad.sample.PadSampler
 import com.example.mpcpad.sample.PadStore
 import com.example.mpcpad.sample.ProjectFile
 import com.example.mpcpad.sample.SampleClip
@@ -322,6 +324,7 @@ class AppViewModel : ViewModel() {
     /** ONE SHOT → GATE → LOOP по кругу для пада. */
     fun cyclePlayMode(pad: Int): Int {
         val next = (pads[pad].mode + 1) % 3
+        if (next != PlayMode.LOOP) loopStop(pad)   // ISL-1: петля играет, пока пад в режиме LOOP
         setParam(pad, PadParam.MODE, next.toFloat()) { it.copy(mode = next) }
         if (next != PlayMode.LOOP && pads[pad].loopDiv >= 0) {
             // уходим из LOOP — петля по темпу больше не нужна, END снова весь семпл
@@ -334,6 +337,103 @@ class AppViewModel : ViewModel() {
     fun setLoopDiv(pad: Int, div: Int, bpm: Float) {
         update(pad) { it.copy(loopDiv = div) }
         applyLoopDiv(pad, bpm)
+    }
+
+    // ---- ISL-1 LOOPER: петли прямо на падах ----
+    /** Режим LOOPER: касание пада — запись петли, второе касание — конец записи и воспроизведение. */
+    var looperMode by mutableStateOf(false)
+    /** Пад, на который сейчас пишется петля (-1 — нет), и когда началась запись (System.nanoTime). */
+    var loopRecPad by mutableIntStateOf(-1)
+    var loopRecStartNanos = 0L
+    /** Играющие петли (включаются и выключаются касанием): пад → когда запущена — для круга на паде. */
+    val loopsPlaying = mutableStateMapOf<Int, Long>()
+    /** Сетка петель: когда запущена первая петля. Следующие петли стартуют в долю от неё. */
+    private var loopGridNanos = 0L
+
+    fun loopStart(pad: Int) {
+        AudioEngine.noteOn(pad, 1f)
+        loopsPlaying[pad] = System.nanoTime()
+    }
+
+    fun loopStop(pad: Int) {
+        if (loopsPlaying.remove(pad) != null) AudioEngine.noteOff(pad)
+    }
+
+    fun loopToggle(pad: Int) = if (pad in loopsPlaying) loopStop(pad) else loopStart(pad)
+
+    /** Длина одного круга петли пада в наносекундах (с учётом START/END и высоты) — для круга на паде. */
+    fun loopLengthNanos(pad: Int): Long {
+        val info = PadLibrary.infos[pad] ?: return 0L
+        val u = pads[pad]
+        val ratio = Math.pow(2.0, (u.pitch + u.detune / 100f) / 12.0)
+        return (info.durationMs * 1_000_000.0 * (u.end - u.start).coerceAtLeast(0.001f) / ratio).toLong()
+    }
+
+    /**
+     * Запись петли закончена. Первая петля (других не играет) задаёт темп проекта: длина — целое число
+     * тактов, темп — ближайший к 120 BPM. Следующие петли подрезаются до целого числа долей
+     * и запускаются в сетку первой петли.
+     */
+    fun finishLoop(pad: Int, recorded: SampleClip, startNanos: Long) {
+        loopRecPad = -1
+        val first = loopsPlaying.keys.none { it != pad }
+        val sr = recorded.sampleRate
+        var clip = recorded
+        val bpm: Double
+        val beats: Int
+        if (first) {
+            val sec = recorded.frames.toDouble() / sr
+            // 1, 2, 4… тактов по 4 доли: берём вариант с темпом ближе всего к 120 (в пределах 60–200)
+            val best = listOf(1, 2, 4, 8, 16, 32).map { bars -> bars * 4 to 60.0 * bars * 4 / sec }
+                .filter { it.second in 60.0..200.0 }
+                .minByOrNull { kotlin.math.abs(kotlin.math.ln(it.second / 120.0)) }
+                ?: (4 to (60.0 * 4 / sec).coerceIn(30.0, 300.0))
+            beats = best.first
+            bpm = best.second.coerceIn(30.0, 300.0)
+            com.example.mpcpad.Settings.bpm = bpm.toFloat()
+            AudioEngine.seqSetBpm(bpm.toFloat())
+            resyncLoops(bpm.toFloat())
+        } else {
+            bpm = com.example.mpcpad.Settings.bpm.toDouble()
+            val beatFrames = sr * 60.0 / bpm
+            beats = kotlin.math.max(1, kotlin.math.round(recorded.frames / beatFrames).toInt())
+            val target = kotlin.math.round(beats * beatFrames).toInt()
+            if (target != recorded.frames) {
+                val ch = recorded.channels
+                val data = FloatArray(target * ch)
+                System.arraycopy(recorded.data, 0, data, 0, minOf(recorded.data.size, data.size))
+                clip = SampleClip(data, ch, sr)
+            }
+        }
+        // микро-фейды на стыке круга — без щелчка
+        val fade = (sr / 400).coerceAtMost(clip.frames / 4)
+        com.example.mpcpad.audio.SampleOps.fadeIn(clip.data, clip.channels, 0, fade)
+        com.example.mpcpad.audio.SampleOps.fadeOut(clip.data, clip.channels, clip.frames - fade, clip.frames)
+
+        val name = "LOOP_" + padName(pad)
+        val loopClip = clip
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.Default) { PadSampler.assignToPad(pad, loopClip, name) }
+            if (!ok) {
+                flash("LOOP ${padName(pad)}: FAILED", 2000)
+                return@launch
+            }
+            update(pad) { it.copy(start = 0f, end = 1f, mode = PlayMode.LOOP, loopDiv = -1) }
+            AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
+            if (first) {
+                loopGridNanos = System.nanoTime()
+            } else {
+                // В сетку: круг из целых тактов — по такту, иначе — по доле, с тем же сдвигом, что при записи.
+                val beatNs = 60e9 / bpm
+                val period = if (beats % 4 == 0) beatNs * 4 else beatNs
+                val offset = (startNanos - loopGridNanos).toDouble().mod(period)
+                val now = System.nanoTime()
+                val wait = (offset - (now - loopGridNanos).toDouble().mod(period)).mod(period)
+                delay((wait / 1e6).toLong())
+            }
+            loopStart(pad)
+            flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
+        }
     }
 
     // ---- PRJCT: проект целиком в файл .sal и из него ----
@@ -380,6 +480,7 @@ class AppViewModel : ViewModel() {
             AudioEngine.seqStop()
             AudioEngine.seqSetRecording(false)
             AudioEngine.allNotesOff()
+            loopsPlaying.clear()
             AudioEngine.stop()
             for (p in 0 until 64) AudioEngine.seqLoadPattern(p, LongArray(0), LongArray(0), 1)
             AudioEngine.songClear()

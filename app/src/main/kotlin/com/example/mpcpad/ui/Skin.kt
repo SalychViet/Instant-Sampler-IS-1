@@ -22,9 +22,10 @@ import androidx.compose.ui.unit.sp
 
 /** Оформление «железа»: матовый алюминий, чёрная шелкография, латунные колпачки, LCD. */
 internal object Skin {
-    val AluLight = Color(0xFFD9DBDE)
-    val AluMid = Color(0xFFC3C6CA)
-    val AluDark = Color(0xFFA9ADB3)
+    // ISL-1 — голубой металлик, остальные версии — серый алюминий.
+    val AluLight = if (com.example.mpcpad.Edition.LOOPER) Color(0xFFC4D8EC) else Color(0xFFD9DBDE)
+    val AluMid = if (com.example.mpcpad.Edition.LOOPER) Color(0xFF9DBBDA) else Color(0xFFC3C6CA)
+    val AluDark = if (com.example.mpcpad.Edition.LOOPER) Color(0xFF7E9EC2) else Color(0xFFA9ADB3)
     val Ink = Color(0xFF15161A)
     val InkSoft = Color(0xFF3B3D43)
 

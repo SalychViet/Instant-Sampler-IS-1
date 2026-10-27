@@ -96,6 +96,7 @@ fun MpcRoot(actions: SampleActions) {
     val peak = remember { mutableFloatStateOf(0f) }
     val recLevel = remember { mutableFloatStateOf(0f) }
     val holdPad = remember { mutableIntStateOf(-1) }
+    val loopFrame = remember { mutableLongStateOf(0L) }
     /** Как был нажат каждый пад: 0 — никак, 1 — нота, 2 — запись семпла, 3 — удержание шага. */
     val route = remember { IntArray(64) }
     val cap by PadCapture.state.collectAsState()
@@ -131,6 +132,8 @@ fun MpcRoot(actions: SampleActions) {
                 r = max(max(CaptureController.level, PadCapture.level), r * 0.85f)
                 recLevel.floatValue = r
                 holdPad.intValue = PadCapture.holdingPad
+                // ISL-1: круги на падах-петлях крутятся — перерисовываем, пока что-то играет или пишется.
+                if (Edition.LOOPER && (app.loopsPlaying.isNotEmpty() || app.loopRecPad >= 0)) loopFrame.longValue = now
 
                 val st = AudioEngine.seqState()
                 app.seqPos = st.position
@@ -191,7 +194,14 @@ fun MpcRoot(actions: SampleActions) {
                     )
                     if (e.capped) app.showToast("Запись/файл длиннее лимита — обрезано")
                 }
-                is SamplerEvent.Rejected -> app.showToast(e.reason, 4500)
+                is SamplerEvent.Rejected -> {
+                    if (e.pad == app.loopRecPad) app.loopRecPad = -1
+                    app.showToast(e.reason, 4500)
+                }
+                is SamplerEvent.LoopRecorded -> {
+                    if (e.capped) app.showToast("LOOP: MAX 30 S", 2500)
+                    app.finishLoop(e.pad, e.clip, app.loopRecStartNanos)
+                }
             }
         }
     }
@@ -428,6 +438,27 @@ fun MpcRoot(actions: SampleActions) {
         return true
     }
 
+    /** ISL-1 LOOPER: первое касание пада — запись петли, второе — конец записи (петля сразу играет). */
+    fun looperTap(global: Int) {
+        val rec = app.loopRecPad
+        when {
+            !PadCapture.isArmed -> flash(if (PadCapture.isBusy) "LOOPER: PREPARING INPUT…" else "LOOPER: NO INPUT · PRESS LOOPER AGAIN")
+            rec < 0 -> {
+                app.loopStop(global)
+                PadSampler.loopPads.add(global)
+                app.loopRecPad = global
+                app.loopRecStartNanos = System.nanoTime()
+                PadCapture.begin(global)
+                app.flash("● LOOP ${padName(global)} · TAP AGAIN TO CLOSE", 30_000)
+            }
+            rec == global -> {
+                PadCapture.end()
+                flash("LOOP ${padName(global)} …")
+            }
+            else -> flash("RECORDING ${padName(rec)} · TAP IT TO CLOSE")
+        }
+    }
+
     fun padDown(global: Int, vel: Float) {
         pressedMask.longValue = pressedMask.longValue or (1L shl global)
         route[global] = 0
@@ -449,10 +480,18 @@ fun MpcRoot(actions: SampleActions) {
                 when {
                     app.eraseLatch -> {
                         app.eraseLatch = false
+                        app.loopStop(global)
                         undoPadSample(global, "DELETE ${padName(global)}")
                         PadStore.delete(context, global)
                         app.update(global) { PadUi() }
                         flash("SAMPLE ${padName(global)} DELETED")
+                    }
+                    // ISL-1 LOOPER: касание — запись, второе касание — конец записи и петля играет.
+                    Edition.LOOPER && app.looperMode -> looperTap(global)
+                    // ISL-1: пад в режиме LOOP включается и выключается касанием (держать не нужно).
+                    Edition.LOOPER && app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
+                        app.loopToggle(global)
+                        flash("LOOP ${padName(global)} " + if (global in app.loopsPlaying) "▶" else "■")
                     }
                     PadCapture.isArmed -> {
                         if (PadCapture.holdingPad < 0) {
@@ -712,6 +751,7 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.seqStop()
                         AudioEngine.seqSetRecording(false)
                         AudioEngine.allNotesOff()
+                        app.loopsPlaying.clear()
                     }
                     HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn || app.songRec || app.fxRecording, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
                         if (app.kaossMode && Edition.FREE) {
@@ -973,7 +1013,7 @@ fun MpcRoot(actions: SampleActions) {
                             else -> Skin.LedAmber
                         },
                         enabled = !pageMode || b < app.patternBars,
-                        height = 44.dp,
+                        height = if (Edition.LOOPER) 38.dp else 44.dp,
                         onPress = { down ->
                             if (app.kaossMode) {
                                 if (b < Edition.motions) motionButton(b, down) else if (down) flash(Edition.pro("MOTION B–D"))
@@ -989,6 +1029,29 @@ fun MpcRoot(actions: SampleActions) {
                             }
                             b >= Edition.banks -> flash(Edition.pro("BANKS B–D"))
                             else -> app.bank = b
+                        }
+                    }
+                }
+                // ISL-1: LOOPER — запись петель прямо на пады
+                if (Edition.LOOPER) HwButton(
+                    "LOOPER", Modifier.fillMaxWidth(),
+                    led = app.looperMode,
+                    ledColor = if (app.loopRecPad >= 0) Skin.LedRed else Skin.LedAmber,
+                    height = 30.dp,
+                ) {
+                    when {
+                        app.loopRecPad >= 0 -> flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
+                        app.looperMode -> {
+                            app.looperMode = false
+                            actions.disarmPadCapture()
+                            app.flash("LOOPER OFF · TAP A LOOP PAD = PLAY / STOP", 2500)
+                        }
+                        else -> {
+                            app.switchView(Mode.PAD, false)
+                            app.kaossMode = false
+                            if (!PadCapture.isBusy) actions.armPadCapture()
+                            app.looperMode = true
+                            app.flash("LOOPER ON · TAP A PAD = REC · TAP AGAIN = PLAY", 3000)
                         }
                     }
                 }
@@ -1023,6 +1086,18 @@ fun MpcRoot(actions: SampleActions) {
                 recPad = { holdPad.intValue },
                 // Пока держат CHOKE — на падах номер группы (G1…G4), чтобы разные группы было видно.
                 badge = { g -> if (app.chokeHold && app.pads[g].choke > 0) "G${app.pads[g].choke}" else null },
+                loopRing = if (!Edition.LOOPER) ({ Float.NaN }) else ({ g ->
+                    loopFrame.longValue   // читаем такт кадра — круг перерисовывается
+                    when {
+                        app.mode != Mode.PAD -> Float.NaN
+                        g == app.loopRecPad -> LOOP_RING_REC
+                        app.pads[g].mode != PlayMode.LOOP || PadLibrary.infos[g] == null -> Float.NaN
+                        else -> app.loopsPlaying[g]?.let { t0 ->
+                            val len = app.loopLengthNanos(g)
+                            if (len <= 0) 0f else ((System.nanoTime() - t0) % len).toFloat() / len
+                        } ?: LOOP_RING_STOPPED
+                    }
+                }),
                 onPadDown = ::padDown,
                 onPadUp = ::padUp,
                 modifier = Modifier.fillMaxHeight().aspectRatio(1f),
@@ -1048,14 +1123,17 @@ fun MpcRoot(actions: SampleActions) {
                             Modifier.height(42.dp).aspectRatio(613f / 814f),
                             contentScale = ContentScale.Fit,
                         )
-                        Image(
+                        // Логотип-картинка — «IS-1»; у ISL-1 название надписью.
+                        if (Edition.LOOPER) Text(
+                            "ISL-1", color = Skin.Ink, fontSize = 22.sp, fontWeight = FontWeight.Black,
+                        ) else Image(
                             painterResource(logoIs1), "IS-1",
                             Modifier.width(78.dp),
                             contentScale = ContentScale.Fit,
                         )
                     } else {
                         Text(
-                            if (Edition.FREE) "IS-1 FREE" else "IS-1",
+                            if (Edition.FREE) "IS-1 FREE" else if (Edition.LOOPER) "ISL-1" else "IS-1",
                             color = Skin.Ink,   // тёмная «шелкография» на алюминиевой панели
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Black,

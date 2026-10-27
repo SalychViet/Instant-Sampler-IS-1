@@ -41,13 +41,14 @@ android {
         buildConfig = true
     }
 
-    // Две версии из одного кода: pro — полная, free — бесплатная с ограничениями (см. Edition.kt).
-    // У free свой applicationId, поэтому обе можно поставить на один телефон.
+    // Версии из одного кода: pro — полная, free — бесплатная с ограничениями, isl — ISL-1:
+    // полная версия + LOOPER на падах (см. Edition.kt). У каждой свой applicationId — можно ставить рядом.
     flavorDimensions += "edition"
     productFlavors {
         create("pro") {
             dimension = "edition"
             buildConfigField("boolean", "FREE", "false")
+            buildConfigField("boolean", "LOOPER", "false")
             resValue("string", "app_name", "IS-1")
         }
         create("free") {
@@ -55,7 +56,16 @@ android {
             applicationIdSuffix = ".free"
             versionNameSuffix = "-free"
             buildConfigField("boolean", "FREE", "true")
+            buildConfigField("boolean", "LOOPER", "false")
             resValue("string", "app_name", "IS-1 FREE")
+        }
+        create("isl") {
+            dimension = "edition"
+            applicationIdSuffix = ".isl"
+            versionNameSuffix = "-isl"
+            buildConfigField("boolean", "FREE", "false")
+            buildConfigField("boolean", "LOOPER", "true")
+            resValue("string", "app_name", "ISL-1")
         }
     }
 
@@ -64,7 +74,10 @@ android {
     val branding = rootProject.file("branding/res")
     if (branding.exists()) {
         sourceSets.getByName("pro").res.srcDir(branding)
+        sourceSets.getByName("isl").res.srcDir(branding)
     }
+    // ISL-1 стартует с тем же проектом из коробки, что и PRO.
+    sourceSets.getByName("isl").assets.srcDir("src/pro/assets")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
