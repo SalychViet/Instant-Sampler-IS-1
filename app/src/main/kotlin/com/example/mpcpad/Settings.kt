@@ -47,6 +47,10 @@ object Settings {
     private val _linkEnabled = mutableStateOf(false)
     private val _latencyMs = mutableFloatStateOf(0f)
 
+    // ---- ISL-1 LOOPER ----
+    private val _linkToLoop = mutableStateOf(false)
+    private val _loopBeats = mutableIntStateOf(0)
+
     var trimStart: Boolean get() = _trimStart.value; set(v) { _trimStart.value = v; putBool("trimStart", v) }
     var trimEnd: Boolean get() = _trimEnd.value; set(v) { _trimEnd.value = v; putBool("trimEnd", v) }
     /** Порог «тишины» для автообрезки, дБFS. */
@@ -64,6 +68,10 @@ object Settings {
     var linkEnabled: Boolean get() = _linkEnabled.value; set(v) { _linkEnabled.value = v; putBool("linkEnabled", v) }
     /** Сдвиг звука относительно сетки Ableton Link, мс: плюс — играть раньше. */
     var latencyMs: Float get() = _latencyMs.floatValue; set(v) { _latencyMs.floatValue = v; putFloat("latencyMs", v) }
+    /** ISL-1, SETUP → LINK TO LOOP: длина паттерна = длина первой петли (иначе — кнопкой LEN). */
+    var linkToLoop: Boolean get() = _linkToLoop.value; set(v) { _linkToLoop.value = v; putBool("linkToLoop", v) }
+    /** Длина первой петли в долях (0 — петли ещё не записывали): по ней темп и LINK TO LOOP. */
+    var loopBeats: Int get() = _loopBeats.intValue; set(v) { _loopBeats.intValue = v; putInt("loopBeats", v) }
 
     fun init(context: Context) {
         val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -82,6 +90,8 @@ object Settings {
         _fullLevel.value = p.getBoolean("fullLevel", false)
         _linkEnabled.value = p.getBoolean("linkEnabled", false)
         _latencyMs.floatValue = p.getFloat("latencyMs", 0f).coerceIn(-100f, 100f)
+        _linkToLoop.value = p.getBoolean("linkToLoop", false)
+        _loopBeats.intValue = p.getInt("loopBeats", 0).coerceIn(0, 256)
     }
 
     private fun putBool(k: String, v: Boolean) { prefs?.edit()?.putBoolean(k, v)?.apply() }

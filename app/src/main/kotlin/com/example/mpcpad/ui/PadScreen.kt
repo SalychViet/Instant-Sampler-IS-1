@@ -97,6 +97,9 @@ fun MpcRoot(actions: SampleActions) {
     val recLevel = remember { mutableFloatStateOf(0f) }
     val holdPad = remember { mutableIntStateOf(-1) }
     val loopFrame = remember { mutableLongStateOf(0L) }
+    if (Edition.LOOPER) {
+        LaunchedEffect(Settings.linkToLoop, Settings.loopBeats, app.seqPattern) { app.applyLoopLength() }
+    }
     /** Как был нажат каждый пад: 0 — никак, 1 — нота, 2 — запись семпла, 3 — удержание шага. */
     val route = remember { IntArray(64) }
     val cap by PadCapture.state.collectAsState()
@@ -133,7 +136,9 @@ fun MpcRoot(actions: SampleActions) {
                 recLevel.floatValue = r
                 holdPad.intValue = PadCapture.holdingPad
                 // ISL-1: круги на падах-петлях крутятся — перерисовываем, пока что-то играет или пишется.
-                if (Edition.LOOPER && (app.loopsPlaying.isNotEmpty() || app.loopRecPad >= 0)) loopFrame.longValue = now
+                if (Edition.LOOPER && (app.loopsPlaying.isNotEmpty() || app.loopsWaiting.isNotEmpty() || app.loopRecPad >= 0)) {
+                    loopFrame.longValue = now
+                }
 
                 val st = AudioEngine.seqState()
                 app.seqPos = st.position
@@ -491,7 +496,13 @@ fun MpcRoot(actions: SampleActions) {
                     // ISL-1: пад в режиме LOOP включается и выключается касанием (держать не нужно).
                     Edition.LOOPER && app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
                         app.loopToggle(global)
-                        flash("LOOP ${padName(global)} " + if (global in app.loopsPlaying) "▶" else "■")
+                        flash(
+                            "LOOP ${padName(global)} " + when (global) {
+                                in app.loopsPlaying -> "▶"
+                                in app.loopsWaiting -> "▶ NEXT BAR"
+                                else -> "■"
+                            }
+                        )
                     }
                     PadCapture.isArmed -> {
                         if (PadCapture.holdingPad < 0) {
@@ -751,7 +762,7 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.seqStop()
                         AudioEngine.seqSetRecording(false)
                         AudioEngine.allNotesOff()
-                        app.loopsPlaying.clear()
+                        app.loopStopAll()
                     }
                     HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn || app.songRec || app.fxRecording, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
                         if (app.kaossMode && Edition.FREE) {
@@ -833,6 +844,10 @@ fun MpcRoot(actions: SampleActions) {
                         flash(if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
                     }
                     HwButton("LEN", Modifier.weight(1f), height = 28.dp) {
+                        if (Edition.LOOPER && Settings.linkToLoop) {
+                            flash("LEN = LOOP LENGTH (SETUP › LINK TO LOOP)")
+                            return@HwButton
+                        }
                         val bars = app.patternBars % Edition.maxBars + 1
                         val pat = app.seqPattern
                         val old = app.patternBars
@@ -1092,6 +1107,7 @@ fun MpcRoot(actions: SampleActions) {
                     when {
                         app.mode != Mode.PAD -> Float.NaN
                         g == app.loopRecPad -> LOOP_RING_REC
+                        g in app.loopsWaiting -> LOOP_RING_WAIT
                         app.pads[g].mode != PlayMode.LOOP || PadLibrary.infos[g] == null -> Float.NaN
                         else -> app.loopsPlaying[g]?.let { t0 ->
                             val len = app.loopLengthNanos(g)

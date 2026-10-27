@@ -30,6 +30,7 @@ val PadSelected = Color(0xFFFFC38A)
 /** Круг петли на паде (ISL-1): значение loopRing — NaN нет круга, 0..1 фаза играющей петли, или: */
 const val LOOP_RING_STOPPED = -1f
 const val LOOP_RING_REC = -2f
+const val LOOP_RING_WAIT = -3f
 
 /**
  * Сетка 4×4 (резиновые пады) в одном Canvas с мультитачем: каждый палец — по pointer id.
@@ -167,6 +168,11 @@ fun PadGrid(
                             val pulse = 0.55f + 0.45f * kotlin.math.sin(System.nanoTime() / 1.6e8).toFloat()
                             drawCircle(Color.White.copy(alpha = 0.85f * pulse), rr, c, style = Stroke(w))
                             drawCircle(Color.White.copy(alpha = 0.9f * pulse), rr * 0.28f, c)
+                        }
+                        ring == LOOP_RING_WAIT -> {
+                            // ждёт первой доли такта — мигает
+                            val on = (System.nanoTime() / 150_000_000L) % 2L == 0L
+                            drawCircle(Skin.PadBlue.copy(alpha = if (on) 0.95f else 0.3f), rr, c, style = Stroke(w))
                         }
                         ring < 0f -> drawCircle(Color.White.copy(alpha = 0.22f), rr, c, style = Stroke(w))
                         else -> {

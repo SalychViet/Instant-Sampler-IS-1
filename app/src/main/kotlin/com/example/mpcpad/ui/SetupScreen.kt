@@ -52,6 +52,31 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
             Chip("ЗАКРЫТЬ", active = true, compact = true) { app.setupOpen = false }
         }
 
+        // ISL-1: LINK TO LOOP — длина паттерна по петле
+        if (Edition.LOOPER) Column(
+            Modifier
+                .widthIn(max = 560.dp)
+                .background(Panel, RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("LINK TO LOOP", color = TextMain, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Chip(if (Settings.linkToLoop) "ВКЛ" else "ВЫКЛ", active = Settings.linkToLoop) {
+                    Settings.linkToLoop = !Settings.linkToLoop
+                    app.applyLoopLength()
+                    app.flash("LINK TO LOOP " + if (Settings.linkToLoop) "ON" else "OFF")
+                }
+            }
+            val beats = Settings.loopBeats
+            Text(
+                (if (beats > 0) "Петля: ${(beats + 3) / 4} такт(а). " else "Петля ещё не записана. ") +
+                    "Включено — длина паттерна равна длине первой петли; выключено — длину задаёт кнопка LEN.",
+                color = TextDim,
+                fontSize = 12.sp,
+            )
+        }
+
         // 1. IMPORT BANK — 2. SAVE BANK: 16 семплов банка вместе с параметрами (громкость, пан, высота…)
         Column(
             Modifier

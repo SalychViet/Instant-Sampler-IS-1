@@ -350,16 +350,81 @@ class AppViewModel : ViewModel() {
     /** Сетка петель: когда запущена первая петля. Следующие петли стартуют в долю от неё. */
     private var loopGridNanos = 0L
 
+    /** Петли, которые ждут первой доли следующего такта (квантизация запуска). */
+    val loopsWaiting = mutableStateMapOf<Int, Job>()
+
     fun loopStart(pad: Int) {
+        loopsWaiting.remove(pad)?.cancel()
         AudioEngine.noteOn(pad, 1f)
         loopsPlaying[pad] = System.nanoTime()
     }
 
     fun loopStop(pad: Int) {
+        loopsWaiting.remove(pad)?.cancel()
         if (loopsPlaying.remove(pad) != null) AudioEngine.noteOff(pad)
     }
 
-    fun loopToggle(pad: Int) = if (pad in loopsPlaying) loopStop(pad) else loopStart(pad)
+    /** Остановить все петли и сбросить сетку тактов (STOP, загрузка проекта). */
+    fun loopStopAll() {
+        loopsWaiting.values.forEach { it.cancel() }
+        loopsWaiting.clear()
+        loopsPlaying.clear()
+        loopGridNanos = 0L
+    }
+
+    /**
+     * Сколько наносекунд до первой доли следующего такта. Сетка петель идёт, как транспорт в Ableton:
+     * от запуска первой петли и до STOP — даже если все петли выключены. Нет сетки — по секвенсору,
+     * если он играет. null — ничего не идёт: петля стартует сразу и задаёт сетку.
+     */
+    private fun nanosToNextBar(): Long? {
+        val bpm = com.example.mpcpad.Settings.bpm.toDouble()
+        val barNs = 4 * 60e9 / bpm
+        if (loopGridNanos != 0L) {
+            val into = (System.nanoTime() - loopGridNanos).toDouble().mod(barNs)
+            // попали почти в долю (до 20 мс после неё) — запускаем сразу
+            return if (into < 20e6) 0L else (barNs - into).toLong()
+        }
+        if (seqPlaying) {
+            val ticks = BAR_TICKS - seqPos.mod(BAR_TICKS)
+            return if (ticks == BAR_TICKS) 0L else (ticks * 60e9 / (bpm * com.example.mpcpad.audio.PPQ)).toLong()
+        }
+        return null
+    }
+
+    /** Включить петлю с первой доли следующего такта (как в Ableton). Повторное касание до старта — отмена. */
+    fun loopLaunch(pad: Int) {
+        loopsWaiting.remove(pad)?.let { it.cancel(); return }
+        val wait = nanosToNextBar()
+        if (wait == null) {
+            loopGridNanos = System.nanoTime()   // ничего не играет — эта петля задаёт сетку
+            loopStart(pad)
+        } else if (wait <= 0L) {
+            if (loopGridNanos == 0L) loopGridNanos = System.nanoTime()
+            loopStart(pad)
+        } else {
+            loopsWaiting[pad] = viewModelScope.launch {
+                delay(wait / 1_000_000)
+                if (loopGridNanos == 0L) loopGridNanos = System.nanoTime()   // сетка — от такта секвенсора
+                loopStart(pad)
+            }
+        }
+    }
+
+    fun loopToggle(pad: Int) = if (pad in loopsPlaying) loopStop(pad) else loopLaunch(pad)
+
+    /** LINK TO LOOP: длина текущего паттерна = длина первой петли (в тактах, до 16). */
+    fun applyLoopLength() {
+        if (!com.example.mpcpad.Settings.linkToLoop) return
+        val beats = com.example.mpcpad.Settings.loopBeats
+        if (beats <= 0) return
+        val bars = ((beats + 3) / 4).coerceIn(1, 16)
+        if (AudioEngine.seqPatternBars(seqPattern) != bars) {
+            AudioEngine.seqSetLength(seqPattern, bars)
+            patternBars = bars
+            if (stepBar >= bars) stepBar = 0
+        }
+    }
 
     /** Длина одного круга петли пада в наносекундах (с учётом START/END и высоты) — для круга на паде. */
     fun loopLengthNanos(pad: Int): Long {
@@ -376,7 +441,7 @@ class AppViewModel : ViewModel() {
      */
     fun finishLoop(pad: Int, recorded: SampleClip, startNanos: Long) {
         loopRecPad = -1
-        val first = loopsPlaying.keys.none { it != pad }
+        val first = loopsPlaying.keys.none { it != pad } && loopGridNanos == 0L
         val sr = recorded.sampleRate
         var clip = recorded
         val bpm: Double
@@ -390,6 +455,7 @@ class AppViewModel : ViewModel() {
                 ?: (4 to (60.0 * 4 / sec).coerceIn(30.0, 300.0))
             beats = best.first
             bpm = best.second.coerceIn(30.0, 300.0)
+            com.example.mpcpad.Settings.loopBeats = beats
             com.example.mpcpad.Settings.bpm = bpm.toFloat()
             AudioEngine.seqSetBpm(bpm.toFloat())
             resyncLoops(bpm.toFloat())
@@ -422,6 +488,7 @@ class AppViewModel : ViewModel() {
             AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
             if (first) {
                 loopGridNanos = System.nanoTime()
+                applyLoopLength()
             } else {
                 // В сетку: круг из целых тактов — по такту, иначе — по доле, с тем же сдвигом, что при записи.
                 val beatNs = 60e9 / bpm
@@ -480,7 +547,7 @@ class AppViewModel : ViewModel() {
             AudioEngine.seqStop()
             AudioEngine.seqSetRecording(false)
             AudioEngine.allNotesOff()
-            loopsPlaying.clear()
+            loopStopAll()
             AudioEngine.stop()
             for (p in 0 until 64) AudioEngine.seqLoadPattern(p, LongArray(0), LongArray(0), 1)
             AudioEngine.songClear()
