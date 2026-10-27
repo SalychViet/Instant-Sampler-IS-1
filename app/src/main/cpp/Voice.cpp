@@ -22,7 +22,7 @@ inline float hermite(float ym1, float y0, float y1, float y2, float f) {
 }  // namespace
 
 bool Voice::start(const PadParams& p, int padIndex, float velocity, double engineRate,
-                  uint64_t age) {
+                  uint64_t age, double offset01) {
     active_ = false;
     const Sample* s = p.sample;
     if (!s || s->frames < 2 || engineRate <= 0.0) return false;
@@ -43,7 +43,8 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
     const double ratio = (static_cast<double>(s->sampleRate) / engineRate) *
                          std::exp2((static_cast<double>(p.pitch) + static_cast<double>(p.detune) * 0.01) / 12.0);
     inc_ = p.reverse ? -ratio : ratio;
-    pos_ = p.reverse ? en - 1e-6 : st;
+    const double off = std::clamp(offset01, 0.0, 0.999999) * (en - st);
+    pos_ = p.reverse ? en - 1e-6 - off : st + off;
 
     const float v = std::clamp(velocity, 0.0f, 1.0f) * std::max(p.volume, 0.0f);
     const float ang = (std::clamp(p.pan, -1.0f, 1.0f) + 1.0f) * kQuarterPi;  // constant power

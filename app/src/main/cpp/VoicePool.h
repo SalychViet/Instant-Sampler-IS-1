@@ -15,7 +15,7 @@ class VoicePool {
 public:
     void setSampleRate(int sr) { sampleRate_ = sr; }
 
-    void noteOn(const PadParams& p, int pad, float velocity);
+    void noteOn(const PadParams& p, int pad, float velocity, double offset01 = 0.0);
     void noteOff(int pad);
     void allNotesOff();                 // мягкий release всех
     void killSample(const Sample* s);   // жёстко остановить всё, что играет этот семпл

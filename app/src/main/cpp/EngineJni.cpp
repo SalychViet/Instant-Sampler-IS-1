@@ -48,6 +48,11 @@ JNIEXPORT jboolean JNICALL JNI(nativeNoteOn)(JNIEnv*, jobject, jlong h, jint pad
     return o && o->core().noteOn(pad, vel);
 }
 
+JNIEXPORT jboolean JNICALL JNI(nativeNoteOnAt)(JNIEnv*, jobject, jlong h, jint pad, jfloat vel, jdouble offset01) {
+    auto* o = get(h);
+    return o && o->core().noteOnAt(pad, vel, offset01);
+}
+
 JNIEXPORT jboolean JNICALL JNI(nativeNoteOff)(JNIEnv*, jobject, jlong h, jint pad) {
     auto* o = get(h);
     return o && o->core().noteOff(pad);

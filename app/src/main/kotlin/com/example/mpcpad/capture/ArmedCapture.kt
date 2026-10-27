@@ -27,7 +27,8 @@ class ArmedCapture(
     }
 
     private sealed interface Cmd {
-        class Begin(val pad: Int) : Cmd
+        /** loop = true (ISL-1 LOOPER): без пре-ролла и хвоста — запись ровно между касаниями. */
+        class Begin(val pad: Int, val loop: Boolean) : Cmd
         object End : Cmd
     }
 
@@ -56,8 +57,8 @@ class ArmedCapture(
         stopRequested = true
     }
 
-    fun begin(pad: Int) {
-        commands.add(Cmd.Begin(pad))
+    fun begin(pad: Int, loop: Boolean = false) {
+        commands.add(Cmd.Begin(pad, loop))
     }
 
     fun end() {
@@ -81,6 +82,7 @@ class ArmedCapture(
         var collecting = false
         var curPad = -1
         var tailLeft = -1
+        var loopTake = false
         var error: String? = null
 
         fun append(src: ShortArray, n: Int) {
@@ -128,15 +130,19 @@ class ArmedCapture(
                             size = 0
                             holdingPad = c.pad
                             silentHeldMs = 0
-                            // Пре-ролл: всё, что накопилось в кольце, — в начало семпла.
-                            val first = (ringHead - ringCount + PREROLL_CHUNKS) % PREROLL_CHUNKS
-                            for (k in 0 until ringCount) {
-                                val idx = (first + k) % PREROLL_CHUNKS
-                                append(ring[idx], ringLen[idx])
+                            loopTake = c.loop
+                            // Пре-ролл: всё, что накопилось в кольце, — в начало семпла (у петли — нет).
+                            if (!c.loop) {
+                                val first = (ringHead - ringCount + PREROLL_CHUNKS) % PREROLL_CHUNKS
+                                for (k in 0 until ringCount) {
+                                    val idx = (first + k) % PREROLL_CHUNKS
+                                    append(ring[idx], ringLen[idx])
+                                }
                             }
                             ringCount = 0
                         }
-                        Cmd.End -> if (collecting && tailLeft < 0) tailLeft = TAIL_CHUNKS
+                        // У петли хвоста нет: дописываем текущий чанк и заканчиваем.
+                        Cmd.End -> if (collecting && tailLeft < 0) tailLeft = if (loopTake) 1 else TAIL_CHUNKS
                     }
                 }
 

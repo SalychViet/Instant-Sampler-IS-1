@@ -51,6 +51,9 @@ object PadSampler {
         app = application
     }
 
+    /** Контекст приложения — для записи петель ISL-1 на диск из AppViewModel. */
+    val appContext: android.content.Context get() = app
+
     /** Пады, запись на которые идёт в режиме LOOPER: результат уходит событием LoopRecorded. */
     val loopPads: MutableSet<Int> = java.util.Collections.synchronizedSet(HashSet())
 

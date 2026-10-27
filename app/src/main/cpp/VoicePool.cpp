@@ -5,7 +5,7 @@
 
 namespace mpc {
 
-void VoicePool::noteOn(const PadParams& p, int pad, float velocity) {
+void VoicePool::noteOn(const PadParams& p, int pad, float velocity, double offset01) {
     if (!p.sample) return;
 
     // Choke: новый звук из группы быстро глушит все звучащие голоса той же группы.
@@ -32,7 +32,7 @@ void VoicePool::noteOn(const PadParams& p, int pad, float velocity) {
         stealToDying(*slot);
     }
 
-    if (!slot->start(p, pad, velocity, static_cast<double>(sampleRate_), ++counter_)) slot->kill();
+    if (!slot->start(p, pad, velocity, static_cast<double>(sampleRate_), ++counter_, offset01)) slot->kill();
 }
 
 // Украденный голос продолжает звучать в «dying»-слоте с коротким fade-out (~3 мс) — без щелчка.

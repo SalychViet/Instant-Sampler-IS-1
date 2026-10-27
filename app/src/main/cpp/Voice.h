@@ -29,7 +29,8 @@ struct PadParams {
 class Voice {
 public:
     // false, если голос запустить нельзя (нет семпла, пустой регион).
-    bool start(const PadParams& p, int padIndex, float velocity, double engineRate, uint64_t age);
+    // offset01 — откуда начать внутри региона START–END (0 — с начала): петля ISL-1 подхватывается с середины.
+    bool start(const PadParams& p, int padIndex, float velocity, double engineRate, uint64_t age, double offset01 = 0.0);
 
     // ДОБАВЛЯЕТ numFrames стерео-кадров в out. false — голос закончился.
     bool render(float* out, int numFrames);

@@ -345,6 +345,7 @@ class AppViewModel : ViewModel() {
     /** Пад, на который сейчас пишется петля (-1 — нет), и когда началась запись (System.nanoTime). */
     var loopRecPad by mutableIntStateOf(-1)
     var loopRecStartNanos = 0L
+    var loopRecEndNanos = 0L
     /** Играющие петли (включаются и выключаются касанием): пад → когда запущена — для круга на паде. */
     val loopsPlaying = mutableStateMapOf<Int, Long>()
     /** Сетка петель: когда запущена первая петля. Следующие петли стартуют в долю от неё. */
@@ -435,71 +436,71 @@ class AppViewModel : ViewModel() {
     }
 
     /**
-     * Запись петли закончена. Первая петля (других не играет) задаёт темп проекта: длина — целое число
-     * тактов, темп — ближайший к 120 BPM. Следующие петли подрезаются до целого числа долей
-     * и запускаются в сетку первой петли.
+     * Запись петли закончена. Длина петли — ровно время между касаниями ([startNanos]…[endNanos]).
+     * Первая петля задаёт темп проекта: целое число тактов, темп ближе к 120 BPM. Следующие петли —
+     * целое число долей. Петля стартует сразу, с того места, где она «должна» быть сейчас,
+     * поэтому после второго касания нет паузы, а с сеткой тактов она совпадает.
      */
-    fun finishLoop(pad: Int, recorded: SampleClip, startNanos: Long) {
+    fun finishLoop(pad: Int, recorded: SampleClip, startNanos: Long, endNanos: Long) {
         loopRecPad = -1
         val first = loopsPlaying.keys.none { it != pad } && loopGridNanos == 0L
         val sr = recorded.sampleRate
-        var clip = recorded
+        val tapSec = ((endNanos - startNanos) / 1e9).coerceAtLeast(0.05)
         val bpm: Double
         val beats: Int
+        val target: Int
         if (first) {
-            val sec = recorded.frames.toDouble() / sr
             // 1, 2, 4… тактов по 4 доли: берём вариант с темпом ближе всего к 120 (в пределах 60–200)
-            val best = listOf(1, 2, 4, 8, 16, 32).map { bars -> bars * 4 to 60.0 * bars * 4 / sec }
+            val best = listOf(1, 2, 4, 8, 16, 32).map { bars -> bars * 4 to 60.0 * bars * 4 / tapSec }
                 .filter { it.second in 60.0..200.0 }
                 .minByOrNull { kotlin.math.abs(kotlin.math.ln(it.second / 120.0)) }
-                ?: (4 to (60.0 * 4 / sec).coerceIn(30.0, 300.0))
+                ?: (4 to (60.0 * 4 / tapSec).coerceIn(30.0, 300.0))
             beats = best.first
             bpm = best.second.coerceIn(30.0, 300.0)
+            target = kotlin.math.round(tapSec * sr).toInt()
             com.example.mpcpad.Settings.loopBeats = beats
             com.example.mpcpad.Settings.bpm = bpm.toFloat()
             AudioEngine.seqSetBpm(bpm.toFloat())
             resyncLoops(bpm.toFloat())
+            loopGridNanos = startNanos   // сетка тактов — от начала первой петли
         } else {
             bpm = com.example.mpcpad.Settings.bpm.toDouble()
-            val beatFrames = sr * 60.0 / bpm
-            beats = kotlin.math.max(1, kotlin.math.round(recorded.frames / beatFrames).toInt())
-            val target = kotlin.math.round(beats * beatFrames).toInt()
-            if (target != recorded.frames) {
-                val ch = recorded.channels
-                val data = FloatArray(target * ch)
-                System.arraycopy(recorded.data, 0, data, 0, minOf(recorded.data.size, data.size))
-                clip = SampleClip(data, ch, sr)
-            }
+            beats = kotlin.math.max(1, kotlin.math.round(tapSec * bpm / 60.0).toInt())
+            target = kotlin.math.round(beats * sr * 60.0 / bpm).toInt()
         }
+        // Ровно target кадров: лишнее отрезаем, недостающее — тишиной.
+        val ch = recorded.channels
+        val data = FloatArray(target * ch)
+        System.arraycopy(recorded.data, 0, data, 0, minOf(recorded.data.size, data.size))
+        val clip = SampleClip(data, ch, sr)
         // микро-фейды на стыке круга — без щелчка
         val fade = (sr / 400).coerceAtMost(clip.frames / 4)
-        com.example.mpcpad.audio.SampleOps.fadeIn(clip.data, clip.channels, 0, fade)
-        com.example.mpcpad.audio.SampleOps.fadeOut(clip.data, clip.channels, clip.frames - fade, clip.frames)
+        com.example.mpcpad.audio.SampleOps.fadeIn(clip.data, ch, 0, fade)
+        com.example.mpcpad.audio.SampleOps.fadeOut(clip.data, ch, clip.frames - fade, clip.frames)
+
+        // Сначала звук: в движок и сразу играть. Диск и картинка волны — потом, в фоне.
+        if (!AudioEngine.loadSample(pad, clip.data, ch, sr)) {
+            flash("LOOP ${padName(pad)}: FAILED", 2000)
+            return
+        }
+        AudioEngine.setParam(pad, PadParam.START, 0f)
+        AudioEngine.setParam(pad, PadParam.END, 1f)
+        AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
+        update(pad) { it.copy(start = 0f, end = 1f, mode = PlayMode.LOOP, loopDiv = -1) }
+        val lenNs = target * 1e9 / sr
+        val offset = (System.nanoTime() - startNanos).toDouble().mod(lenNs) / lenNs
+        loopsWaiting.remove(pad)?.cancel()
+        AudioEngine.noteOnAt(pad, 1f, offset)
+        loopsPlaying[pad] = startNanos   // фаза круга на паде считается от начала записи
+        if (first) applyLoopLength()
+        flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
 
         val name = "LOOP_" + padName(pad)
-        val loopClip = clip
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.Default) { PadSampler.assignToPad(pad, loopClip, name) }
-            if (!ok) {
-                flash("LOOP ${padName(pad)}: FAILED", 2000)
-                return@launch
+            withContext(Dispatchers.Default) {
+                PadStore.save(context = PadSampler.appContext, pad = pad, clip = clip, name = name)
             }
-            update(pad) { it.copy(start = 0f, end = 1f, mode = PlayMode.LOOP, loopDiv = -1) }
-            AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
-            if (first) {
-                loopGridNanos = System.nanoTime()
-                applyLoopLength()
-            } else {
-                // В сетку: круг из целых тактов — по такту, иначе — по доле, с тем же сдвигом, что при записи.
-                val beatNs = 60e9 / bpm
-                val period = if (beats % 4 == 0) beatNs * 4 else beatNs
-                val offset = (startNanos - loopGridNanos).toDouble().mod(period)
-                val now = System.nanoTime()
-                val wait = (offset - (now - loopGridNanos).toDouble().mod(period)).mod(period)
-                delay((wait / 1e6).toLong())
-            }
-            loopStart(pad)
-            flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
+            PadLibrary.set(pad, name, clip)
         }
     }
 

@@ -51,8 +51,8 @@ object PadCapture {
         _state.value = _state.value.copy(message = null)
     }
 
-    fun begin(pad: Int) {
-        capture?.begin(pad)
+    fun begin(pad: Int, loop: Boolean = false) {
+        capture?.begin(pad, loop)
     }
 
     fun end() {

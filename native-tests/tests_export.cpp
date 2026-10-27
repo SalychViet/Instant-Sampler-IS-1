@@ -44,3 +44,36 @@ TEST(ExportTest, CancelStopsRecording) {
     core.render(buf.data(), 256);
     EXPECT_EQ(core.exportState(), 0);
 }
+
+// ISL-1: петля, запущенная «на ходу» (noteOnAt), играет с нужного места региона.
+TEST(LooperTest, NoteOnAtStartsInsideRegion) {
+    EngineCore core;
+    core.setSampleRate(48000);
+    auto s = std::make_unique<Sample>();
+    s->frames = 48000;
+    s->sampleRate = 48000;
+    s->data.resize(static_cast<size_t>(s->frames) * 2);
+    for (int64_t i = 0; i < s->frames; ++i) s->data[2 * i] = s->data[2 * i + 1] = static_cast<float>(i) / s->frames;   // пила 0 → 1
+    ASSERT_TRUE(core.loadSample(0, std::move(s)));
+    core.setParam(0, kParamMode, 2.0f);         // LOOP
+    core.setParam(0, kParamAttackMs, 0.0f);
+    ASSERT_TRUE(core.noteOnAt(0, 1.0f, 0.5));
+    std::vector<float> buf(2 * 512);
+    for (int k = 0; k < 4; ++k) core.render(buf.data(), 512);   // атака (≥1 мс) прошла
+    // Через ~2048 кадров от середины пилы: значение ≈ 0.5 + 2048/48000 (до лимитера и громкости).
+    EXPECT_GT(buf[2 * 511], 0.2f);
+    std::vector<float> ref(2 * 512);
+    EngineCore core2;
+    core2.setSampleRate(48000);
+    auto s2 = std::make_unique<Sample>();
+    s2->frames = 48000;
+    s2->sampleRate = 48000;
+    s2->data.resize(static_cast<size_t>(s2->frames) * 2);
+    for (int64_t i = 0; i < s2->frames; ++i) s2->data[2 * i] = s2->data[2 * i + 1] = static_cast<float>(i) / s2->frames;
+    ASSERT_TRUE(core2.loadSample(0, std::move(s2)));
+    core2.setParam(0, kParamMode, 2.0f);
+    core2.setParam(0, kParamAttackMs, 0.0f);
+    ASSERT_TRUE(core2.noteOn(0, 1.0f));
+    for (int k = 0; k < 4; ++k) core2.render(ref.data(), 512);
+    EXPECT_GT(buf[2 * 511], ref[2 * 511] * 5.0f);   // с середины пилы — заметно громче, чем с начала
+}

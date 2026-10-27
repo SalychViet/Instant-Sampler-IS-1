@@ -47,6 +47,17 @@ bool EngineCore::noteOn(int pad, float velocity01) {
     return post(c);
 }
 
+bool EngineCore::noteOnAt(int pad, float velocity01, double offset01) {
+    if (pad < 0 || pad >= kNumPads) return false;
+    Command c;
+    c.type = CmdType::NoteOn;
+    c.pad = static_cast<uint8_t>(pad);
+    c.value = std::clamp(velocity01, 0.0f, 1.0f);
+    c.b = static_cast<int32_t>(std::clamp(offset01, 0.0, 0.999999) * 1e6);   // миллионные доли региона
+    std::lock_guard<std::mutex> lk(producerMutex_);
+    return post(c);
+}
+
 bool EngineCore::noteOff(int pad) {
     if (pad < 0 || pad >= kNumPads) return false;
     Command c;
@@ -121,7 +132,7 @@ bool EngineCore::seq(SeqOp op, int pat, int pad, int a, int b, float f) {
 void EngineCore::apply(const Command& c) {
     switch (c.type) {
         case CmdType::NoteOn:
-            voices_.noteOn(pads_[c.pad], c.pad, c.value);
+            voices_.noteOn(pads_[c.pad], c.pad, c.value, c.b * 1e-6);
             seq_.onPadDown(c.pad, c.value);   // если идёт запись — нота попадёт в паттерн
             break;
         case CmdType::NoteOff:

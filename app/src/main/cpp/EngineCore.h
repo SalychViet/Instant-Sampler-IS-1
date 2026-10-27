@@ -49,6 +49,8 @@ public:
 
     // ---- control-потоки ----
     bool noteOn(int pad, float velocity01);
+    // Нота с места внутри региона (0..1) — для петель ISL-1, которые подхватываются «на ходу».
+    bool noteOnAt(int pad, float velocity01, double offset01);
     bool noteOff(int pad);
     bool allNotesOff();
     bool setParam(int pad, int paramId, float value);

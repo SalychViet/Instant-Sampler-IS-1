@@ -205,7 +205,10 @@ fun MpcRoot(actions: SampleActions) {
                 }
                 is SamplerEvent.LoopRecorded -> {
                     if (e.capped) app.showToast("LOOP: MAX 30 S", 2500)
-                    app.finishLoop(e.pad, e.clip, app.loopRecStartNanos)
+                    // Запись оборвалась на 30 с — конец петли там, где кончился звук.
+                    val end = if (e.capped) app.loopRecStartNanos + e.clip.frames * 1_000_000_000L / e.clip.sampleRate
+                    else app.loopRecEndNanos
+                    app.finishLoop(e.pad, e.clip, app.loopRecStartNanos, end)
                 }
             }
         }
@@ -453,10 +456,11 @@ fun MpcRoot(actions: SampleActions) {
                 PadSampler.loopPads.add(global)
                 app.loopRecPad = global
                 app.loopRecStartNanos = System.nanoTime()
-                PadCapture.begin(global)
+                PadCapture.begin(global, loop = true)
                 app.flash("● LOOP ${padName(global)} · TAP AGAIN TO CLOSE", 30_000)
             }
             rec == global -> {
+                app.loopRecEndNanos = System.nanoTime()
                 PadCapture.end()
                 flash("LOOP ${padName(global)} …")
             }
