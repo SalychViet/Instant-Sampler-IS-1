@@ -200,15 +200,19 @@ fun MpcRoot(actions: SampleActions) {
                     if (e.capped) app.showToast("Запись/файл длиннее лимита — обрезано")
                 }
                 is SamplerEvent.Rejected -> {
-                    if (e.pad == app.loopRecPad) app.loopRecPad = -1
+                    if (e.pad == app.loopRecPad) {
+                        app.loopRecPad = -1
+                        app.loopClosing = false
+                    }
                     app.showToast(e.reason, 4500)
                 }
                 is SamplerEvent.LoopRecorded -> {
                     if (e.capped) app.showToast("LOOP: MAX 30 S", 2500)
                     // Запись оборвалась на 30 с — конец петли там, где кончился звук.
-                    val end = if (e.capped) app.loopRecStartNanos + e.clip.frames * 1_000_000_000L / e.clip.sampleRate
-                    else app.loopRecEndNanos
-                    app.finishLoop(e.pad, e.clip, app.loopRecStartNanos, end)
+                    val end = if (e.capped) {
+                        app.loopRecStartNanos + (e.clip.frames - e.prerollFrames) * 1_000_000_000L / e.clip.sampleRate
+                    } else app.loopRecEndNanos
+                    app.finishLoop(e.pad, e.clip, e.prerollFrames, app.loopRecStartNanos, end)
                 }
             }
         }
@@ -475,9 +479,23 @@ fun MpcRoot(actions: SampleActions) {
                 app.flash("● LOOP ${padName(global)} · TAP AGAIN TO CLOSE", 30_000)
             }
             rec == global -> {
-                app.loopRecEndNanos = System.nanoTime()
-                PadCapture.end()
-                flash("LOOP ${padName(global)} …")
+                if (app.loopClosing) return
+                val now = System.nanoTime()
+                val end = app.loopRecEndFor(now)
+                app.loopRecEndNanos = end
+                val wait = end - now
+                if (wait > 0) {
+                    // Нажали чуть раньше черты такта — пишем до неё, потом петля играет.
+                    app.loopClosing = true
+                    app.flash("● LOOP ${padName(global)} · CLOSING ON THE BAR", 4000)
+                    scope.launch {
+                        delay(wait / 1_000_000 + 20)   // +20 мс: последний чанк записи точно дошёл
+                        PadCapture.end()
+                    }
+                } else {
+                    PadCapture.end()
+                    flash("LOOP ${padName(global)} …")
+                }
             }
             else -> flash("RECORDING ${padName(rec)} · TAP IT TO CLOSE")
         }

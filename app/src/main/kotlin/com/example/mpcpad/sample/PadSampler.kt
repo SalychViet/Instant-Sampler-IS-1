@@ -31,7 +31,7 @@ sealed interface SamplerEvent {
     class Rejected(val pad: Int, val reason: String) : SamplerEvent
 
     /** ISL-1 LOOPER: запись петли — как есть, без автообрезки (иначе собьётся длина такта). */
-    class LoopRecorded(val pad: Int, val clip: SampleClip, val capped: Boolean) : SamplerEvent
+    class LoopRecorded(val pad: Int, val clip: SampleClip, val capped: Boolean, val prerollFrames: Int) : SamplerEvent
 }
 
 /**
@@ -68,6 +68,7 @@ object PadSampler {
         source: CaptureSource,
     ) {
         val asLoop = loopPads.remove(pad)
+        val preroll = if (asLoop) com.example.mpcpad.capture.PadCapture.lastPrerollFrames else 0
         scope.launch {
             val gain = Math.pow(10.0, (Settings.recGainDb / 20f).toDouble()).toFloat()
             val n = frames * channels
@@ -82,7 +83,7 @@ object PadSampler {
                 return@launch
             }
             if (asLoop) {
-                _events.emit(SamplerEvent.LoopRecorded(pad, SampleClip(data, channels, rate), capped))
+                _events.emit(SamplerEvent.LoopRecorded(pad, SampleClip(data, channels, rate), capped, preroll))
                 return@launch
             }
             process(pad, SampleClip(data, channels, rate), "REC_" + padName(pad), capped)

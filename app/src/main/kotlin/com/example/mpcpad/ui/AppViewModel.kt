@@ -346,6 +346,8 @@ class AppViewModel : ViewModel() {
     var loopRecPad by mutableIntStateOf(-1)
     var loopRecStartNanos = 0L
     var loopRecEndNanos = 0L
+    /** Второе касание было чуть раньше конца такта: запись идёт до черты такта, потом петля играет. */
+    var loopClosing by mutableStateOf(false)
     /** Играющие петли (включаются и выключаются касанием): пад → когда запущена — для круга на паде. */
     val loopsPlaying = mutableStateMapOf<Int, Long>()
     /** Сетка петель: когда запущена первая петля. Следующие петли стартуют в долю от неё. */
@@ -353,6 +355,25 @@ class AppViewModel : ViewModel() {
 
     /** Петли, которые ждут первой доли следующего такта (квантизация запуска). */
     val loopsWaiting = mutableStateMapOf<Int, Job>()
+
+    /** Первая доля такта сетки петель, ближайшая к моменту [t] (сетка должна идти). */
+    private fun nearestBar(t: Long): Long {
+        val barNs = 4 * 60e9 / com.example.mpcpad.Settings.bpm
+        val k = kotlin.math.round((t - loopGridNanos) / barNs)
+        return loopGridNanos + (k * barNs).toLong()
+    }
+
+    /**
+     * Где закончить запись петли, если второе касание — в [now]. Есть сетка тактов — на ближайшей черте
+     * такта (не короче одного такта от начала записи), иначе — ровно по касанию.
+     */
+    fun loopRecEndFor(now: Long): Long {
+        if (loopGridNanos == 0L) return now
+        val barNs = 4 * 60e9 / com.example.mpcpad.Settings.bpm
+        val start = nearestBar(loopRecStartNanos)
+        val bars = kotlin.math.max(1L, kotlin.math.round((now - start) / barNs).toLong())
+        return start + (bars * barNs).toLong()
+    }
 
     /** Петля не в группе CHOKE: запуск одной петли не должен глушить другую. */
     private fun unchokeLoop(pad: Int) {
@@ -444,20 +465,23 @@ class AppViewModel : ViewModel() {
     }
 
     /**
-     * Запись петли закончена. Длина петли — ровно время между касаниями ([startNanos]…[endNanos]).
-     * Первая петля задаёт темп проекта: целое число тактов, темп ближе к 120 BPM. Следующие петли —
-     * целое число долей. Петля стартует сразу, с того места, где она «должна» быть сейчас,
-     * поэтому после второго касания нет паузы, а с сеткой тактов она совпадает.
+     * Запись петли закончена. [prerollFrames] — сколько звука до касания в начале записи.
+     * Первая петля: длина — ровно время между касаниями, она задаёт темп (целое число тактов, темп ближе
+     * к 120 BPM) и сетку тактов. Следующие петли: начало и конец — на ближайших чертах тактов этой сетки,
+     * длина — целое число тактов. Петля сразу играет с того места, где она «должна» быть, — без паузы.
      */
-    fun finishLoop(pad: Int, recorded: SampleClip, startNanos: Long, endNanos: Long) {
+    fun finishLoop(pad: Int, recorded: SampleClip, prerollFrames: Int, startNanos: Long, endNanos: Long) {
         loopRecPad = -1
+        loopClosing = false
         val first = loopsPlaying.keys.none { it != pad } && loopGridNanos == 0L
         val sr = recorded.sampleRate
-        val tapSec = ((endNanos - startNanos) / 1e9).coerceAtLeast(0.05)
+        val clipT0 = startNanos - (prerollFrames * 1e9 / sr).toLong()   // момент первого кадра записи
         val bpm: Double
         val beats: Int
         val target: Int
+        val loopStart: Long   // момент, с которого петля начинается (её «первая доля»)
         if (first) {
+            val tapSec = ((endNanos - startNanos) / 1e9).coerceAtLeast(0.05)
             // 1, 2, 4… тактов по 4 доли: берём вариант с темпом ближе всего к 120 (в пределах 60–200)
             val best = listOf(1, 2, 4, 8, 16, 32).map { bars -> bars * 4 to 60.0 * bars * 4 / tapSec }
                 .filter { it.second in 60.0..200.0 }
@@ -466,6 +490,7 @@ class AppViewModel : ViewModel() {
             beats = best.first
             bpm = best.second.coerceIn(30.0, 300.0)
             target = kotlin.math.round(tapSec * sr).toInt()
+            loopStart = startNanos
             com.example.mpcpad.Settings.loopBeats = beats
             com.example.mpcpad.Settings.bpm = bpm.toFloat()
             AudioEngine.seqSetBpm(bpm.toFloat())
@@ -473,13 +498,19 @@ class AppViewModel : ViewModel() {
             loopGridNanos = startNanos   // сетка тактов — от начала первой петли
         } else {
             bpm = com.example.mpcpad.Settings.bpm.toDouble()
-            beats = kotlin.math.max(1, kotlin.math.round(tapSec * bpm / 60.0).toInt())
-            target = kotlin.math.round(beats * sr * 60.0 / bpm).toInt()
+            val barNs = 4 * 60e9 / bpm
+            var s = nearestBar(startNanos)
+            if (s < clipT0) s += barNs.toLong()   // звука до этой черты нет — со следующего такта
+            val bars = kotlin.math.max(1L, kotlin.math.round((endNanos - s) / barNs).toLong())
+            beats = (bars * 4).toInt()
+            target = kotlin.math.round(bars * barNs * sr / 1e9).toInt()
+            loopStart = s
         }
-        // Ровно target кадров: лишнее отрезаем, недостающее — тишиной.
+        // Ровно target кадров от начала петли: лишнее отрезаем, недостающее — тишиной.
         val ch = recorded.channels
+        val from = kotlin.math.max(0L, kotlin.math.round((loopStart - clipT0) * sr / 1e9).toLong()).toInt() * ch
         val data = FloatArray(target * ch)
-        System.arraycopy(recorded.data, 0, data, 0, minOf(recorded.data.size, data.size))
+        if (from < recorded.data.size) System.arraycopy(recorded.data, from, data, 0, minOf(recorded.data.size - from, data.size))
         val clip = SampleClip(data, ch, sr)
         // микро-фейды на стыке круга — без щелчка
         val fade = (sr / 400).coerceAtMost(clip.frames / 4)
@@ -497,10 +528,10 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.CHOKE, 0f)
         update(pad) { it.copy(start = 0f, end = 1f, mode = PlayMode.LOOP, loopDiv = -1, choke = 0) }
         val lenNs = target * 1e9 / sr
-        val offset = (System.nanoTime() - startNanos).toDouble().mod(lenNs) / lenNs
+        val offset = (System.nanoTime() - loopStart).toDouble().mod(lenNs) / lenNs
         loopsWaiting.remove(pad)?.cancel()
         AudioEngine.noteOnAt(pad, 1f, offset)
-        loopsPlaying[pad] = startNanos   // фаза круга на паде считается от начала записи
+        loopsPlaying[pad] = loopStart   // фаза круга на паде — от начала петли
         if (first) applyLoopLength()
         flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
 

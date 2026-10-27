@@ -28,6 +28,8 @@ object PadCapture {
     val heldMs: Long get() = capture?.heldMs ?: 0L
     val silentHeldMs: Long get() = capture?.silentHeldMs ?: 0L
     val level: Float get() = capture?.level ?: 0f
+    /** Кадров звука до касания в начале последней записи (для петель ISL-1). */
+    val lastPrerollFrames: Int get() = capture?.lastPrerollFrames ?: 0
 
     fun markArming(source: CaptureSource) {
         _state.value = PadCaptureState(arming = true, source = source)

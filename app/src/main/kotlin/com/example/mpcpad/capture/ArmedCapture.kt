@@ -24,6 +24,8 @@ class ArmedCapture(
         const val MAX_HOLD_SECONDS = 30
         const val PREROLL_CHUNKS = 5
         const val TAIL_CHUNKS = 4
+        /** Петле (ISL-1) нужен звук до касания — чтобы начало подтянулось к первой доле такта: 1 с. */
+        const val LOOP_PREROLL_CHUNKS = 100
     }
 
     private sealed interface Cmd {
@@ -41,6 +43,9 @@ class ArmedCapture(
     @Volatile var level = 0f
         private set
     @Volatile var holdingPad = -1
+        private set
+    /** Сколько кадров пре-ролла (звука до касания) в начале последней записи. */
+    @Volatile var lastPrerollFrames = 0
         private set
     @Volatile var heldMs = 0L
         private set
@@ -71,8 +76,8 @@ class ArmedCapture(
         val rate = config.sampleRate
         val chunkFrames = rate / 100
         val chunk = ShortArray(chunkFrames * ch)
-        val ring = Array(PREROLL_CHUNKS) { ShortArray(chunk.size) }
-        val ringLen = IntArray(PREROLL_CHUNKS)
+        val ring = Array(LOOP_PREROLL_CHUNKS) { ShortArray(chunk.size) }
+        val ringLen = IntArray(LOOP_PREROLL_CHUNKS)
         var ringHead = 0
         var ringCount = 0
 
@@ -131,14 +136,15 @@ class ArmedCapture(
                             holdingPad = c.pad
                             silentHeldMs = 0
                             loopTake = c.loop
-                            // Пре-ролл: всё, что накопилось в кольце, — в начало семпла (у петли — нет).
-                            if (!c.loop) {
-                                val first = (ringHead - ringCount + PREROLL_CHUNKS) % PREROLL_CHUNKS
-                                for (k in 0 until ringCount) {
-                                    val idx = (first + k) % PREROLL_CHUNKS
-                                    append(ring[idx], ringLen[idx])
-                                }
+                            // Пре-ролл — в начало семпла: у семпла 50 мс (атака не теряется), у петли до 1 с
+                            // (начало потом подтягивается к первой доле такта).
+                            val take = if (c.loop) ringCount else minOf(ringCount, PREROLL_CHUNKS)
+                            val first = (ringHead - take + LOOP_PREROLL_CHUNKS) % LOOP_PREROLL_CHUNKS
+                            for (k in 0 until take) {
+                                val idx = (first + k) % LOOP_PREROLL_CHUNKS
+                                append(ring[idx], ringLen[idx])
                             }
+                            lastPrerollFrames = size / ch
                             ringCount = 0
                         }
                         // У петли хвоста нет: дописываем текущий чанк и заканчиваем.
@@ -160,8 +166,8 @@ class ArmedCapture(
                 } else {
                     System.arraycopy(chunk, 0, ring[ringHead], 0, n)
                     ringLen[ringHead] = n
-                    ringHead = (ringHead + 1) % PREROLL_CHUNKS
-                    if (ringCount < PREROLL_CHUNKS) ringCount++
+                    ringHead = (ringHead + 1) % LOOP_PREROLL_CHUNKS
+                    if (ringCount < LOOP_PREROLL_CHUNKS) ringCount++
                 }
             }
         } catch (e: Exception) {
