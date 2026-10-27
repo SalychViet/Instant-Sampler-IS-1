@@ -595,7 +595,7 @@ void Sequencer::renderClick(float* out, int numFrames) {
     }
 }
 
-void Sequencer::render(float* out, int numFrames) {
+void Sequencer::render(float* out, int numFrames, float* clickOut) {
     int pos = 0;
     while (pos < numFrames) {
         while (running_ && absFrame_ >= nextTickFrame_) {
@@ -605,7 +605,7 @@ void Sequencer::render(float* out, int numFrames) {
         int seg = numFrames - pos;
         if (running_) seg = static_cast<int>(std::min<int64_t>(seg, nextTickFrame_ - absFrame_));
         voices_.render(out + 2 * pos, seg);
-        renderClick(out + 2 * pos, seg);
+        renderClick((clickOut ? clickOut : out) + 2 * pos, seg);
         pos += seg;
         absFrame_ += seg;
     }

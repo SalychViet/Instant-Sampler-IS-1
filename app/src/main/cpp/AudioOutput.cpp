@@ -92,6 +92,19 @@ std::string AudioOutput::describe() {
     return out;
 }
 
+double AudioOutput::latencyMs() {
+    std::shared_ptr<oboe::AudioStream> s;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        s = stream_;
+    }
+    if (!s) return -1.0;
+    auto lat = s->calculateLatencyMillis();
+    if (lat.error() == oboe::Result::OK && lat.value() > 0.0 && lat.value() < 1000.0) return lat.value();
+    // Метки времени недоступны — оценка по буферу.
+    return 1000.0 * s->getBufferSizeInFrames() / std::max(1, s->getSampleRate());
+}
+
 oboe::DataCallbackResult AudioOutput::onAudioReady(oboe::AudioStream* stream, void* audioData,
                                                    int32_t numFrames) {
     // Никаких аллокаций, мьютексов, логов и JNI здесь.

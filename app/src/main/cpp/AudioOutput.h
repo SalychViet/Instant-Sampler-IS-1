@@ -26,6 +26,8 @@ public:
     void stop();
     int xruns();
     std::string describe();
+    // Задержка выхода (от записи в буфер до звука из динамика), мс; -1 — неизвестно.
+    double latencyMs();
 
     // --- Oboe callbacks ---
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* stream, void* audioData,

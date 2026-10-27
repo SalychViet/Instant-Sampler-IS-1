@@ -350,4 +350,9 @@ JNIEXPORT jstring JNICALL JNI(nativeDescribe)(JNIEnv* env, jobject, jlong h) {
     return env->NewStringUTF(o ? o->describe().c_str() : "no engine");
 }
 
+JNIEXPORT jdouble JNICALL JNI(nativeOutputLatencyMs)(JNIEnv*, jobject, jlong h) {
+    auto* o = get(h);
+    return o ? o->latencyMs() : -1.0;
+}
+
 }  // extern "C"

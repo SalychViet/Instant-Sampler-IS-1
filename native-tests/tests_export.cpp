@@ -104,3 +104,26 @@ TEST(LooperTest, VoiceStealingSparesLoops) {
     }
     EXPECT_TRUE((core.activePadMask() & 1ull) != 0);   // петля на паде 0 всё ещё звучит
 }
+
+// Метроном звучит в выходе, но в ресемплинг (запись выхода) не попадает.
+TEST(MetronomeTest, ClickIsHeardButNotResampled) {
+    EngineCore core;
+    core.setSampleRate(48000);
+    core.seq(SeqOp::SetBpm, 0, 0, 0, 0, 120.0f);
+    core.seq(SeqOp::SetMetronome, 0, 0, 1, 0, 1.0f);
+    core.resampleStart();
+    core.seq(SeqOp::Play);
+    std::vector<float> buf(2 * 256);
+    float heard = 0;
+    for (int k = 0; k < 40; ++k) {
+        core.render(buf.data(), 256);
+        for (float v : buf) heard = std::max(heard, std::fabs(v));
+    }
+    const int n = core.resampleStop();
+    std::vector<float> rec(2 * static_cast<size_t>(n));
+    core.resampleRead(rec.data(), n);
+    float recorded = 0;
+    for (float v : rec) recorded = std::max(recorded, std::fabs(v));
+    EXPECT_GT(heard, 0.05f);       // щелчок слышен
+    EXPECT_LT(recorded, 1e-6f);    // а в записи его нет
+}

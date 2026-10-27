@@ -30,6 +30,7 @@ void EngineCore::setSampleRate(int sr) {
     seq_.setSampleRate(sampleRate_);
     fx_.setSampleRate(sampleRate_);
     resBuf_.assign(static_cast<size_t>(sampleRate_) * 30 * 2, 0.0f);   // до 30 с
+    clickBuf_.assign(2 * 8192, 0.0f);
     limiter_.setSampleRate(static_cast<float>(sampleRate_));
 }
 
@@ -214,7 +215,10 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
     const bool exporting = expState_.load(std::memory_order_relaxed) == 2;
     if (link && !exporting) seq_.linkSync(*link, numFrames);   // экспорт идёт от своих часов
     std::memset(out, 0, sizeof(float) * 2 * static_cast<size_t>(numFrames));
-    seq_.render(out, numFrames);   // голоса + метроном, с разбивкой по тикам секвенсора
+    // Метроном — в свой буфер: в эффекты, ресемплинг и экспорт он не попадает, только в выход.
+    float* click = numFrames * 2 <= static_cast<int>(clickBuf_.size()) ? clickBuf_.data() : nullptr;
+    if (click) std::memset(click, 0, sizeof(float) * 2 * static_cast<size_t>(numFrames));
+    seq_.render(out, numFrames, click);   // голоса (+ метроном, если буфера не хватило)
     fx_.process(out, numFrames, seq_.bpm());   // KAOSS — на весь микс, до лимитера
     const float peak = limiter_.process(out, numFrames, master_);
 
@@ -245,6 +249,10 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
             seq_.setExporting(false);
             expState_.store(3, std::memory_order_release);
         }
+    }
+
+    if (click) {
+        for (int i = 0; i < 2 * numFrames; ++i) out[i] = std::clamp(out[i] + click[i] * master_, -1.0f, 1.0f);
     }
 
     peak_.store(peak, std::memory_order_relaxed);

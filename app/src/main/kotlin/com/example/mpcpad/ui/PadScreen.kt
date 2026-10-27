@@ -483,7 +483,8 @@ fun MpcRoot(actions: SampleActions) {
                 val now = System.nanoTime()
                 val end = app.loopRecEndFor(now)
                 app.loopRecEndNanos = end
-                val wait = end - now
+                // По сетке пишем ещё на задержку выхода: столько же звука отрежется с начала.
+                val wait = end + (if (app.loopGridRunning) app.loopCompNanos() else 0L) - now
                 if (wait > 0) {
                     // Нажали чуть раньше черты такта — пишем до неё, потом петля играет.
                     app.loopClosing = true

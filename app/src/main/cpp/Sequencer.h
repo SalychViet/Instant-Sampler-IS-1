@@ -121,7 +121,8 @@ public:
     void onPadUp(int pad);
 
     // Голоса + метроном. ДОБАВЛЯЕТ в out (interleaved stereo); блок режется по границам тиков.
-    void render(float* out, int numFrames);
+    // clickOut (того же размера) — метроном отдельно: мимо эффектов и записи (как в Ableton).
+    void render(float* out, int numFrames, float* clickOut = nullptr);
 
     // Перед render (аудио-поток): подстроить темп и фазу под Link, стартовать/остановиться вместе с сессией.
     void linkSync(const LinkFrame& lf, int numFrames);

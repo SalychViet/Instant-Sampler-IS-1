@@ -353,8 +353,20 @@ class AppViewModel : ViewModel() {
     /** Сетка петель: когда запущена первая петля. Следующие петли стартуют в долю от неё. */
     private var loopGridNanos = 0L
 
+    /** Идёт сетка тактов петель (после первой петли и до STOP). */
+    val loopGridRunning: Boolean get() = loopGridNanos != 0L
+
     /** Петли, которые ждут первой доли следующего такта (квантизация запуска). */
     val loopsWaiting = mutableStateMapOf<Int, Job>()
+
+    /**
+     * Насколько записанное в петлю опаздывает относительно сетки: вы играете в такт тому, что слышите,
+     * а слышите с задержкой выхода. Плюс ручная подстройка LOOP OFFSET из SETUP.
+     */
+    fun loopCompNanos(): Long {
+        val out = AudioEngine.outputLatencyMs().takeIf { it > 0 } ?: 0.0
+        return ((out + com.example.mpcpad.Settings.loopOffsetMs) * 1e6).toLong().coerceAtLeast(0L)
+    }
 
     /** Первая доля такта сетки петель, ближайшая к моменту [t] (сетка должна идти). */
     private fun nearestBar(t: Long): Long {
@@ -499,6 +511,7 @@ class AppViewModel : ViewModel() {
         val beats: Int
         val target: Int
         val loopStart: Long   // момент, с которого петля начинается (её «первая доля»)
+        var cutFrom: Long     // с какого момента записи брать звук
         if (first) {
             val tapSec = ((endNanos - startNanos) / 1e9).coerceAtLeast(0.05)
             // 1, 2, 4… тактов по 4 доли: берём вариант с темпом ближе всего к 120 (в пределах 60–200)
@@ -510,6 +523,7 @@ class AppViewModel : ViewModel() {
             bpm = best.second.coerceIn(30.0, 300.0)
             target = kotlin.math.round(tapSec * sr).toInt()
             loopStart = startNanos
+            cutFrom = startNanos
             com.example.mpcpad.Settings.loopBeats = beats
             com.example.mpcpad.Settings.bpm = bpm.toFloat()
             AudioEngine.seqSetBpm(bpm.toFloat())
@@ -519,15 +533,18 @@ class AppViewModel : ViewModel() {
             bpm = com.example.mpcpad.Settings.bpm.toDouble()
             val barNs = 4 * 60e9 / bpm
             var s = nearestBar(startNanos)
-            if (s < clipT0) s += barNs.toLong()   // звука до этой черты нет — со следующего такта
             val bars = kotlin.math.max(1L, kotlin.math.round((endNanos - s) / barNs).toLong())
             beats = (bars * 4).toInt()
             target = kotlin.math.round(bars * barNs * sr / 1e9).toInt()
             loopStart = s
+            // Сыгранное в такт услышанному лежит в записи позже на задержку выхода — берём звук с этим сдвигом.
+            s += loopCompNanos()
+            if (s < clipT0) s += barNs.toLong()   // звука до этой черты нет — со следующего такта
+            cutFrom = s
         }
         // Ровно target кадров от начала петли: лишнее отрезаем, недостающее — тишиной.
         val ch = recorded.channels
-        val from = kotlin.math.max(0L, kotlin.math.round((loopStart - clipT0) * sr / 1e9).toLong()).toInt() * ch
+        val from = kotlin.math.max(0L, kotlin.math.round((cutFrom - clipT0) * sr / 1e9).toLong()).toInt() * ch
         val data = FloatArray(target * ch)
         if (from < recorded.data.size) System.arraycopy(recorded.data, from, data, 0, minOf(recorded.data.size - from, data.size))
         val clip = SampleClip(data, ch, sr)

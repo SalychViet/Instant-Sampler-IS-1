@@ -134,6 +134,7 @@ private:
     bool ftzDone_ = false;
     int sampleRate_ = 48000;
 
+    std::vector<float> clickBuf_;   // метроном отдельно от микса (мимо KAOSS, лимитера и записи)
     std::vector<float> resBuf_;
     std::atomic<bool> resOn_{false};
     std::atomic<int> resLen_{0};

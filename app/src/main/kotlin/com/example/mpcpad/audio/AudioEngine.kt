@@ -281,12 +281,15 @@ object AudioEngine {
     fun activeVoices(): Int = if (handle != 0L) nativeActiveVoices(handle) else 0
     fun xruns(): Int = if (handle != 0L) nativeXRunCount(handle) else 0
     fun describe(): String = if (handle != 0L) nativeDescribe(handle) else "no engine"
+    /** Задержка выхода, мс (-1 — неизвестно): нужна, чтобы петли ISL-1 ложились в такт с услышанным. */
+    fun outputLatencyMs(): Double = if (handle != 0L) nativeOutputLatencyMs(handle) else -1.0
 
     private external fun nativeCreate(): Long
     private external fun nativeDestroy(h: Long)
     private external fun nativeStart(h: Long): Boolean
     private external fun nativeStop(h: Long)
     private external fun nativeNoteOn(h: Long, pad: Int, vel: Float): Boolean
+    private external fun nativeOutputLatencyMs(h: Long): Double
     private external fun nativeNoteOnAt(h: Long, pad: Int, vel: Float, offset01: Double): Boolean
     private external fun nativeNoteOff(h: Long, pad: Int): Boolean
     private external fun nativeAllNotesOff(h: Long)

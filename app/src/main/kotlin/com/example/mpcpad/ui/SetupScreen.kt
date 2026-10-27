@@ -75,6 +75,26 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 color = TextDim,
                 fontSize = 12.sp,
             )
+            Spacer(Modifier.height(4.dp))
+            ParamSlider(
+                label = "LOOP OFFSET",
+                valueText = "%+.0f мс".format(Settings.loopOffsetMs),
+                value = Settings.loopOffsetMs,
+                range = -150f..150f,
+                steps = 299,
+            ) { Settings.loopOffsetMs = it.roundToInt().toFloat() }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Chip("−5 мс", compact = true) { Settings.loopOffsetMs = (Settings.loopOffsetMs - 5f).coerceAtLeast(-150f) }
+                Chip("0", compact = true) { Settings.loopOffsetMs = 0f }
+                Chip("+5 мс", compact = true) { Settings.loopOffsetMs = (Settings.loopOffsetMs + 5f).coerceAtMost(150f) }
+            }
+            val lat = AudioEngine.outputLatencyMs()
+            Text(
+                (if (lat > 0) "Задержка выхода телефона: ~%.0f мс — учитывается сама. ".format(lat) else "") +
+                    "Если вторая петля всё равно запаздывает — двигайте вправо (+), если спешит — влево (−).",
+                color = TextDim,
+                fontSize = 12.sp,
+            )
         }
 
         // 1. IMPORT BANK — 2. SAVE BANK: 16 семплов банка вместе с параметрами (громкость, пан, высота…)

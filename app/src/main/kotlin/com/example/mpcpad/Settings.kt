@@ -50,6 +50,7 @@ object Settings {
     // ---- ISL-1 LOOPER ----
     private val _linkToLoop = mutableStateOf(false)
     private val _loopBeats = mutableIntStateOf(0)
+    private val _loopOffsetMs = mutableFloatStateOf(0f)
 
     var trimStart: Boolean get() = _trimStart.value; set(v) { _trimStart.value = v; putBool("trimStart", v) }
     var trimEnd: Boolean get() = _trimEnd.value; set(v) { _trimEnd.value = v; putBool("trimEnd", v) }
@@ -72,6 +73,8 @@ object Settings {
     var linkToLoop: Boolean get() = _linkToLoop.value; set(v) { _linkToLoop.value = v; putBool("linkToLoop", v) }
     /** Длина первой петли в долях (0 — петли ещё не записывали): по ней темп и LINK TO LOOP. */
     var loopBeats: Int get() = _loopBeats.intValue; set(v) { _loopBeats.intValue = v; putInt("loopBeats", v) }
+    /** Ручная подстройка петель ISL-1 к услышанному, мс: плюс — петля ложится раньше. */
+    var loopOffsetMs: Float get() = _loopOffsetMs.floatValue; set(v) { _loopOffsetMs.floatValue = v; putFloat("loopOffsetMs", v) }
 
     fun init(context: Context) {
         val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -92,6 +95,7 @@ object Settings {
         _latencyMs.floatValue = p.getFloat("latencyMs", 0f).coerceIn(-100f, 100f)
         _linkToLoop.value = p.getBoolean("linkToLoop", false)
         _loopBeats.intValue = p.getInt("loopBeats", 0).coerceIn(0, 256)
+        _loopOffsetMs.floatValue = p.getFloat("loopOffsetMs", 0f).coerceIn(-150f, 150f)
     }
 
     private fun putBool(k: String, v: Boolean) { prefs?.edit()?.putBoolean(k, v)?.apply() }
