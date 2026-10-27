@@ -387,6 +387,24 @@ class AppViewModel : ViewModel() {
         unchokeLoop(pad)
         AudioEngine.noteOn(pad, 1f)
         loopsPlaying[pad] = System.nanoTime()
+        startSequencerOnBar()
+    }
+
+    private var seqStartJob: Job? = null
+
+    /**
+     * Заиграла петля — запускаем и секвенсор (общее воспроизведение), ровно с первой доли такта сетки
+     * петель: так можно сразу жать REC и дописывать one-shot в паттерн в такт с петлями.
+     */
+    private fun startSequencerOnBar() {
+        if (seqPlaying || seqStartJob?.isActive == true || loopGridNanos == 0L) return
+        val barNs = 4 * 60e9 / com.example.mpcpad.Settings.bpm
+        val into = (System.nanoTime() - loopGridNanos).toDouble().mod(barNs)
+        val waitNs = if (into < 15e6) 0.0 else barNs - into
+        seqStartJob = viewModelScope.launch {
+            delay((waitNs / 1e6).toLong())
+            if (!seqPlaying && loopsPlaying.isNotEmpty()) AudioEngine.seqPlay()
+        }
     }
 
     fun loopStop(pad: Int) {
@@ -396,6 +414,7 @@ class AppViewModel : ViewModel() {
 
     /** Остановить все петли и сбросить сетку тактов (STOP, загрузка проекта). */
     fun loopStopAll() {
+        seqStartJob?.cancel()
         loopsWaiting.values.forEach { it.cancel() }
         loopsWaiting.clear()
         loopsPlaying.clear()
@@ -533,6 +552,7 @@ class AppViewModel : ViewModel() {
         AudioEngine.noteOnAt(pad, 1f, offset)
         loopsPlaying[pad] = loopStart   // фаза круга на паде — от начала петли
         if (first) applyLoopLength()
+        startSequencerOnBar()
         flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
 
         val name = "LOOP_" + padName(pad)

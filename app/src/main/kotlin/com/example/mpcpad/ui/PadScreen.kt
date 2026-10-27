@@ -1186,8 +1186,13 @@ fun MpcRoot(actions: SampleActions) {
                             Modifier.height(42.dp).aspectRatio(613f / 814f),
                             contentScale = ContentScale.Fit,
                         )
-                        // Логотип-картинка — «IS-1»; у ISL-1 название надписью.
-                        if (Edition.LOOPER) Text(
+                        // У ISL-1 — свой логотип тем же шрифтом (двойной штрих, как у IS-1).
+                        val logoIsl1 = brandingDrawable("logo_isl1")
+                        if (Edition.LOOPER && logoIsl1 != 0) Image(
+                            painterResource(logoIsl1), "ISL-1",
+                            Modifier.width(88.dp),
+                            contentScale = ContentScale.Fit,
+                        ) else if (Edition.LOOPER) Text(
                             "ISL-1", color = Skin.Ink, fontSize = 22.sp, fontWeight = FontWeight.Black,
                         ) else Image(
                             painterResource(logoIs1), "IS-1",
