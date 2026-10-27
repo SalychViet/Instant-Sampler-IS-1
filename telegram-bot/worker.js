@@ -129,6 +129,7 @@ const T = {
       `• Перед покупкой попробуйте бесплатную IS-1 FREE — она работает на том же движке.\n` +
       `• Если PRO не запускается на вашем устройстве, напишите в /paysupport в течение 14 дней — вернём оплату.\n` +
       `• Лицензия GNU GPL v3; исходный код: ${SOURCE_URL}\n` +
+      `• Бот хранит ваш Telegram id, имя и username, чтобы выдавать покупку и вести статистику; эти данные никому не передаются.\n` +
       `• Продавец: Salavat (SALYCH MUSIC).`,
     choosePay: "Нажимая кнопку оплаты, вы соглашаетесь с условиями выше.",
     payStars: (p) => `⭐ Оплатить ${p.stars} Stars`,
@@ -184,6 +185,7 @@ const T = {
       `• Please try the free IS-1 FREE first — it runs on the same engine.\n` +
       `• If PRO does not run on your device, contact /paysupport within 14 days for a refund.\n` +
       `• Licensed under the GNU GPL v3; source code: ${SOURCE_URL}\n` +
+      `• The bot stores your Telegram id, name and username to deliver your purchase and keep statistics; they are not shared with anyone.\n` +
       `• Seller: Salavat (SALYCH MUSIC).`,
     choosePay: "By tapping a payment button you agree to the terms above.",
     payStars: (p) => `⭐ Pay ${p.stars} Stars`,
@@ -517,14 +519,15 @@ async function completePurchase(env, user, chatId, method, ref, amount, promo = 
   const t = T[lang(user)];
   const refKey = "paid:" + method + ":" + ref;
   if (await env.DB.get(refKey)) {
-    if (resendIfDone) await sendKit(env, chatId, "pro", t);
+    if (resendIfDone && (await sendKit(env, chatId, "pro", t))) await trackProDownload(env, user);
     return;
   }
-  const rec = { user_id: user.id, username: user.username || "", method, ref: String(ref), amount: String(amount), promo, date: new Date().toISOString() };
+  const rec = { ...contactOf(user), method, ref: String(ref), amount: String(amount), promo, date: new Date().toISOString() };
   await env.DB.put(refKey, JSON.stringify(rec));
   await env.DB.put("buyer:" + user.id, JSON.stringify(rec));
+  await trackSale(env, method, amount);
   await send(env, chatId, t.thanks);
-  await sendKit(env, chatId, "pro", t);
+  if (await sendKit(env, chatId, "pro", t)) await trackProDownload(env, user);
   const a = await adminChat(env);
   if (a) {
     const who = user.username ? "@" + user.username : user.first_name || "";
@@ -537,6 +540,162 @@ async function completePurchase(env, user, chatId, method, ref, amount, promo = 
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+// ------------------------------------------------------------------ statistics and contacts (admin only)
+// One KV record "stats" with totals and per-month numbers (Moscow time). Contacts: "free:<id>" for FREE downloads,
+// "buyer:<id>" for PRO buyers. The admin's own downloads are not counted.
+const STAR_PAYOUT_USD = 0.013;   // ≈ what one Star brings on withdrawal via Fragment (override with env STAR_PAYOUT_USD)
+
+const monthKey = (d = new Date(Date.now())) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 7);
+const emptyBlock = () => ({ freeDl: 0, freeUsers: 0, proDl: 0, starsN: 0, starsSum: 0, usdtN: 0, usdtSum: 0, manualN: 0, refundN: 0, refundStars: 0 });
+
+async function getStats(env) {
+  const raw = await env.DB.get("stats");
+  if (raw) return JSON.parse(raw);
+  // First run: rebuild sales from the payments already recorded.
+  const s = { total: emptyBlock(), months: {} };
+  for (const name of await listKeys(env, "paid:")) {
+    const rec = JSON.parse((await env.DB.get(name)) || "null");
+    if (rec) addSale(s, rec.method, Number(rec.amount) || 0, rec.date ? new Date(rec.date) : undefined);
+  }
+  return s;
+}
+
+function bump(s, fn, date) {
+  fn(s.total);
+  const m = monthKey(date);
+  s.months[m] = s.months[m] || emptyBlock();
+  fn(s.months[m]);
+}
+
+function addSale(s, method, amount, date) {
+  bump(s, (b) => {
+    if (method === "stars") { b.starsN++; b.starsSum += amount; }
+    else if (method === "usdt") { b.usdtN++; b.usdtSum = Math.round((b.usdtSum + amount) * 100) / 100; }
+    else b.manualN++;
+  }, date);
+}
+
+async function saveStats(env, s) {
+  // keep the last 24 months
+  const keys = Object.keys(s.months).sort();
+  for (const k of keys.slice(0, Math.max(0, keys.length - 24))) delete s.months[k];
+  await env.DB.put("stats", JSON.stringify(s));
+}
+
+async function listKeys(env, prefix) {
+  const out = [];
+  let cursor;
+  do {
+    const r = await env.DB.list({ prefix, cursor });
+    out.push(...r.keys.map((k) => k.name));
+    cursor = r.list_complete ? undefined : r.cursor;
+  } while (cursor);
+  return out;
+}
+
+const contactOf = (user) => ({
+  user_id: user.id, username: user.username || "", first_name: user.first_name || "", last_name: user.last_name || "",
+  language: user.language_code || "",
+});
+
+/** A FREE kit was delivered: count it and remember the contact. */
+async function trackFree(env, user) {
+  if (!user || (await isAdmin(env, user.id))) return;
+  const key = "free:" + user.id;
+  const old = JSON.parse((await env.DB.get(key)) || "null");
+  const now = new Date(Date.now()).toISOString();
+  await env.DB.put(key, JSON.stringify({ ...contactOf(user), first_date: old ? old.first_date : now, last_date: now, downloads: (old ? old.downloads : 0) + 1 }));
+  const s = await getStats(env);
+  bump(s, (b) => { b.freeDl++; if (!old) b.freeUsers++; });
+  await saveStats(env, s);
+}
+
+/** A PRO kit was delivered (purchase or /mypro). */
+async function trackProDownload(env, user) {
+  if (!user || (await isAdmin(env, user.id))) return;
+  const s = await getStats(env);
+  bump(s, (b) => { b.proDl++; });
+  await saveStats(env, s);
+}
+
+async function trackSale(env, method, amount) {
+  const s = await getStats(env);
+  addSale(s, method, Number(amount) || 0);
+  await saveStats(env, s);
+}
+
+async function trackRefund(env, stars) {
+  const s = await getStats(env);
+  bump(s, (b) => { b.refundN++; b.refundStars += Number(stars) || 0; });
+  await saveStats(env, s);
+}
+
+const MONTHS_RU = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+
+const money = (x) => (Math.round(x * 100) / 100).toFixed(2);
+
+function statsBlock(env, b) {
+  const rate = Number(env.STAR_PAYOUT_USD) || STAR_PAYOUT_USD;
+  const netStars = b.starsSum - b.refundStars;
+  const starsUsd = netStars * rate;
+  return `⬇️ FREE — скачиваний: <b>${b.freeDl}</b> · людей: ${b.freeUsers}\n` +
+    `💎 PRO — продаж: <b>${b.starsN + b.usdtN}</b>` + (b.manualN ? ` · выдано вручную: ${b.manualN}` : "") + ` · выдач файлов: ${b.proDl}\n` +
+    `⭐ Stars: <b>${netStars} ⭐</b> · продаж: ${b.starsN}` + (b.refundN ? ` · возвратов: ${b.refundN} (−${b.refundStars} ⭐)` : "") + ` · ≈ $${money(starsUsd)} к выводу\n` +
+    `💵 USDT: <b>${money(b.usdtSum)}</b> · продаж: ${b.usdtN}\n` +
+    `💰 Итого ≈ <b>$${money(starsUsd + b.usdtSum)}</b>`;
+}
+
+async function showStats(env, chat) {
+  const s = await getStats(env);
+  const m = monthKey();
+  const cur = s.months[m] || emptyBlock();
+  const [, mm] = m.split("-");
+  const freeContacts = (await listKeys(env, "free:")).length;
+  const buyers = (await listKeys(env, "buyer:")).length;
+  return send(env, chat,
+    `📊 <b>Статистика IS-1</b>\n\n<b>За всё время</b>\n${statsBlock(env, s.total)}\n\n` +
+    `<b>За ${MONTHS_RU[Number(mm) - 1]}</b>\n${statsBlock(env, cur)}\n\n` +
+    `👥 Контакты: FREE — ${freeContacts}, PRO — ${buyers}. Скачать таблицы: /contacts\n` +
+    `<i>Stars в долларах — примерно, по курсу вывода ~$${Number(env.STAR_PAYOUT_USD) || STAR_PAYOUT_USD} за ⭐; Stars можно вывести через 21 день после оплаты.</i>`);
+}
+
+function csv(rows, cols) {
+  const cell = (v) => {
+    const s = String(v == null ? "" : v);
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return "﻿" + [cols.join(";"), ...rows.map((r) => cols.map((c) => cell(r[c])).join(";"))].join("\r\n") + "\r\n";
+}
+
+async function sendCsv(env, chat, name, text, caption) {
+  const form = new FormData();
+  form.append("chat_id", String(chat));
+  form.append("caption", caption);
+  form.append("document", new Blob([text], { type: "text/csv" }), name);
+  return tgForm(env, "sendDocument", form);
+}
+
+/** /contacts [free|pro] — the contact lists as CSV files (open in Excel / Numbers / Google Sheets). */
+async function sendContacts(env, chat, which) {
+  const day = new Date(Date.now()).toISOString().slice(0, 10);
+  if (which !== "pro") {
+    const rows = [];
+    for (const k of await listKeys(env, "free:")) { const v = await env.DB.get(k); if (v) rows.push(JSON.parse(v)); }
+    rows.sort((a, b) => String(b.last_date).localeCompare(String(a.last_date)));
+    await sendCsv(env, chat, `IS-1_FREE_contacts_${day}.csv`,
+      csv(rows, ["user_id", "username", "first_name", "last_name", "language", "first_date", "last_date", "downloads"]),
+      `⬇️ FREE: ${rows.length} контактов`);
+  }
+  if (which !== "free") {
+    const rows = [];
+    for (const k of await listKeys(env, "buyer:")) { const v = await env.DB.get(k); if (v) rows.push(JSON.parse(v)); }
+    rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    await sendCsv(env, chat, `IS-1_PRO_buyers_${day}.csv`,
+      csv(rows, ["user_id", "username", "first_name", "last_name", "language", "date", "method", "amount", "promo", "ref"]),
+      `💎 PRO: ${rows.length} покупателей`);
+  }
 }
 
 // ------------------------------------------------------------------ Crypto Pay (USDT)
@@ -619,12 +778,12 @@ async function onText(m, env) {
 
   switch (cmd) {
     case "/start":
-      if (arg === "free") return sendFree(env, chat, t);
+      if (arg === "free") return sendFree(env, chat, t, m.from);
       if (arg === "buy") return showTerms(env, chat, t, "");
       if (arg && isPromo(env, arg)) return applyPromo(env, chat, t, arg);
       return welcome(env, chat, t, "");
     case "/free":
-      return sendFree(env, chat, t);
+      return sendFree(env, chat, t, m.from);
     case "/buy":
       return showTerms(env, chat, t, arg && isPromo(env, arg) ? arg : "");
     case "/promo":
@@ -660,9 +819,9 @@ async function applyPromo(env, chat, t, code) {
   return showTerms(env, chat, t, p.promo, t.promoOk(p) + "\n\n");
 }
 
-async function sendFree(env, chat, t) {
+async function sendFree(env, chat, t, user) {
   if ((await getFileIds(env, "free"))[0]) await send(env, chat, t.sendingFree);
-  await sendKit(env, chat, "free", t);
+  if (await sendKit(env, chat, "free", t)) await trackFree(env, user);
 }
 
 async function showTerms(env, chat, t, code, prefix = "") {
@@ -675,7 +834,7 @@ async function showTerms(env, chat, t, code, prefix = "") {
 async function myPro(env, user, chat, t) {
   if (!(await getPurchase(env, user.id))) return send(env, chat, t.noPurchase);
   await send(env, chat, t.alreadyBought);
-  await sendKit(env, chat, "pro", t);
+  if (await sendKit(env, chat, "pro", t)) await trackProDownload(env, user);
 }
 
 async function forwardToAdmin(env, from, chat, cmd, text, t) {
@@ -695,7 +854,7 @@ async function onCallback(q, env) {
   const chat = q.message ? q.message.chat.id : q.from.id;
   await tg(env, "answerCallbackQuery", { callback_query_id: q.id });
   const [d, code = ""] = String(q.data || "").split(":");
-  if (d === "free") return sendFree(env, chat, t);
+  if (d === "free") return sendFree(env, chat, t, q.from);
   if (d === "buy") return showTerms(env, chat, t, code);
   if (d === "mypro") return myPro(env, q.from, chat, t);
   if (d === "about") return send(env, chat, t.about);
@@ -839,6 +998,8 @@ async function onAdminText(m, env, cmd, rest, arg) {
     return send(env, chat,
       `<b>Команды автора</b>\n` +
       `• пришлите файл из папки релиза — бот запомнит его\n` +
+      `/stats — скачивания и полученные деньги\n` +
+      `/contacts — контакты FREE и PRO (таблицы CSV); /contacts free или /contacts pro — одну\n` +
       `/files — какие файлы загружены\n` +
       `/sales — последние продажи\n` +
       `/reply id текст — ответить покупателю\n` +
@@ -847,6 +1008,8 @@ async function onAdminText(m, env, cmd, rest, arg) {
       `<b>Цены сейчас</b>\n${priceLine(p, "ru")}\n` +
       Object.keys(pr).map((c) => `🎟 ${escapeHtml(c)}: $${fmt(pr[c])} · ${price(env, c).stars} ⭐ · ссылка t.me/${escapeHtml(me)}?start=${escapeHtml(c)}`).join("\n"));
   }
+  if (cmd === "/stats") return showStats(env, chat);
+  if (cmd === "/contacts") return sendContacts(env, chat, (rest[0] || "").toLowerCase());
   if (cmd === "/files") {
     const rows = await Promise.all([
       ...Object.entries(FILES).map(async ([f, k]) => ((await env.DB.get("file:" + k)) ? "✅ " : "❌ ") + f),
@@ -871,7 +1034,10 @@ async function onAdminText(m, env, cmd, rest, arg) {
     const rec = await getPurchase(env, rest[0]);
     if (!rec || rec.method !== "stars") return send(env, chat, "Покупка за Stars не найдена (USDT возвращайте вручную в @CryptoBot).");
     const r = await tg(env, "refundStarPayment", { user_id: Number(rest[0]), telegram_payment_charge_id: rec.ref });
-    if (r.ok) await env.DB.delete("buyer:" + rest[0]);
+    if (r.ok) {
+      await env.DB.delete("buyer:" + rest[0]);
+      await trackRefund(env, rec.amount);
+    }
     return send(env, chat, r.ok ? "Stars возвращены ✅, доступ к /mypro снят." : "Ошибка возврата: " + escapeHtml(r.description || ""));
   }
   if (cmd === "/grant" && /^\d+$/.test(rest[0] || "")) {
