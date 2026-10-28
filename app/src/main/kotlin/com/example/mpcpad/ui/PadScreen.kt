@@ -545,6 +545,41 @@ fun MpcRoot(actions: SampleActions) {
         }
     }
 
+    /** Удалить звук пада (one-shot или петлю) без подтверждения — при удерживаемом ERASE. */
+    fun quickErase(global: Int): Boolean {
+        if (PadLibrary.infos[global] == null || global == app.loopRecPad) return false
+        app.loopStop(global)
+        app.forgetLoop(global)
+        undoPadSample(global, "DELETE ${padName(global)}")
+        PadStore.delete(context, global)
+        app.update(global) { PadUi() }
+        eraseHeld = true   // отпускание ERASE после удаления не включает «нажми пад — удалится»
+        return true
+    }
+
+    /** ERASE удерживается и палец проехал по падам: по горизонтали — весь ряд, по вертикали — столбец. */
+    fun padSlide(from: Int, to: Int) {
+        if (app.mode != Mode.PAD || !app.eraseHolding) return
+        val bank = to / 16
+        val fr = (from % 16) / 4
+        val fc = (from % 16) % 4
+        val tr = (to % 16) / 4
+        val tc = (to % 16) % 4
+        val pads = when {
+            fr == tr -> (0 until 4).map { bank * 16 + tr * 4 + it }   // ряд
+            fc == tc -> (0 until 4).map { bank * 16 + it * 4 + tc }   // столбец
+            else -> listOf(to)
+        }
+        val n = pads.count { quickErase(it) }
+        flash(
+            when {
+                pads.size == 1 -> if (n > 0) "${padName(to)} DELETED" else "${padName(to)} EMPTY"
+                fr == tr -> "ROW ${padName(pads.first())}–${padName(pads.last())}: $n DELETED"
+                else -> "COLUMN ${padName(pads.first())}–${padName(pads.last())}: $n DELETED"
+            }
+        )
+    }
+
     fun padDown(global: Int, vel: Float) {
         pressedMask.longValue = pressedMask.longValue or (1L shl global)
         route[global] = 0
@@ -560,6 +595,11 @@ fun MpcRoot(actions: SampleActions) {
             return
         }
         when {
+            app.mode == Mode.PAD && app.eraseHolding -> {
+                // ERASE удерживается: касание пада — сразу удалить (свайп — ряд/столбец, см. padSlide).
+                route[global] = 0
+                flash(if (quickErase(global)) "${padName(global)} DELETED · SWIPE = ROW / COLUMN" else "${padName(global)} EMPTY")
+            }
             app.mode == Mode.PAD -> {
                 if (tryPaste(global)) return
                 app.selected = global
@@ -981,6 +1021,7 @@ fun MpcRoot(actions: SampleActions) {
                         "ERASE", Modifier.weight(1f), led = app.eraseLatch, ledColor = Skin.LedRed, height = 28.dp,
                         onPress = { down ->
                             eraseHold?.cancel()
+                            if (!app.kaossMode && app.mode == Mode.PAD) app.eraseHolding = down
                             if (down && Edition.LOOPER && app.kaossMode) {
                                 // ISL-1, KAOSS: удержание ERASE стирает запись эффектов (короткое — удаление петли).
                                 eraseHold = scope.launch {
@@ -1268,6 +1309,7 @@ fun MpcRoot(actions: SampleActions) {
                 }),
                 onPadDown = ::padDown,
                 onPadUp = ::padUp,
+                onPadSlide = ::padSlide,
                 modifier = Modifier.fillMaxHeight().aspectRatio(1f),
             )
 

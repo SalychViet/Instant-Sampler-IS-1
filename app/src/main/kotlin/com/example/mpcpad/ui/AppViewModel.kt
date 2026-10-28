@@ -96,6 +96,8 @@ class AppViewModel : ViewModel() {
     var stepBar by mutableIntStateOf(0)            // страница шагов: такт 0..3
     var editorOpen by mutableStateOf(false)
     var setupOpen by mutableStateOf(false)
+    /** PAD: ERASE удерживается — касание пада сразу удаляет звук, свайп — ряд или столбец. */
+    var eraseHolding by mutableStateOf(false)
     var exportOpen by mutableStateOf(false)
     var bank by mutableIntStateOf(0)
     /** Выбранный «звук» (пад 0..63): его параметры правят ручки, его шаги видны в STEP. */

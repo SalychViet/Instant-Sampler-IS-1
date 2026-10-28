@@ -59,11 +59,14 @@ fun PadGrid(
     badge: (globalPad: Int) -> String? = { null },
     /** Круг петли (ISL-1): NaN — нет, 0..1 — фаза играющей петли, LOOP_RING_STOPPED / LOOP_RING_REC. */
     loopRing: (globalPad: Int) -> Float = { Float.NaN },
+    /** Палец, нажавший [fromPad], переехал на другой пад [toPad] (не отпуская) — для свайпа по падам. */
+    onPadSlide: (fromPad: Int, toPad: Int) -> Unit = { _, _ -> },
 ) {
     val currentBank by rememberUpdatedState(bank)
     val currentFull by rememberUpdatedState(fullLevel)
     val down by rememberUpdatedState(onPadDown)
     val up by rememberUpdatedState(onPadUp)
+    val slide by rememberUpdatedState(onPadSlide)
 
     val measurer = rememberTextMeasurer()
     val labelStyle = remember {
@@ -79,6 +82,8 @@ fun PadGrid(
         modifier = modifier.pointerInput(Unit) {
             // pointer id -> глобальный номер пада, который этот палец нажал
             val active = HashMap<Long, Int>()
+            // pointer id -> пад, над которым палец сейчас (для свайпа)
+            val over = HashMap<Long, Int>()
             try {
                 awaitPointerEventScope {
                     while (true) {
@@ -96,9 +101,21 @@ fun PadGrid(
                                 val relY = fy - row                      // 0 = верх пада, 1 = низ
                                 val vel = if (currentFull) 1f else 0.30f + 0.70f * relY
                                 active[id] = global
+                                over[id] = global
                                 down(global, vel)
                                 c.consume()
+                            } else if (c.pressed && c.previousPressed) {
+                                val start = active[id] ?: continue
+                                val col = (c.position.x / w * 4f).toInt()
+                                val row = (c.position.y / h * 4f).toInt()
+                                if (col !in 0..3 || row !in 0..3) continue
+                                val global = currentBank * 16 + (3 - row) * 4 + col
+                                if (global != over[id]) {
+                                    over[id] = global
+                                    slide(start, global)
+                                }
                             } else if (!c.pressed && c.previousPressed) {
+                                over.remove(id)
                                 active.remove(id)?.let { up(it) }
                                 c.consume()
                             }
