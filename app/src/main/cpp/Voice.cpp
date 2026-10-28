@@ -22,7 +22,7 @@ inline float hermite(float ym1, float y0, float y1, float y2, float f) {
 }  // namespace
 
 bool Voice::start(const PadParams& p, int padIndex, float velocity, double engineRate,
-                  uint64_t age, double offset01) {
+                  uint64_t age, double offset01, bool fromSeq) {
     active_ = false;
     const Sample* s = p.sample;
     if (!s || s->frames < 2 || engineRate <= 0.0) return false;
@@ -34,6 +34,7 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
 
     sample_ = s;
     pad_ = padIndex;
+    fromSeq_ = fromSeq;
     chokeGroup_ = p.choke;
     mode_ = p.mode;
     age_ = age;
@@ -89,7 +90,7 @@ void Voice::fastRelease(float frames) {
     }
 }
 
-bool Voice::render(float* out, int numFrames) {
+bool Voice::render(float* out, int numFrames, float bus) {
     if (!active_) return false;
 
     const float* d = sample_->data.data();
@@ -142,7 +143,7 @@ bool Voice::render(float* out, int numFrames) {
                 gainR_ = targetR_;
             }
         }
-        const float g = env_ * tail;
+        const float g = env_ * tail * bus;
         out[2 * i] += l * g * gainL_;
         out[2 * i + 1] += r * g * gainR_;
         pos_ += inc_;

@@ -17,6 +17,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -88,7 +91,25 @@ fun ProjectScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier 
                     fontSize = 10.sp,
                 )
             }
-            HwButton("CLOSE", Modifier.fillMaxWidth(), enabled = idle, height = 30.dp) { app.projectOpen = false }
+            // NEW — пустой проект; второе нажатие подтверждает (всё удаляется).
+            var confirmNew by remember { mutableStateOf(false) }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                HwButton(
+                    if (confirmNew) "SURE? NEW" else "NEW", Modifier.weight(1f),
+                    led = confirmNew, ledColor = Skin.LedRed, enabled = idle, height = 30.dp,
+                ) {
+                    if (!confirmNew) {
+                        confirmNew = true
+                        app.flash("NEW: ALL PADS, LOOPS, PATTERNS, SONG WILL BE ERASED · PRESS AGAIN", 3000)
+                    } else {
+                        confirmNew = false
+                        app.newProject(context.applicationContext)
+                        app.projectOpen = false
+                    }
+                }
+                HwButton("CLOSE", Modifier.weight(1f), enabled = idle, height = 30.dp) { app.projectOpen = false }
+            }
         }
     }
 }

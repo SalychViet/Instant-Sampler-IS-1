@@ -471,6 +471,16 @@ class AppViewModel : ViewModel() {
         return ((out + com.example.mpcpad.Settings.loopOffsetMs) * 1e6).toLong().coerceAtLeast(0L)
     }
 
+    /**
+     * Секвенсор уже играет, а сетки петель нет — берём такты секвенсора: первая петля тогда не меняет
+     * темп, а подрезается до целых тактов идущего воспроизведения.
+     */
+    fun adoptSequencerGrid() {
+        if (loopGridNanos != 0L || !seqPlaying) return
+        val tickNs = 60e9 / (com.example.mpcpad.Settings.bpm * com.example.mpcpad.audio.PPQ)
+        loopGridNanos = System.nanoTime() - (seqPos.mod(BAR_TICKS) * tickNs).toLong()
+    }
+
     /** Первая доля ближайшего следующего такта после [t] (сетка должна идти; почти попали — этот же). */
     fun nextBar(t: Long): Long {
         val barNs = 4 * 60e9 / com.example.mpcpad.Settings.bpm
@@ -798,6 +808,43 @@ class AppViewModel : ViewModel() {
             projectOpen = false
             flash("PROJECT ${projectName.uppercase()} · $n PADS", 2500)
         }
+    }
+
+    /** PRJCT → NEW: пустой проект — без семплов, петель, паттернов, песни, движений и записи эффектов. */
+    fun newProject(context: Context) {
+        AudioEngine.seqStop()
+        AudioEngine.seqSetRecording(false)
+        AudioEngine.allNotesOff()
+        loopStopAll()
+        AudioEngine.stop()   // паттерны пишутся в движок напрямую — только при остановленном звуке
+        for (p in 0 until 64) AudioEngine.seqLoadPattern(p, LongArray(0), LongArray(0), 1)
+        AudioEngine.songClear()
+        AudioEngine.songEnable(false)
+        AudioEngine.start()
+        for (pad in 0 until 64) {
+            PadStore.delete(context, pad)   // и метка «пусто»: стартовый кит не вернётся
+            applyPadUi(pad, PadUi())
+        }
+        kaossMix.clear(); kaossMix.addAll(List(50) { 1f })
+        kaossProgram = 0
+        motionPlaying = -1
+        motionRecording = -1
+        motions.clear(); motions.addAll(listOf(null, null, null, null))
+        fxAuto = null
+        song = emptyList()
+        seqPattern = 0
+        AudioEngine.seqSelect(0, immediate = true)
+        loopOriginals.clear()
+        loopParts.clear()
+        partsEditPad = -1
+        loopRecPad = -1
+        loopClosing = false
+        com.example.mpcpad.Settings.loopBeats = 0
+        undoStack.clear()
+        canUndo = false
+        projectName = ""
+        ProjectStore.save(context, this)
+        flash("NEW PROJECT", 2000)
     }
 
     // ---- SETUP: банки в файл и из файла ----

@@ -53,6 +53,7 @@ object Settings {
     private val _loopBeats = mutableIntStateOf(0)
     private val _loopOffsetMs = mutableFloatStateOf(0f)
     private val _loopQuantize = mutableStateOf(false)
+    private val _seqVolume = mutableFloatStateOf(1f)
 
     var trimStart: Boolean get() = _trimStart.value; set(v) { _trimStart.value = v; putBool("trimStart", v) }
     var trimEnd: Boolean get() = _trimEnd.value; set(v) { _trimEnd.value = v; putBool("trimEnd", v) }
@@ -84,6 +85,8 @@ object Settings {
     var loopOffsetMs: Float get() = _loopOffsetMs.floatValue; set(v) { _loopOffsetMs.floatValue = v; putFloat("loopOffsetMs", v) }
     /** ISL-1, SETUP → LOOP QUANTIZE: удары новой петли выравниваются по 1/16. */
     var loopQuantize: Boolean get() = _loopQuantize.value; set(v) { _loopQuantize.value = v; putBool("loopQuantize", v) }
+    /** ISL-1, фейдер SEQ: громкость всего, кроме петель лупера (секвенсор и one-shot), 0..1.5. */
+    var seqVolume: Float get() = _seqVolume.floatValue; set(v) { _seqVolume.floatValue = v; putFloat("seqVolume", v) }
 
     fun init(context: Context) {
         val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -107,6 +110,7 @@ object Settings {
         _loopBeats.intValue = p.getInt("loopBeats", 0).coerceIn(0, 256)
         _loopOffsetMs.floatValue = p.getFloat("loopOffsetMs", 0f).coerceIn(-150f, 150f)
         _loopQuantize.value = p.getBoolean("loopQuantize", false)
+        _seqVolume.floatValue = p.getFloat("seqVolume", 1f).coerceIn(0f, 1.5f)
     }
 
     private fun putBool(k: String, v: Boolean) { prefs?.edit()?.putBoolean(k, v)?.apply() }

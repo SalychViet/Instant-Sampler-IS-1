@@ -555,7 +555,7 @@ void Sequencer::processTick() {
             const uint64_t lw = p.lk[i].load(std::memory_order_relaxed);
             if (lw) applyLocks(unpackLocks(lw), pp);
         }
-        voices_.noteOn(pp, e.pad, static_cast<float>(e.vel) / 127.0f);
+        voices_.noteOn(pp, e.pad, static_cast<float>(e.vel) / 127.0f, 0.0, true);
         if (pp.mode == PlayMode::Gate || pp.mode == PlayMode::Loop)
             noteOffAt_[e.pad] = now + std::max(1, e.len);
     }

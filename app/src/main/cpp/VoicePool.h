@@ -15,7 +15,9 @@ class VoicePool {
 public:
     void setSampleRate(int sr) { sampleRate_ = sr; }
 
-    void noteOn(const PadParams& p, int pad, float velocity, double offset01 = 0.0);
+    void noteOn(const PadParams& p, int pad, float velocity, double offset01 = 0.0, bool fromSeq = false);
+    // SEQ VOL: громкость всего, кроме секции петель (секвенсор и one-shot с падов), 0..1.5.
+    void setSeqVolume(float v) { seqTarget_ = v; }
     // VOL/PAN пада поменялись — звучащие голоса этого пада плавно подстраиваются.
     void updateLevel(int pad, float volume, float pan);
     void noteOff(int pad);
@@ -31,6 +33,7 @@ public:
 private:
     void stealToDying(const Voice& v);
 
+    float seqGain_ = 1.0f, seqTarget_ = 1.0f;   // шина SEQ VOL (сглаживается поблочно)
     Voice voices_[kMaxVoices];
     Voice dying_[kMaxDying];
     int nextDying_ = 0;

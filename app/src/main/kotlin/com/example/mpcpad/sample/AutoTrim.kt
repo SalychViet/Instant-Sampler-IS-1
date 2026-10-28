@@ -18,10 +18,14 @@ import kotlin.math.sqrt
  *  - шумовой фон записи + 10 дБ (оценка по самым тихим окнам), но не выше пика − 30 дБ —
  *    чтобы запись без пауз (нет «тишины» для оценки фона) не съедалась,
  *  - пик семпла − 45 дБ.
+ *
+ * Начало уточняется до отсчёта: первый отсчёт громче порога в окрестности найденного окна, затем —
+ * назад к ближайшему переходу через ноль (не дальше 2 мс), чтобы срез не щёлкал. Конец — последний
+ * отсчёт громче половины порога в последнем звучащем окне.
  */
 object AutoTrim {
-    const val HEAD_MARGIN_MS = 5
-    const val TAIL_MARGIN_MS = 30
+    const val HEAD_MARGIN_MS = 1
+    const val TAIL_MARGIN_MS = 20
     private const val WINDOW_MS = 5
 
     class Result(val clip: SampleClip, val headMs: Long, val tailMs: Long)
@@ -61,7 +65,29 @@ object AutoTrim {
         if (first < 0) return null
         var last = first
         for (w in nWin - 1 downTo first) if (rms[w] >= thr) { last = w; break }
-        return intArrayOf(first * win, minOf(frames, (last + 1) * win))
+
+        fun amp(i: Int): Float {
+            var m = 0f
+            for (c in 0 until ch) m = max(m, kotlin.math.abs(clip.data[i * ch + c]))
+            return m
+        }
+        // Начало — точно до отсчёта: окно до найденного и само окно.
+        var onset = first * win
+        for (i in maxOf(0, (first - 1) * win) until minOf(frames, (first + 1) * win)) {
+            if (amp(i) >= thr * 0.7f) { onset = i; break }
+        }
+        // …и назад к переходу через ноль (первый канал), не дальше 2 мс.
+        val maxBack = clip.sampleRate / 500
+        var z = onset
+        val sign0 = clip.data[onset * ch] >= 0f
+        while (z > 0 && onset - z < maxBack && (clip.data[(z - 1) * ch] >= 0f) == sign0) z--
+        onset = z
+        // Конец — последний отсчёт громче половины порога в последнем звучащем окне.
+        var end = minOf(frames, (last + 1) * win)
+        for (i in end - 1 downTo last * win) {
+            if (amp(i) >= thr * 0.5f) { end = i + 1; break }
+        }
+        return intArrayOf(onset, maxOf(end, onset + 1))
     }
 
     /** null — семпл целиком тише порога. */

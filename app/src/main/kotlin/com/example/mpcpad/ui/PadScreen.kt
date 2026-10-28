@@ -466,6 +466,7 @@ fun MpcRoot(actions: SampleActions) {
                 // Ресемплинг в петлю: с первой доли следующего такта (если сетка идёт), с выхода приложения.
                 app.loopStop(global)
                 val now = System.nanoTime()
+                app.adoptSequencerGrid()
                 val start = if (app.loopGridRunning) app.nextBar(now) else now
                 app.loopRecPad = global
                 app.loopRecFromEngine = true
@@ -512,6 +513,8 @@ fun MpcRoot(actions: SampleActions) {
             !PadCapture.isArmed -> flash(if (PadCapture.isBusy) "LOOPER: PREPARING INPUT…" else "LOOPER: NO INPUT · PRESS LOOPER AGAIN")
             rec < 0 -> {
                 app.loopStop(global)
+                // Воспроизведение уже идёт — петля не задаёт темп, а встаёт в его такты.
+                app.adoptSequencerGrid()
                 PadSampler.loopPads.add(global)
                 app.loopRecPad = global
                 app.loopRecStartNanos = System.nanoTime()
@@ -572,7 +575,10 @@ fun MpcRoot(actions: SampleActions) {
                         flash("SAMPLE ${padName(global)} DELETED")
                     }
                     // ISL-1 LOOPER: касание — запись, второе касание — конец записи и петля играет.
-                    Edition.LOOPER && app.looperMode -> looperTap(global)
+                    // (пад с обычным семплом в LOOPER играет как one-shot — петли пишутся только на пустые пады)
+                    Edition.LOOPER && app.looperMode &&
+                        (PadLibrary.infos[global] == null || app.pads[global].mode == PlayMode.LOOP || global == app.loopRecPad) ->
+                        looperTap(global)
                     // ISL-1: пад в режиме LOOP включается и выключается касанием (держать не нужно).
                     Edition.LOOPER && app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
                         app.loopToggle(global)
@@ -1319,7 +1325,15 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.setMasterVolume(v)
                         app.flash("MASTER %.0f%%".format(v * 100), 900)
                     }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.8f / 1.2f)
-                    Fader("CLICK", Settings.metroLevel, { n ->
+                    if (Edition.LOOPER) {
+                        // ISL-1: SEQ — громкость секвенсора и one-shot отдельно от петель (клик — в SETUP).
+                        Fader("SEQ", Settings.seqVolume / 1.5f, { n ->
+                            val v = n * 1.5f
+                            Settings.seqVolume = v
+                            AudioEngine.setSeqVolume(v)
+                            app.flash("SEQ VOL %.0f%%".format(v * 100), 900)
+                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 1f / 1.5f)
+                    } else Fader("CLICK", Settings.metroLevel, { n ->
                         Settings.metroLevel = n
                         AudioEngine.seqSetMetronome(Settings.metroMode, n)
                         app.flash("CLICK %.0f%%".format(n * 100), 900)

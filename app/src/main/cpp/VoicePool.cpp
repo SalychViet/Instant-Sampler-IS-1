@@ -3,9 +3,11 @@
 
 #include "VoicePool.h"
 
+#include <cmath>
+
 namespace mpc {
 
-void VoicePool::noteOn(const PadParams& p, int pad, float velocity, double offset01) {
+void VoicePool::noteOn(const PadParams& p, int pad, float velocity, double offset01, bool fromSeq) {
     if (!p.sample) return;
 
     // Choke: новый звук из группы быстро глушит все звучащие голоса той же группы.
@@ -37,7 +39,7 @@ void VoicePool::noteOn(const PadParams& p, int pad, float velocity, double offse
         stealToDying(*slot);
     }
 
-    if (!slot->start(p, pad, velocity, static_cast<double>(sampleRate_), ++counter_, offset01)) slot->kill();
+    if (!slot->start(p, pad, velocity, static_cast<double>(sampleRate_), ++counter_, offset01, fromSeq)) slot->kill();
 }
 
 // Украденный голос продолжает звучать в «dying»-слоте с коротким fade-out (~3 мс) — без щелчка.
@@ -74,8 +76,10 @@ void VoicePool::killSample(const Sample* s) {
 }
 
 void VoicePool::render(float* out, int numFrames) {
-    for (auto& v : voices_) if (v.active()) v.render(out, numFrames);
-    for (auto& v : dying_)  if (v.active()) v.render(out, numFrames);
+    seqGain_ += (seqTarget_ - seqGain_) * 0.35f;   // ~несколько блоков — без щелчков при движении фейдера
+    if (std::fabs(seqTarget_ - seqGain_) < 1e-4f) seqGain_ = seqTarget_;
+    for (auto& v : voices_) if (v.active()) v.render(out, numFrames, v.loopSection() ? 1.0f : seqGain_);
+    for (auto& v : dying_)  if (v.active()) v.render(out, numFrames, v.loopSection() ? 1.0f : seqGain_);
 }
 
 int VoicePool::activeCount() const {

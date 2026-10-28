@@ -94,6 +94,15 @@ bool EngineCore::setMasterVolume(float v) {
     return post(c);
 }
 
+bool EngineCore::setSeqVolume(float v) {
+    Command c;
+    c.type = CmdType::SetMaster;
+    c.param = 1;
+    c.value = std::clamp(v, 0.0f, 1.5f);
+    std::lock_guard<std::mutex> lk(producerMutex_);
+    return post(c);
+}
+
 void EngineCore::collectGarbageLocked() {
     Sample* s;
     while (garbage_.pop(s)) delete s;
@@ -167,7 +176,8 @@ void EngineCore::apply(const Command& c) {
             }
             break;
         case CmdType::SetMaster:
-            master_ = c.value;
+            if (c.param == 1) voices_.setSeqVolume(c.value);   // SEQ VOL
+            else master_ = c.value;
             break;
         case CmdType::LoadSample: {
             Sample* old = const_cast<Sample*>(pads_[c.pad].sample);

@@ -89,6 +89,18 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 Chip("+5 мс", compact = true) { Settings.loopOffsetMs = (Settings.loopOffsetMs + 5f).coerceAtMost(150f) }
             }
             Spacer(Modifier.height(4.dp))
+            // Фейдер CLICK на панели ISL-1 занят SEQ VOL — громкость метронома здесь.
+            ParamSlider(
+                label = "CLICK",
+                valueText = "%.0f%%".format(Settings.metroLevel * 100),
+                value = Settings.metroLevel,
+                range = 0f..1f,
+                steps = 19,
+            ) {
+                Settings.metroLevel = it
+                AudioEngine.seqSetMetronome(Settings.metroMode, it)
+            }
+            Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("LOOP QUANTIZE", color = TextMain, fontSize = 14.sp, modifier = Modifier.weight(1f))
                 Chip(if (Settings.loopQuantize) "ВКЛ" else "ВЫКЛ", active = Settings.loopQuantize) {

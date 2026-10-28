@@ -30,10 +30,12 @@ class Voice {
 public:
     // false, если голос запустить нельзя (нет семпла, пустой регион).
     // offset01 — откуда начать внутри региона START–END (0 — с начала): петля ISL-1 подхватывается с середины.
-    bool start(const PadParams& p, int padIndex, float velocity, double engineRate, uint64_t age, double offset01 = 0.0);
+    // fromSeq — ноту дал секвенсор (иначе — касание пада / петля ISL-1).
+    bool start(const PadParams& p, int padIndex, float velocity, double engineRate, uint64_t age, double offset01 = 0.0,
+               bool fromSeq = false);
 
-    // ДОБАВЛЯЕТ numFrames стерео-кадров в out. false — голос закончился.
-    bool render(float* out, int numFrames);
+    // ДОБАВЛЯЕТ numFrames стерео-кадров в out (× bus — громкость шины). false — голос закончился.
+    bool render(float* out, int numFrames, float bus = 1.0f);
 
     void release();                  // обычный release из параметров пада
     void fastRelease(float frames);  // быстрый fade (choke, voice stealing)
@@ -46,6 +48,8 @@ public:
     int pad() const { return pad_; }
     int chokeGroup() const { return chokeGroup_; }
     PlayMode mode() const { return mode_; }
+    // Секция петель (ISL-1): петля, запущенная касанием, а не секвенсором. Остальное — шина SEQ VOL.
+    bool loopSection() const { return mode_ == PlayMode::Loop && !fromSeq_; }
     uint64_t age() const { return age_; }
     const Sample* sample() const { return sample_; }
 
@@ -66,6 +70,7 @@ private:
     float targetL_ = 0.0f, targetR_ = 0.0f;   // куда плавно идёт gain (VOL/PAN на ходу)
     float glide_ = 0.0f;                      // коэффициент сглаживания на кадр
     float velocity_ = 1.0f;
+    bool fromSeq_ = false;
     float env_ = 0.0f, attackInc_ = 1.0f, releaseInc_ = 0.01f;
     float releaseRate_ = 0.01f;  // release из параметров пада (для обычного release())
 };

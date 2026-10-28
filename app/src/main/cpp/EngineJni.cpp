@@ -53,6 +53,11 @@ JNIEXPORT jboolean JNICALL JNI(nativeNoteOnAt)(JNIEnv*, jobject, jlong h, jint p
     return o && o->core().noteOnAt(pad, vel, offset01);
 }
 
+JNIEXPORT jboolean JNICALL JNI(nativeSetSeqVolume)(JNIEnv*, jobject, jlong h, jfloat v) {
+    auto* o = get(h);
+    return o && o->core().setSeqVolume(v);
+}
+
 JNIEXPORT jboolean JNICALL JNI(nativeNoteOff)(JNIEnv*, jobject, jlong h, jint pad) {
     auto* o = get(h);
     return o && o->core().noteOff(pad);

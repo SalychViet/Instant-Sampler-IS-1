@@ -140,6 +140,8 @@ object AudioEngine {
     fun stop() { if (handle != 0L) nativeStop(handle) }
 
     fun noteOn(pad: Int, velocity: Float) { if (handle != 0L) nativeNoteOn(handle, pad, velocity) }
+    /** SEQ VOL (ISL-1): громкость всего, кроме петель лупера (секвенсор и one-shot), 0..1.5. */
+    fun setSeqVolume(v: Float) { if (handle != 0L) nativeSetSeqVolume(handle, v) }
     /** Нота с места внутри региона START–END (0..1): петля ISL-1 подхватывается «на ходу». */
     fun noteOnAt(pad: Int, velocity: Float, offset01: Double) { if (handle != 0L) nativeNoteOnAt(handle, pad, velocity, offset01) }
     fun noteOff(pad: Int) { if (handle != 0L) nativeNoteOff(handle, pad) }
@@ -289,6 +291,7 @@ object AudioEngine {
     private external fun nativeStart(h: Long): Boolean
     private external fun nativeStop(h: Long)
     private external fun nativeNoteOn(h: Long, pad: Int, vel: Float): Boolean
+    private external fun nativeSetSeqVolume(h: Long, v: Float): Boolean
     private external fun nativeOutputLatencyMs(h: Long): Double
     private external fun nativeNoteOnAt(h: Long, pad: Int, vel: Float, offset01: Double): Boolean
     private external fun nativeNoteOff(h: Long, pad: Int): Boolean

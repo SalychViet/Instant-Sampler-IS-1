@@ -18,6 +18,7 @@ class MpcApp : Application() {
         PadSampler.init(this)
         AudioEngine.create()
         AudioEngine.setMasterVolume(Settings.master)
+        if (Edition.LOOPER) AudioEngine.setSeqVolume(Settings.seqVolume)
         AudioEngine.seqSetBpm(Settings.bpm)
         AudioEngine.seqSetQuantize(Settings.quantize)
         AudioEngine.seqSetMetronome(Settings.metroMode, Settings.metroLevel)

@@ -148,3 +148,24 @@ TEST(LooperTest, VolumeChangesWhilePlaying) {
     EXPECT_GT(before, 0.1f);
     EXPECT_LT(after, before * 0.4f);
 }
+
+// SEQ VOL глушит одноразовые звуки и секвенсор, а петлю лупера (запущенную касанием) — нет.
+TEST(LooperTest, SeqVolumeSparesLoopSection) {
+    for (int mode : {0, 2}) {   // 0 — one-shot, 2 — LOOP
+        EngineCore core;
+        core.setSampleRate(48000);
+        auto s = std::make_unique<Sample>();
+        s->frames = 48000;
+        s->sampleRate = 48000;
+        s->data.assign(static_cast<size_t>(s->frames) * 2, 0.4f);
+        ASSERT_TRUE(core.loadSample(0, std::move(s)));
+        core.setParam(0, kParamMode, static_cast<float>(mode));
+        core.setSeqVolume(0.0f);
+        ASSERT_TRUE(core.noteOn(0, 1.0f));
+        std::vector<float> buf(2 * 512);
+        for (int k = 0; k < 20; ++k) core.render(buf.data(), 512);
+        const float level = std::fabs(buf[2 * 511]);
+        if (mode == 2) EXPECT_GT(level, 0.1f);   // петля звучит
+        else EXPECT_LT(level, 1e-3f);            // one-shot заглушен SEQ VOL
+    }
+}
