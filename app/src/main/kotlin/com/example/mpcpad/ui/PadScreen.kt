@@ -1339,23 +1339,15 @@ fun MpcRoot(actions: SampleActions) {
                         app.flash("CLICK %.0f%%".format(n * 100), 900)
                     }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.7f)
                     val loopPad = app.pads[app.selected].mode == PlayMode.LOOP
-                    if (Edition.LOOPER && loopPad && PadLibrary.infos[app.selected] != null) {
-                        // ISL-1: у петли фейдер — её громкость (в реальном времени), длину он не трогает.
-                        val sel = app.selected
-                        Fader("LOOP VOL", app.pads[sel].volume / 2f, { n ->
-                            val v = n * 2f
-                            app.setParam(sel, PadParam.VOLUME, v) { it.copy(volume = v) }
-                            app.flash("LOOP ${padName(sel)} VOL %.0f%%".format(v * 100), 900)
-                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.5f)
-                    } else if (Edition.LOOPER) {
-                        // ISL-1: уровень входа текущего источника (микрофон / звук телефона) — для записи.
-                        val src = app.sampleSource
-                        val db = Settings.inputGainDb(src)
-                        Fader("IN", norm(db, -12f, 24f), { n ->
-                            val v = denorm(n, -12f, 24f).roundToInt().toFloat()
-                            if (src == CaptureSource.INTERNAL) Settings.recGainIntDb = v else Settings.recGainDb = v
-                            app.flash((if (src == CaptureSource.INTERNAL) "IN INT " else "IN MIC ") + "%+.0f DB".format(v), 900)
-                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = norm(0f, -12f, 24f))
+                    if (Edition.LOOPER) {
+                        // ISL-1: LOOPER — громкость всех петель (пара к SEQ). Отдельная петля — ручкой VOL,
+                        // уровень входа — в SETUP.
+                        Fader("LOOPER", Settings.loopVolume / 1.5f, { n ->
+                            val v = n * 1.5f
+                            Settings.loopVolume = v
+                            AudioEngine.setLoopVolume(v)
+                            app.flash("LOOPER VOL %.0f%%".format(v * 100), 900)
+                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 1f / 1.5f)
                     } else if (loopPad) {
                         // LOOP: фейдер выбирает длину петли по темпу; внизу — FREE (END вручную).
                         val steps = LOOP_DIVS.size

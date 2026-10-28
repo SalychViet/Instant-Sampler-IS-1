@@ -57,6 +57,8 @@ public:
     bool setMasterVolume(float v01);
     // SEQ VOL (ISL-1): громкость всего, кроме петель, запущенных касанием (секвенсор и one-shot).
     bool setSeqVolume(float v);
+    // LOOPER (ISL-1): громкость всех петель, запущенных касанием.
+    bool setLoopVolume(float v);
     // nullptr = очистить пад. Старый семпл освободится позже, вне аудио-потока.
     bool loadSample(int pad, std::unique_ptr<Sample> sample);
     // Команда секвенсору (см. SeqOp: смысл a/b/f зависит от операции).

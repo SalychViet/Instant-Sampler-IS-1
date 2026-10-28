@@ -89,6 +89,21 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 Chip("+5 мс", compact = true) { Settings.loopOffsetMs = (Settings.loopOffsetMs + 5f).coerceAtMost(150f) }
             }
             Spacer(Modifier.height(4.dp))
+            // Уровень входа для записи петель и семплов — отдельно для микрофона и звука телефона.
+            for (src in listOf(com.example.mpcpad.capture.CaptureSource.MIC, com.example.mpcpad.capture.CaptureSource.INTERNAL)) {
+                val int = src == com.example.mpcpad.capture.CaptureSource.INTERNAL
+                ParamSlider(
+                    label = if (int) "IN INT (звук телефона)" else "IN MIC (микрофон)",
+                    valueText = "%+.0f дБ".format(Settings.inputGainDb(src)),
+                    value = Settings.inputGainDb(src),
+                    range = -12f..24f,
+                    steps = 35,
+                ) {
+                    val v = it.roundToInt().toFloat()
+                    if (int) Settings.recGainIntDb = v else Settings.recGainDb = v
+                }
+            }
+            Spacer(Modifier.height(4.dp))
             // Фейдер CLICK на панели ISL-1 занят SEQ VOL — громкость метронома здесь.
             ParamSlider(
                 label = "CLICK",

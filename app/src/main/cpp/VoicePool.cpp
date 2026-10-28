@@ -78,8 +78,10 @@ void VoicePool::killSample(const Sample* s) {
 void VoicePool::render(float* out, int numFrames) {
     seqGain_ += (seqTarget_ - seqGain_) * 0.35f;   // ~несколько блоков — без щелчков при движении фейдера
     if (std::fabs(seqTarget_ - seqGain_) < 1e-4f) seqGain_ = seqTarget_;
-    for (auto& v : voices_) if (v.active()) v.render(out, numFrames, v.loopSection() ? 1.0f : seqGain_);
-    for (auto& v : dying_)  if (v.active()) v.render(out, numFrames, v.loopSection() ? 1.0f : seqGain_);
+    loopGain_ += (loopTarget_ - loopGain_) * 0.35f;
+    if (std::fabs(loopTarget_ - loopGain_) < 1e-4f) loopGain_ = loopTarget_;
+    for (auto& v : voices_) if (v.active()) v.render(out, numFrames, v.loopSection() ? loopGain_ : seqGain_);
+    for (auto& v : dying_)  if (v.active()) v.render(out, numFrames, v.loopSection() ? loopGain_ : seqGain_);
 }
 
 int VoicePool::activeCount() const {
