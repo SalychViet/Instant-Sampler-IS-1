@@ -88,6 +88,20 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 Chip("0", compact = true) { Settings.loopOffsetMs = 0f }
                 Chip("+5 мс", compact = true) { Settings.loopOffsetMs = (Settings.loopOffsetMs + 5f).coerceAtMost(150f) }
             }
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("LOOP QUANTIZE", color = TextMain, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Chip(if (Settings.loopQuantize) "ВКЛ" else "ВЫКЛ", active = Settings.loopQuantize) {
+                    Settings.loopQuantize = !Settings.loopQuantize
+                    app.flash("LOOP QUANTIZE " + if (Settings.loopQuantize) "ON" else "OFF")
+                }
+            }
+            Text(
+                "Включено — удары в новой петле выравниваются по 1/16 (транзиенты двигаются к ближайшей доле сетки): " +
+                    "ритм ровнее и цельнее. На уже записанные петли не влияет.",
+                color = TextDim,
+                fontSize = 12.sp,
+            )
             val lat = AudioEngine.outputLatencyMs()
             Text(
                 (if (lat > 0) "Задержка выхода телефона: ~%.0f мс — учитывается сама. ".format(lat) else "") +

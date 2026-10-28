@@ -16,6 +16,8 @@ public:
     void setSampleRate(int sr) { sampleRate_ = sr; }
 
     void noteOn(const PadParams& p, int pad, float velocity, double offset01 = 0.0);
+    // VOL/PAN пада поменялись — звучащие голоса этого пада плавно подстраиваются.
+    void updateLevel(int pad, float volume, float pan);
     void noteOff(int pad);
     void allNotesOff();                 // мягкий release всех
     void killSample(const Sample* s);   // жёстко остановить всё, что играет этот семпл

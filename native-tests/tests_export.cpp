@@ -127,3 +127,24 @@ TEST(MetronomeTest, ClickIsHeardButNotResampled) {
     EXPECT_GT(heard, 0.05f);       // щелчок слышен
     EXPECT_LT(recorded, 1e-6f);    // а в записи его нет
 }
+
+// VOL пада меняется — звучащий голос (петля) становится тише сразу, без перезапуска.
+TEST(LooperTest, VolumeChangesWhilePlaying) {
+    EngineCore core;
+    core.setSampleRate(48000);
+    auto s = std::make_unique<Sample>();
+    s->frames = 48000;
+    s->sampleRate = 48000;
+    s->data.assign(static_cast<size_t>(s->frames) * 2, 0.4f);
+    ASSERT_TRUE(core.loadSample(0, std::move(s)));
+    core.setParam(0, kParamMode, 2.0f);   // LOOP
+    ASSERT_TRUE(core.noteOn(0, 1.0f));
+    std::vector<float> buf(2 * 512);
+    for (int k = 0; k < 10; ++k) core.render(buf.data(), 512);
+    const float before = std::fabs(buf[2 * 511]);
+    core.setParam(0, kParamVolume, 0.25f);
+    for (int k = 0; k < 10; ++k) core.render(buf.data(), 512);   // ~100 мс — сглаживание прошло
+    const float after = std::fabs(buf[2 * 511]);
+    EXPECT_GT(before, 0.1f);
+    EXPECT_LT(after, before * 0.4f);
+}

@@ -30,6 +30,7 @@ object Settings {
     private val _trimEnd = mutableStateOf(false)
     private val _trimDb = mutableFloatStateOf(-50f)
     private val _recGainDb = mutableFloatStateOf(0f)
+    private val _recGainIntDb = mutableFloatStateOf(0f)
 
     // ---- секвенсор ----
     private val _bpm = mutableFloatStateOf(120f)
@@ -51,12 +52,18 @@ object Settings {
     private val _linkToLoop = mutableStateOf(false)
     private val _loopBeats = mutableIntStateOf(0)
     private val _loopOffsetMs = mutableFloatStateOf(0f)
+    private val _loopQuantize = mutableStateOf(false)
 
     var trimStart: Boolean get() = _trimStart.value; set(v) { _trimStart.value = v; putBool("trimStart", v) }
     var trimEnd: Boolean get() = _trimEnd.value; set(v) { _trimEnd.value = v; putBool("trimEnd", v) }
     /** Порог «тишины» для автообрезки, дБFS. */
     var trimDb: Float get() = _trimDb.floatValue; set(v) { _trimDb.floatValue = v; putFloat("trimDb", v) }
     var recGainDb: Float get() = _recGainDb.floatValue; set(v) { _recGainDb.floatValue = v; putFloat("recGainDb", v) }
+    /** Уровень входа для внутреннего звука телефона (у микрофона — recGainDb), дБ. */
+    var recGainIntDb: Float get() = _recGainIntDb.floatValue; set(v) { _recGainIntDb.floatValue = v; putFloat("recGainIntDb", v) }
+    /** Уровень входа текущего источника, дБ. */
+    fun inputGainDb(source: com.example.mpcpad.capture.CaptureSource) =
+        if (source == com.example.mpcpad.capture.CaptureSource.INTERNAL) recGainIntDb else recGainDb
     var bpm: Float get() = _bpm.floatValue; set(v) { _bpm.floatValue = v; putFloat("bpm", v) }
     var quantize: Int get() = _quantize.intValue; set(v) { _quantize.intValue = v; putInt("quantize", v) }
     var metroMode: Int get() = _metroMode.intValue; set(v) { _metroMode.intValue = v; putInt("metroMode", v) }
@@ -75,6 +82,8 @@ object Settings {
     var loopBeats: Int get() = _loopBeats.intValue; set(v) { _loopBeats.intValue = v; putInt("loopBeats", v) }
     /** Ручная подстройка петель ISL-1 к услышанному, мс: плюс — петля ложится раньше. */
     var loopOffsetMs: Float get() = _loopOffsetMs.floatValue; set(v) { _loopOffsetMs.floatValue = v; putFloat("loopOffsetMs", v) }
+    /** ISL-1, SETUP → LOOP QUANTIZE: удары новой петли выравниваются по 1/16. */
+    var loopQuantize: Boolean get() = _loopQuantize.value; set(v) { _loopQuantize.value = v; putBool("loopQuantize", v) }
 
     fun init(context: Context) {
         val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -83,6 +92,7 @@ object Settings {
         _trimEnd.value = p.getBoolean("trimEnd", false)
         _trimDb.floatValue = p.getFloat("trimDb", -50f).coerceIn(-72f, -20f)
         _recGainDb.floatValue = p.getFloat("recGainDb", 0f).coerceIn(-12f, 24f)
+        _recGainIntDb.floatValue = p.getFloat("recGainIntDb", 0f).coerceIn(-12f, 24f)
         _bpm.floatValue = p.getFloat("bpm", 120f).coerceIn(30f, 300f)
         _quantize.intValue = p.getInt("quantize", 24).takeIf { it in QUANTIZE_GRIDS } ?: 24
         _metroMode.intValue = p.getInt("metroMode", 0).coerceIn(0, 2)
@@ -96,6 +106,7 @@ object Settings {
         _linkToLoop.value = p.getBoolean("linkToLoop", false)
         _loopBeats.intValue = p.getInt("loopBeats", 0).coerceIn(0, 256)
         _loopOffsetMs.floatValue = p.getFloat("loopOffsetMs", 0f).coerceIn(-150f, 150f)
+        _loopQuantize.value = p.getBoolean("loopQuantize", false)
     }
 
     private fun putBool(k: String, v: Boolean) { prefs?.edit()?.putBoolean(k, v)?.apply() }

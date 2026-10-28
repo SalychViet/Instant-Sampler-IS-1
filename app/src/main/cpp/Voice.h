@@ -38,6 +38,8 @@ public:
     void release();                  // обычный release из параметров пада
     void fastRelease(float frames);  // быстрый fade (choke, voice stealing)
     void kill() { active_ = false; }
+    // Громкость/панорама пада поменялись, пока голос звучит: плавно (~10 мс) к новому уровню.
+    void setLevel(float volume, float pan);
 
     bool active() const { return active_; }
     bool releasing() const { return state_ == State::Release; }
@@ -61,6 +63,9 @@ private:
     double pos_ = 0.0, inc_ = 1.0;
     double startF_ = 0.0, endF_ = 0.0;
     float gainL_ = 0.0f, gainR_ = 0.0f;
+    float targetL_ = 0.0f, targetR_ = 0.0f;   // куда плавно идёт gain (VOL/PAN на ходу)
+    float glide_ = 0.0f;                      // коэффициент сглаживания на кадр
+    float velocity_ = 1.0f;
     float env_ = 0.0f, attackInc_ = 1.0f, releaseInc_ = 0.01f;
     float releaseRate_ = 0.01f;  // release из параметров пада (для обычного release())
 };

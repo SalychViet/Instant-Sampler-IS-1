@@ -70,7 +70,7 @@ object PadSampler {
         val asLoop = loopPads.remove(pad)
         val preroll = if (asLoop) com.example.mpcpad.capture.PadCapture.lastPrerollFrames else 0
         scope.launch {
-            val gain = Math.pow(10.0, (Settings.recGainDb / 20f).toDouble()).toFloat()
+            val gain = Math.pow(10.0, (Settings.inputGainDb(source) / 20f).toDouble()).toFloat()
             val n = frames * channels
             val data = FloatArray(n) { i -> (shorts[i] / 32768f * gain).coerceIn(-1f, 1f) }
             if (shorts.none { it.toInt() != 0 }) {

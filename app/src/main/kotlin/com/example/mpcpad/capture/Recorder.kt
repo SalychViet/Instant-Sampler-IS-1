@@ -3,7 +3,10 @@
 
 package com.example.mpcpad.capture
 
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.AudioFormat
 import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
@@ -29,8 +32,14 @@ class Recorder(
         private const val MAX_SECONDS = 600
         private const val PREROLL_CHUNKS = 5
 
-        /** Создаёт AudioRecord под источник. Бросает IllegalStateException с понятным текстом. */
-        fun buildAudioRecord(config: RecorderConfig, projection: MediaProjection?): AudioRecord {
+        /**
+         * Создаёт AudioRecord под источник. Бросает IllegalStateException с понятным текстом.
+         * Микрофон — «чистый» источник для музыки (UNPROCESSED: без автоусиления и шумодава; если
+         * телефон его не поддерживает — VOICE_RECOGNITION) и всегда встроенный микрофон телефона:
+         * с проводной гарнитурой Android иначе пишет её микрофон, а он слышит звук из наушников.
+         */
+        fun buildAudioRecord(context: Context, config: RecorderConfig, projection: MediaProjection?): AudioRecord {
+            val am = context.getSystemService(AudioManager::class.java)
             val mask = if (config.channels == 1) AudioFormat.CHANNEL_IN_MONO else AudioFormat.CHANNEL_IN_STEREO
             val format = AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -44,7 +53,12 @@ class Recorder(
                 .setAudioFormat(format)
                 .setBufferSizeInBytes(bufBytes)
             when (config.source) {
-                CaptureSource.MIC -> builder.setAudioSource(MediaRecorder.AudioSource.MIC)
+                CaptureSource.MIC -> {
+                    val unprocessed = am?.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED) == "true"
+                    builder.setAudioSource(
+                        if (unprocessed) MediaRecorder.AudioSource.UNPROCESSED else MediaRecorder.AudioSource.VOICE_RECOGNITION
+                    )
+                }
                 CaptureSource.INTERNAL -> {
                     val p = checkNotNull(projection) { "No MediaProjection for internal audio capture" }
                     val capture = AudioPlaybackCaptureConfiguration.Builder(p)
@@ -60,6 +74,11 @@ class Recorder(
             if (record.state != AudioRecord.STATE_INITIALIZED) {
                 record.release()
                 throw IllegalStateException("Cannot open the audio source (AudioRecord not initialized)")
+            }
+            if (config.source == CaptureSource.MIC) {
+                am?.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                    ?.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
+                    ?.let { record.setPreferredDevice(it) }
             }
             return record
         }

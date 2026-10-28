@@ -183,8 +183,14 @@ void EngineCore::apply(const Command& c) {
             PadParams& p = pads_[c.pad];
             const float v = c.value;
             switch (c.param) {
-                case kParamVolume:    p.volume = std::clamp(v, 0.0f, 2.0f); break;
-                case kParamPan:       p.pan = std::clamp(v, -1.0f, 1.0f); break;
+                case kParamVolume:
+                    p.volume = std::clamp(v, 0.0f, 2.0f);
+                    voices_.updateLevel(c.pad, p.volume, p.pan);   // слышно сразу, а не со следующей ноты
+                    break;
+                case kParamPan:
+                    p.pan = std::clamp(v, -1.0f, 1.0f);
+                    voices_.updateLevel(c.pad, p.volume, p.pan);
+                    break;
                 case kParamPitch:     p.pitch = std::clamp(v, -48.0f, 48.0f); break;
                 case kParamStart:     p.start = std::clamp(v, 0.0f, 1.0f); break;
                 case kParamEnd:       p.end = std::clamp(v, 0.0f, 1.0f); break;

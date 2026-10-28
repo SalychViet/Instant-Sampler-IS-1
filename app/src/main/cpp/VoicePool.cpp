@@ -51,6 +51,11 @@ void VoicePool::stealToDying(const Voice& v) {
     dying_[idx].fastRelease(0.003f * static_cast<float>(sampleRate_));
 }
 
+void VoicePool::updateLevel(int pad, float volume, float pan) {
+    for (auto& v : voices_)
+        if (v.active() && v.pad() == pad) v.setLevel(volume, pan);
+}
+
 void VoicePool::noteOff(int pad) {
     for (auto& v : voices_) {
         if (v.active() && v.pad() == pad && !v.releasing() &&

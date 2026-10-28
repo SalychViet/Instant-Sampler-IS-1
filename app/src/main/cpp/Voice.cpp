@@ -50,6 +50,10 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
     const float ang = (std::clamp(p.pan, -1.0f, 1.0f) + 1.0f) * kQuarterPi;  // constant power
     gainL_ = v * std::cos(ang);
     gainR_ = v * std::sin(ang);
+    targetL_ = gainL_;
+    targetR_ = gainR_;
+    velocity_ = std::clamp(velocity, 0.0f, 1.0f);
+    glide_ = 1.0f - std::exp(-1.0f / (0.01f * static_cast<float>(engineRate)));
 
     const float framesPerMs = static_cast<float>(engineRate) / 1000.0f;
     attackInc_ = 1.0f / (std::max(p.attackMs, 1.0f) * framesPerMs);      // минимум 1 мс против щелчка
@@ -59,6 +63,13 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
     state_ = State::Attack;
     active_ = true;
     return true;
+}
+
+void Voice::setLevel(float volume, float pan) {
+    const float v = velocity_ * std::max(volume, 0.0f);
+    const float ang = (std::clamp(pan, -1.0f, 1.0f) + 1.0f) * kQuarterPi;
+    targetL_ = v * std::cos(ang);
+    targetR_ = v * std::sin(ang);
 }
 
 void Voice::release() {
@@ -123,6 +134,14 @@ bool Voice::render(float* out, int numFrames) {
         const float l = hermite(tap(i0 - 1, 0), tap(i0, 0), tap(i0 + 1, 0), tap(i0 + 2, 0), f);
         const float r = hermite(tap(i0 - 1, 1), tap(i0, 1), tap(i0 + 1, 1), tap(i0 + 2, 1), f);
 
+        if (gainL_ != targetL_ || gainR_ != targetR_) {
+            gainL_ += (targetL_ - gainL_) * glide_;
+            gainR_ += (targetR_ - gainR_) * glide_;
+            if (std::fabs(targetL_ - gainL_) < 1e-6f && std::fabs(targetR_ - gainR_) < 1e-6f) {
+                gainL_ = targetL_;
+                gainR_ = targetR_;
+            }
+        }
         const float g = env_ * tail;
         out[2 * i] += l * g * gainL_;
         out[2 * i + 1] += r * g * gainR_;

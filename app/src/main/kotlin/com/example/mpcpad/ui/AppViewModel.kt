@@ -353,6 +353,91 @@ class AppViewModel : ViewModel() {
     /** Сетка петель: когда запущена первая петля. Следующие петли стартуют в долю от неё. */
     private var loopGridNanos = 0L
 
+    // ---- части петли: удержание пада-петли в LOOPER делит её на 4 части ----
+    /** Исходная запись петли (целиком) — из неё собираются включённые части. */
+    private val loopOriginals = HashMap<Int, SampleClip>()
+    /** Какие части петли играют: биты 0..3 (по умолчанию все). */
+    val loopParts = mutableStateMapOf<Int, Int>()
+    /** Пад, части петли которого сейчас на экране (-1 — нет). */
+    var partsEditPad by mutableIntStateOf(-1)
+
+    fun loopOriginal(pad: Int): SampleClip? = loopOriginals[pad]
+
+    /** Показать части петли [pad]. Петля из прошлого запуска — её нынешний звук становится исходником. */
+    fun openLoopParts(pad: Int) {
+        if (loopOriginals.containsKey(pad)) {
+            partsEditPad = pad
+            return
+        }
+        viewModelScope.launch {
+            val clip = withContext(Dispatchers.Default) {
+                PadStore.readWav(PadSampler.appContext, pad)?.let { com.example.mpcpad.audio.SampleOps.parseWav(it) }
+            }
+            if (clip == null) {
+                flash("LOOP ${padName(pad)}: NO AUDIO", 1500)
+                return@launch
+            }
+            loopOriginals[pad] = clip
+            loopParts[pad] = 0b1111
+            partsEditPad = pad
+        }
+    }
+
+    /** Включить/выключить часть [part] (0..3): играют только включённые части, подряд, без пауз. */
+    fun toggleLoopPart(pad: Int, part: Int) {
+        val orig = loopOriginals[pad] ?: return
+        val mask = (loopParts[pad] ?: 0b1111) xor (1 shl part)
+        if (mask == 0) {
+            flash("AT LEAST ONE PART", 1200)
+            return
+        }
+        loopParts[pad] = mask
+        val ch = orig.channels
+        val n = orig.frames
+        val bounds = IntArray(5) { (it.toLong() * n / 4).toInt() }
+        val fade = (orig.sampleRate / 500).coerceAtLeast(1)   // 2 мс на стыках — без щелчков
+        var total = 0
+        for (i in 0 until 4) if (mask and (1 shl i) != 0) total += bounds[i + 1] - bounds[i]
+        val data = FloatArray(total * ch)
+        var at = 0
+        for (i in 0 until 4) {
+            if (mask and (1 shl i) == 0) continue
+            val len = bounds[i + 1] - bounds[i]
+            System.arraycopy(orig.data, bounds[i] * ch, data, at * ch, len * ch)
+            if (mask != 0b1111) {
+                com.example.mpcpad.audio.SampleOps.fadeIn(data, ch, at, at + minOf(fade, len / 2))
+                com.example.mpcpad.audio.SampleOps.fadeOut(data, ch, at + len - minOf(fade, len / 2), at + len)
+            }
+            at += len
+        }
+        applyLoopClip(pad, SampleClip(data, ch, orig.sampleRate))
+        val on = Integer.bitCount(mask)
+        flash("LOOP ${padName(pad)} · PARTS " + (0 until 4).filter { mask and (1 shl it) != 0 }.joinToString(" ") { "${it + 1}" } + " · $on/4", 1500)
+    }
+
+    /** Новый звук петли: в движок; если петля играла — продолжает в такт сетки (с того же «нуля»). */
+    private fun applyLoopClip(pad: Int, clip: SampleClip) {
+        if (!AudioEngine.loadSample(pad, clip.data, clip.channels, clip.sampleRate)) return
+        AudioEngine.setParam(pad, PadParam.START, 0f)
+        AudioEngine.setParam(pad, PadParam.END, 1f)
+        loopsPlaying[pad]?.let { t0 ->
+            val lenNs = clip.frames * 1e9 / clip.sampleRate
+            AudioEngine.noteOnAt(pad, 1f, (System.nanoTime() - t0).toDouble().mod(lenNs) / lenNs)
+        }
+        val name = PadLibrary.infos[pad]?.name ?: ("LOOP_" + padName(pad))
+        viewModelScope.launch {
+            withContext(Dispatchers.Default) { PadStore.save(PadSampler.appContext, pad, clip, name) }
+            PadLibrary.set(pad, name, clip)
+        }
+    }
+
+    /** Пад удалён/перезаписан — исходник петли и её части больше не нужны. */
+    fun forgetLoop(pad: Int) {
+        loopOriginals.remove(pad)
+        loopParts.remove(pad)
+        if (partsEditPad == pad) partsEditPad = -1
+    }
+
     /** Идёт сетка тактов петель (после первой петли и до STOP). */
     val loopGridRunning: Boolean get() = loopGridNanos != 0L
 
@@ -547,7 +632,9 @@ class AppViewModel : ViewModel() {
         val from = kotlin.math.max(0L, kotlin.math.round((cutFrom - clipT0) * sr / 1e9).toLong()).toInt() * ch
         val data = FloatArray(target * ch)
         if (from < recorded.data.size) System.arraycopy(recorded.data, from, data, 0, minOf(recorded.data.size - from, data.size))
-        val clip = SampleClip(data, ch, sr)
+        var clip = SampleClip(data, ch, sr)
+        // LOOP QUANTIZE (SETUP): удары — на ближайшую 1/16 круга
+        if (com.example.mpcpad.Settings.loopQuantize) clip = com.example.mpcpad.sample.LoopQuantize.apply(clip, beats * 4)
         // микро-фейды на стыке круга — без щелчка
         val fade = (sr / 400).coerceAtMost(clip.frames / 4)
         com.example.mpcpad.audio.SampleOps.fadeIn(clip.data, ch, 0, fade)
@@ -568,6 +655,8 @@ class AppViewModel : ViewModel() {
         loopsWaiting.remove(pad)?.cancel()
         AudioEngine.noteOnAt(pad, 1f, offset)
         loopsPlaying[pad] = loopStart   // фаза круга на паде — от начала петли
+        loopOriginals[pad] = clip       // целиком — для деления на части
+        loopParts[pad] = 0b1111
         if (first) applyLoopLength()
         startSequencerOnBar()
         flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)

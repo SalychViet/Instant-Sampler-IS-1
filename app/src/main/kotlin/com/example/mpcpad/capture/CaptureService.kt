@@ -173,7 +173,7 @@ class CaptureService : Service() {
                 }, main)
             }
             return try {
-                Prepared(config, Recorder.buildAudioRecord(config, projection))
+                Prepared(config, Recorder.buildAudioRecord(this, config, projection))
             } catch (e: SecurityException) {
                 failWith("No permission to record audio: ${e.message}", armedMode)
                 null

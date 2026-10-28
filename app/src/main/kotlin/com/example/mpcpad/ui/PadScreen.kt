@@ -102,6 +102,8 @@ fun MpcRoot(actions: SampleActions) {
     }
     /** Как был нажат каждый пад: 0 — никак, 1 — нота, 2 — запись семпла, 3 — удержание шага. */
     val route = remember { IntArray(64) }
+    /** ISL-1: удержание пада-петли уже открыло её части (тогда отпускание не включает/выключает петлю). */
+    val partsHeld = remember { BooleanArray(64) }
     val cap by PadCapture.state.collectAsState()
 
     var eraseHold: Job? = null
@@ -460,14 +462,15 @@ fun MpcRoot(actions: SampleActions) {
         val hasLoop = app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null
         when {
             rec < 0 && hasLoop -> {
-                app.loopToggle(global)
-                flash(
-                    "LOOP ${padName(global)} " + when (global) {
-                        in app.loopsPlaying -> "▶"
-                        in app.loopsWaiting -> "▶ NEXT BAR"
-                        else -> "■ · ERASE TO RE-RECORD"
-                    }
-                )
+                // Короткое касание — вкл/выкл (на отпускании), удержание — части петли на экране.
+                route[global] = 5
+                partsHeld[global] = false
+                longPress[global] = scope.launch {
+                    delay(500)
+                    partsHeld[global] = true
+                    app.openLoopParts(global)
+                    app.flash("LOOP ${padName(global)} · TAP PARTS TO MUTE", 2500)
+                }
             }
             !PadCapture.isArmed -> flash(if (PadCapture.isBusy) "LOOPER: PREPARING INPUT…" else "LOOPER: NO INPUT · PRESS LOOPER AGAIN")
             rec < 0 -> {
@@ -523,7 +526,9 @@ fun MpcRoot(actions: SampleActions) {
                 when {
                     app.eraseLatch -> {
                         app.eraseLatch = false
+                        if (app.loopRecPad == global) return
                         app.loopStop(global)
+                        app.forgetLoop(global)
                         undoPadSample(global, "DELETE ${padName(global)}")
                         PadStore.delete(context, global)
                         app.update(global) { PadUi() }
@@ -640,6 +645,16 @@ fun MpcRoot(actions: SampleActions) {
         longPress[global]?.cancel()
         longPress[global] = null
         when (route[global]) {
+            5 -> if (!partsHeld[global]) {
+                app.loopToggle(global)
+                flash(
+                    "LOOP ${padName(global)} " + when (global) {
+                        in app.loopsPlaying -> "▶"
+                        in app.loopsWaiting -> "▶ NEXT BAR"
+                        else -> "■ · ERASE TO RE-RECORD"
+                    }
+                )
+            }
             1 -> AudioEngine.noteOff(global)
             2 -> PadCapture.end()
             3 -> {
@@ -701,6 +716,9 @@ fun MpcRoot(actions: SampleActions) {
                     shownX = { kShown[0] },
                     shownY = { kShown[1] },
                     shownTouch = { kShown[2] > 0.5f },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                ) else if (Edition.LOOPER && app.partsEditPad >= 0) LoopParts(
+                    app = app,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) else Lcd(
                     app = app,
@@ -920,7 +938,22 @@ fun MpcRoot(actions: SampleActions) {
                         "ERASE", Modifier.weight(1f), led = app.eraseLatch, ledColor = Skin.LedRed, height = 28.dp,
                         onPress = { down ->
                             eraseHold?.cancel()
-                            if (down && !app.kaossMode && app.mode == Mode.SEQ && !app.stepView) {
+                            if (down && Edition.LOOPER && app.kaossMode) {
+                                // ISL-1, KAOSS: удержание ERASE стирает запись эффектов (короткое — удаление петли).
+                                eraseHold = scope.launch {
+                                    delay(700)
+                                    eraseHeld = true
+                                    app.eraseLatch = false
+                                    val prev = app.fxAuto
+                                    if (prev == null) {
+                                        flash("NO FX AUTOMATION")
+                                    } else {
+                                        app.pushUndo("FX AUTOMATION") { app.fxAuto = prev }
+                                        app.fxAuto = null
+                                        flash("FX AUTOMATION DELETED")
+                                    }
+                                }
+                            } else if (down && !app.kaossMode && app.mode == Mode.SEQ && !app.stepView) {
                                 // SEQ: удержание ERASE стирает цепочку паттернов (Song).
                                 eraseHold = scope.launch {
                                     delay(700)
@@ -943,6 +976,12 @@ fun MpcRoot(actions: SampleActions) {
                     ) {
                         if (eraseHeld) {
                             eraseHeld = false
+                        } else if (Edition.LOOPER && app.kaossMode) {
+                            // ISL-1, KAOSS: ERASE → коснуться пада-петли — петля удаляется.
+                            if (app.mode != Mode.PAD) app.switchView(Mode.PAD, false)
+                            app.eraseLatch = !app.eraseLatch
+                            if (app.eraseLatch) app.flash("TOUCH A LOOP PAD: DELETE · HOLD ERASE = FX AUTOMATION", 3000)
+                            else flash("ERASE OFF")
                         } else if (app.kaossMode) {
                             val prev = app.fxAuto
                             if (prev == null) {
@@ -1027,10 +1066,21 @@ fun MpcRoot(actions: SampleActions) {
                     }
                     HwButton(
                         if (app.sampleSource == CaptureSource.MIC) "SRC:MIC" else "SRC:INT", Modifier.weight(1f),
-                        enabled = !PadCapture.isBusy, height = 28.dp,
+                        // ISL-1: при включённом LOOPER источник переключается «на ходу» (вход переоткрывается)
+                        enabled = !PadCapture.isBusy || (Edition.LOOPER && app.looperMode && app.loopRecPad < 0),
+                        height = 28.dp,
                     ) {
                         app.sampleSource = if (app.sampleSource == CaptureSource.MIC) CaptureSource.INTERNAL else CaptureSource.MIC
                         flash(if (app.sampleSource == CaptureSource.MIC) "SOURCE: MIC" else "SOURCE: INTERNAL AUDIO")
+                        if (Edition.LOOPER && app.looperMode && PadCapture.isBusy) {
+                            actions.disarmPadCapture()
+                            scope.launch {
+                                // ждём, пока старый вход закроется (до 2 с), и открываем новый
+                                var tries = 0
+                                while (PadCapture.isBusy && tries++ < 40) delay(50)
+                                if (app.looperMode) actions.armPadCapture()
+                            }
+                        }
                     }
                     HwButton("T-HEAD", Modifier.weight(1f), led = Settings.trimStart, height = 28.dp) {
                         Settings.trimStart = !Settings.trimStart
@@ -1227,7 +1277,24 @@ fun MpcRoot(actions: SampleActions) {
                         app.flash("CLICK %.0f%%".format(n * 100), 900)
                     }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.7f)
                     val loopPad = app.pads[app.selected].mode == PlayMode.LOOP
-                    if (loopPad) {
+                    if (Edition.LOOPER && loopPad && PadLibrary.infos[app.selected] != null) {
+                        // ISL-1: у петли фейдер — её громкость (в реальном времени), длину он не трогает.
+                        val sel = app.selected
+                        Fader("LOOP VOL", app.pads[sel].volume / 2f, { n ->
+                            val v = n * 2f
+                            app.setParam(sel, PadParam.VOLUME, v) { it.copy(volume = v) }
+                            app.flash("LOOP ${padName(sel)} VOL %.0f%%".format(v * 100), 900)
+                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.5f)
+                    } else if (Edition.LOOPER) {
+                        // ISL-1: уровень входа текущего источника (микрофон / звук телефона) — для записи.
+                        val src = app.sampleSource
+                        val db = Settings.inputGainDb(src)
+                        Fader("IN", norm(db, -12f, 24f), { n ->
+                            val v = denorm(n, -12f, 24f).roundToInt().toFloat()
+                            if (src == CaptureSource.INTERNAL) Settings.recGainIntDb = v else Settings.recGainDb = v
+                            app.flash((if (src == CaptureSource.INTERNAL) "IN INT " else "IN MIC ") + "%+.0f DB".format(v), 900)
+                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = norm(0f, -12f, 24f))
+                    } else if (loopPad) {
                         // LOOP: фейдер выбирает длину петли по темпу; внизу — FREE (END вручную).
                         val steps = LOOP_DIVS.size
                         val div = app.pads[app.selected].loopDiv
