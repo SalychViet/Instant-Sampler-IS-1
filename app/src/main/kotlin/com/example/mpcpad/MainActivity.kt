@@ -26,6 +26,7 @@ import com.example.mpcpad.capture.CaptureController
 import com.example.mpcpad.capture.CaptureService
 import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.capture.PadCapture
+import com.example.mpcpad.capture.ProjectionConsent
 import com.example.mpcpad.capture.RecorderConfig
 import com.example.mpcpad.sample.SampleViewModel
 import com.example.mpcpad.ui.AppViewModel
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity(), SampleActions {
             pendingArm = false
             val data = result.data
             if (config != null && result.resultCode == Activity.RESULT_OK && data != null) {
+                ProjectionConsent.save(result.resultCode, data)   // дальше — без системного окна
                 if (arm) CaptureService.arm(this, config, result.resultCode, data)
                 else CaptureService.start(this, config, result.resultCode, data)
             } else {
@@ -158,9 +160,14 @@ class MainActivity : ComponentActivity(), SampleActions {
             when (config.source) {
                 CaptureSource.MIC -> CaptureService.start(this, config)
                 CaptureSource.INTERNAL -> {
-                    pendingInternalConfig = config
-                    val manager = getSystemService(MediaProjectionManager::class.java)
-                    projectionLauncher.launch(manager.createScreenCaptureIntent())
+                    val saved = ProjectionConsent.data
+                    if (saved != null) {
+                        CaptureService.start(this, config, ProjectionConsent.resultCode, saved)
+                    } else {
+                        pendingInternalConfig = config
+                        val manager = getSystemService(MediaProjectionManager::class.java)
+                        projectionLauncher.launch(manager.createScreenCaptureIntent())
+                    }
                 }
             }
         }
@@ -189,10 +196,16 @@ class MainActivity : ComponentActivity(), SampleActions {
             when (source) {
                 CaptureSource.MIC -> CaptureService.arm(this, config)
                 CaptureSource.INTERNAL -> {
-                    pendingInternalConfig = config
-                    pendingArm = true
-                    val manager = getSystemService(MediaProjectionManager::class.java)
-                    projectionLauncher.launch(manager.createScreenCaptureIntent())
+                    val saved = ProjectionConsent.data
+                    if (saved != null) {
+                        // Разрешение уже дано в этом запуске — без системного окна.
+                        CaptureService.arm(this, config, ProjectionConsent.resultCode, saved)
+                    } else {
+                        pendingInternalConfig = config
+                        pendingArm = true
+                        val manager = getSystemService(MediaProjectionManager::class.java)
+                        projectionLauncher.launch(manager.createScreenCaptureIntent())
+                    }
                 }
             }
         }

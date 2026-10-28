@@ -56,6 +56,17 @@ fun LoopParts(app: AppViewModel, modifier: Modifier = Modifier) {
                     style = Skin.Lcd.copy(fontSize = 15.sp),
                     modifier = Modifier.weight(1f),
                 )
+                val rev = app.pads.getOrNull(pad)?.reverse == true
+                Text(
+                    "RVS",
+                    style = Skin.Lcd.copy(fontSize = 15.sp, color = if (rev) Skin.LcdBgTop else Skin.LcdInk),
+                    modifier = Modifier
+                        .background(if (rev) Skin.LcdInk else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(4.dp))
+                        .border(1.5.dp, Skin.LcdInk, RoundedCornerShape(4.dp))
+                        .pointerInput(pad) { detectTapGestures { app.toggleLoopReverse(pad) } }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+                androidx.compose.foundation.layout.Spacer(Modifier.padding(start = 6.dp))
                 Text(
                     "DONE",
                     style = Skin.Lcd.copy(fontSize = 15.sp),

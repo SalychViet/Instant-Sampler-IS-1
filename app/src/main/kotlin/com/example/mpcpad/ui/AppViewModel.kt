@@ -346,6 +346,10 @@ class AppViewModel : ViewModel() {
     var loopRecPad by mutableIntStateOf(-1)
     var loopRecStartNanos = 0L
     var loopRecEndNanos = 0L
+    /** LOOPER + KAOSS + RESMP: петли пишутся не со входа, а с выхода приложения (сумма петель через эффекты). */
+    var resampleLoop by mutableStateOf(false)
+    /** Текущая запись петли идёт с выхода приложения (ресемплинг), а не со входа. */
+    var loopRecFromEngine = false
     /** Второе касание было чуть раньше конца такта: запись идёт до черты такта, потом петля играет. */
     var loopClosing by mutableStateOf(false)
     /** Играющие петли (включаются и выключаются касанием): пад → когда запущена — для круга на паде. */
@@ -415,6 +419,20 @@ class AppViewModel : ViewModel() {
         flash("LOOP ${padName(pad)} · PARTS " + (0 until 4).filter { mask and (1 shl it) != 0 }.joinToString(" ") { "${it + 1}" } + " · $on/4", 1500)
     }
 
+    /** RVS: петля играет задом наперёд (и обратно); если играет — подхватывается сразу, в такт сетки. */
+    fun toggleLoopReverse(pad: Int) {
+        val rev = !pads[pad].reverse
+        setParam(pad, PadParam.REVERSE, if (rev) 1f else 0f) { it.copy(reverse = rev) }
+        loopsPlaying[pad]?.let { t0 ->
+            val lenNs = loopLengthNanos(pad).toDouble()
+            if (lenNs > 0) {
+                AudioEngine.noteOff(pad)   // старый голос (в прежнюю сторону) — затихает
+                AudioEngine.noteOnAt(pad, 1f, (System.nanoTime() - t0).toDouble().mod(lenNs) / lenNs)
+            }
+        }
+        flash("LOOP ${padName(pad)} " + if (rev) "◀ REVERSE" else "▶ FORWARD", 1200)
+    }
+
     /** Новый звук петли: в движок; если петля играла — продолжает в такт сетки (с того же «нуля»). */
     private fun applyLoopClip(pad: Int, clip: SampleClip) {
         if (!AudioEngine.loadSample(pad, clip.data, clip.channels, clip.sampleRate)) return
@@ -451,6 +469,13 @@ class AppViewModel : ViewModel() {
     fun loopCompNanos(): Long {
         val out = AudioEngine.outputLatencyMs().takeIf { it > 0 } ?: 0.0
         return ((out + com.example.mpcpad.Settings.loopOffsetMs) * 1e6).toLong().coerceAtLeast(0L)
+    }
+
+    /** Первая доля ближайшего следующего такта после [t] (сетка должна идти; почти попали — этот же). */
+    fun nextBar(t: Long): Long {
+        val barNs = 4 * 60e9 / com.example.mpcpad.Settings.bpm
+        val into = (t - loopGridNanos).toDouble().mod(barNs)
+        return if (into < 15e6) t - (into.toLong()) else t + (barNs - into).toLong()
     }
 
     /** Первая доля такта сетки петель, ближайшая к моменту [t] (сетка должна идти). */
@@ -586,9 +611,18 @@ class AppViewModel : ViewModel() {
      * к 120 BPM) и сетку тактов. Следующие петли: начало и конец — на ближайших чертах тактов этой сетки,
      * длина — целое число тактов. Петля сразу играет с того места, где она «должна» быть, — без паузы.
      */
-    fun finishLoop(pad: Int, recorded: SampleClip, prerollFrames: Int, startNanos: Long, endNanos: Long) {
+    fun finishLoop(
+        pad: Int,
+        recorded: SampleClip,
+        prerollFrames: Int,
+        startNanos: Long,
+        endNanos: Long,
+        /** С выхода приложения (ресемплинг): без задержки выхода, остальные петли выключаются. */
+        fromEngine: Boolean = false,
+    ) {
         loopRecPad = -1
         loopClosing = false
+        loopRecFromEngine = false
         val first = loopsPlaying.keys.none { it != pad } && loopGridNanos == 0L
         val sr = recorded.sampleRate
         val clipT0 = startNanos - (prerollFrames * 1e9 / sr).toLong()   // момент первого кадра записи
@@ -623,7 +657,8 @@ class AppViewModel : ViewModel() {
             target = kotlin.math.round(bars * barNs * sr / 1e9).toInt()
             loopStart = s
             // Сыгранное в такт услышанному лежит в записи позже на задержку выхода — берём звук с этим сдвигом.
-            s += loopCompNanos()
+            // (Ресемплинг пишет выход приложения напрямую — задержки нет.)
+            if (!fromEngine) s += loopCompNanos()
             if (s < clipT0) s += barNs.toLong()   // звука до этой черты нет — со следующего такта
             cutFrom = s
         }
@@ -653,6 +688,10 @@ class AppViewModel : ViewModel() {
         val lenNs = target * 1e9 / sr
         val offset = (System.nanoTime() - loopStart).toDouble().mod(lenNs) / lenNs
         loopsWaiting.remove(pad)?.cancel()
+        if (fromEngine) {
+            // В новой петле уже звучат остальные — выключаем их (каждую можно снова включить касанием).
+            for (other in loopsPlaying.keys.toList()) if (other != pad) loopStop(other)
+        }
         AudioEngine.noteOnAt(pad, 1f, offset)
         loopsPlaying[pad] = loopStart   // фаза круга на паде — от начала петли
         loopOriginals[pad] = clip       // целиком — для деления на части

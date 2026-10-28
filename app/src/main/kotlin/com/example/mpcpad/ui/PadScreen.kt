@@ -460,7 +460,44 @@ fun MpcRoot(actions: SampleActions) {
     fun looperTap(global: Int) {
         val rec = app.loopRecPad
         val hasLoop = app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null
+        val fromMix = app.resampleLoop && app.kaossMode
         when {
+            rec < 0 && !hasLoop && fromMix -> {
+                // Ресемплинг в петлю: с первой доли следующего такта (если сетка идёт), с выхода приложения.
+                app.loopStop(global)
+                val now = System.nanoTime()
+                val start = if (app.loopGridRunning) app.nextBar(now) else now
+                app.loopRecPad = global
+                app.loopRecFromEngine = true
+                app.loopRecStartNanos = start
+                scope.launch {
+                    delay(((start - now) / 1_000_000).coerceAtLeast(0))
+                    AudioEngine.resampleStart()
+                }
+                app.flash("● RESAMPLE LOOP ${padName(global)} · TAP AGAIN TO CLOSE", 30_000)
+            }
+            rec == global && app.loopRecFromEngine -> {
+                if (app.loopClosing) return
+                val now = System.nanoTime()
+                val end = maxOf(app.loopRecEndFor(now), app.loopRecStartNanos + 1)
+                app.loopRecEndNanos = end
+                app.loopClosing = true
+                val pad = global
+                scope.launch {
+                    delay(((end - System.nanoTime()) / 1_000_000 + 10).coerceAtLeast(0))
+                    AudioEngine.resampleStop()
+                    val data = AudioEngine.resampleRead()
+                    if (data.isEmpty()) {
+                        app.loopRecPad = -1
+                        app.loopClosing = false
+                        app.loopRecFromEngine = false
+                        flash("RESAMPLE: EMPTY")
+                    } else {
+                        app.finishLoop(pad, SampleClip(data, 2, AudioEngine.sampleRate()), 0, app.loopRecStartNanos, end, fromEngine = true)
+                    }
+                }
+                app.flash("● RESAMPLE LOOP ${padName(global)} · CLOSING ON THE BAR", 4000)
+            }
             rec < 0 && hasLoop -> {
                 // Короткое касание — вкл/выкл (на отпускании), удержание — части петли на экране.
                 route[global] = 5
@@ -1010,8 +1047,8 @@ fun MpcRoot(actions: SampleActions) {
                     }
                     if (app.kaossMode) HwButton(
                         "RESMPL", Modifier.weight(1f),
-                        led = app.resampling || app.resampleClip != null,
-                        ledColor = if (app.resampling) Skin.LedRed else Skin.LedAmber,
+                        led = app.resampling || app.resampleClip != null || (Edition.LOOPER && app.looperMode && app.resampleLoop),
+                        ledColor = if (app.resampling || (app.loopRecFromEngine && app.loopRecPad >= 0)) Skin.LedRed else Skin.LedAmber,
                         height = 28.dp,
                         onPress = { down ->
                             if (down) {
@@ -1034,6 +1071,17 @@ fun MpcRoot(actions: SampleActions) {
                     ) {
                         if (resampleHeld) {
                             resampleHeld = false
+                        } else if (Edition.LOOPER && app.looperMode) {
+                            // ISL-1: RESMP в LOOPER — петли пишутся с выхода (сумма петель через эффекты KAOSS).
+                            if (app.loopRecPad >= 0) {
+                                flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
+                            } else {
+                                app.resampleLoop = !app.resampleLoop
+                                app.flash(
+                                    if (app.resampleLoop) "LOOPER ← MIX + FX · TAP AN EMPTY PAD" else "LOOPER ← INPUT (${if (app.sampleSource == CaptureSource.MIC) "MIC" else "INT"})",
+                                    2500,
+                                )
+                            }
                         } else if (app.resampling) {
                             finishResample()
                         } else {

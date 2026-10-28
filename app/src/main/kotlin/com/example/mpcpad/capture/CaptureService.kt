@@ -162,7 +162,17 @@ class CaptureService : Service() {
                     return null
                 }
                 val manager = getSystemService(MediaProjectionManager::class.java)
-                val p = manager.getMediaProjection(code, data)
+                val p = try {
+                    manager.getMediaProjection(code, data)
+                } catch (e: Exception) {
+                    null
+                }
+                if (p == null) {
+                    // Сохранённое разрешение больше не годится (новый Android) — спросим заново.
+                    ProjectionConsent.clear()
+                    failWith("Allow capture of the phone's audio again (press SRC or the button once more)", armedMode)
+                    return null
+                }
                 projection = p
                 p.registerCallback(object : MediaProjection.Callback() {
                     override fun onStop() {
