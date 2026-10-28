@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.mpcpad.Edition
 import com.example.mpcpad.ProjectStore
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.BAR_TICKS
@@ -810,6 +811,92 @@ class AppViewModel : ViewModel() {
             projectOpen = false
             flash("PROJECT ${projectName.uppercase()} · $n PADS", 2500)
         }
+    }
+
+    // ---- ISL-1 CAPTURE: сыгранное при остановленном воспроизведении → паттерн ----
+    private class CapHit(val t: Long, val pad: Int, val vel: Float, var off: Long = 0L)
+    private val capHits = ArrayList<CapHit>()
+    /** Сколько ударов в последней фразе (для лампочки CAPTURE). */
+    var captureCount by mutableIntStateOf(0)
+        private set
+
+    /** Удар по паду (one-shot) при остановленном воспроизведении — запоминаем. */
+    fun captureHit(pad: Int, vel: Float) {
+        if (seqPlaying) return
+        val now = System.nanoTime()
+        // Пауза больше 4 с — начинается новая фраза.
+        if (capHits.isNotEmpty() && now - capHits.last().t > 4_000_000_000L) capHits.clear()
+        capHits.add(CapHit(now, pad, vel))
+        if (capHits.size > 512) capHits.removeAt(0)
+        captureCount = capHits.size
+    }
+
+    fun captureRelease(pad: Int) {
+        capHits.lastOrNull { it.pad == pad && it.off == 0L }?.off = System.nanoTime()
+    }
+
+    /**
+     * CAPTURE: из последней фразы — паттерн (1, 2 или 4 такта) с найденным темпом, квантизация по QUANT,
+     * и сразу воспроизведение. Играют петли (сетка идёт) — темп не меняется, старт — с такта сетки.
+     */
+    fun capture(context: Context) {
+        val hits = capHits.toList()
+        if (hits.size < 2) {
+            flash("CAPTURE: PLAY SOME PADS FIRST", 1800)
+            return
+        }
+        val keepTempo = loopGridNanos != 0L || seqPlaying
+        val t0 = hits.first().t
+        val found = if (keepTempo) null else com.example.mpcpad.audio.CaptureTempo.detect(hits.map { (it.t - t0) / 1e9 }.toDoubleArray())
+        val bpm = (found ?: com.example.mpcpad.Settings.bpm.toDouble()).toFloat().coerceIn(30f, 300f)
+        val tickNs = 60e9 / (bpm * com.example.mpcpad.audio.PPQ)
+        val grid = com.example.mpcpad.Settings.quantize
+        fun q(tick: Long) = if (grid > 0) Math.round(tick.toDouble() / grid) * grid else tick
+        val lastTick = q(Math.round((hits.last().t - t0) / tickNs))
+        val bars = when {
+            lastTick < BAR_TICKS -> 1
+            lastTick < 2 * BAR_TICKS -> 2
+            else -> 4
+        }.coerceAtMost(Edition.maxBars)
+        val total = bars * BAR_TICKS
+        val events = ArrayList<Long>()
+        for (h in hits) {
+            val tick = q(Math.round((h.t - t0) / tickNs))
+            if (tick !in 0 until total) continue
+            val len = if (h.off > h.t) Math.round((h.off - h.t) / tickNs).coerceIn(1, 4 * 96) else 24L
+            val vel = (h.vel * 127f).toInt().coerceIn(1, 127).toLong()
+            events.add((tick and 0xFFFF) or (h.pad.toLong() and 0xFF shl 16) or (vel shl 24) or ((len and 0xFFFF) shl 32))
+        }
+        // Куда: текущий паттерн, если пуст, иначе первый пустой паттерн банка.
+        val counts = AudioEngine.seqPatternCounts()
+        val bankStart = (seqPattern / 16) * 16
+        val pat = if (counts[seqPattern] == 0) seqPattern
+        else (bankStart until bankStart + 16).firstOrNull { counts[it] == 0 } ?: seqPattern
+        undoPattern(pat, "CAPTURE ${patternName(pat)}")
+        AudioEngine.stop()   // паттерн пишется в движок напрямую — на мгновение без звука
+        AudioEngine.seqLoadPattern(pat, events.toLongArray(), LongArray(events.size), bars)
+        AudioEngine.start()
+        if (!keepTempo) {
+            com.example.mpcpad.Settings.bpm = bpm
+            AudioEngine.seqSetBpm(bpm)
+            resyncLoops(bpm)
+        }
+        seqPattern = pat
+        patternBars = bars
+        AudioEngine.seqSelect(pat, immediate = true)
+        capHits.clear()
+        captureCount = 0
+        // Старт: сразу, а если играют петли — с первой доли следующего такта.
+        if (loopGridNanos != 0L) {
+            val wait = nextBar(System.nanoTime()) - System.nanoTime()
+            viewModelScope.launch {
+                delay((wait / 1_000_000).coerceAtLeast(0))
+                AudioEngine.seqPlay()
+            }
+        } else {
+            AudioEngine.seqPlay()
+        }
+        flash(String.format("CAPTURE → %s · %d BAR · %.1f BPM", patternName(pat), bars, bpm), 3000)
     }
 
     /** PRJCT → NEW: пустой проект — без семплов, петель, паттернов, песни, движений и записи эффектов. */

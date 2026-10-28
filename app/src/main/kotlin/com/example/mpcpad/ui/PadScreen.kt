@@ -639,6 +639,7 @@ fun MpcRoot(actions: SampleActions) {
                     else -> {
                         route[global] = 1
                         AudioEngine.noteOn(global, vel)
+                        if (Edition.LOOPER) app.captureHit(global, vel)   // CAPTURE помнит сыгранное
                         // Долгое нажатие — скопировать семпл; касание пустого пада вставит копию.
                         if (PadLibrary.infos[global] != null) {
                             longPress[global] = scope.launch {
@@ -738,7 +739,10 @@ fun MpcRoot(actions: SampleActions) {
                     }
                 )
             }
-            1 -> AudioEngine.noteOff(global)
+            1 -> {
+                AudioEngine.noteOff(global)
+                if (Edition.LOOPER) app.captureRelease(global)
+            }
             2 -> PadCapture.end()
             3 -> {
                 val step = app.stepBar * STEPS_PER_BAR + global % 16
@@ -1220,7 +1224,7 @@ fun MpcRoot(actions: SampleActions) {
                             else -> Skin.LedAmber
                         },
                         enabled = !pageMode || b < app.patternBars,
-                        height = if (Edition.LOOPER) 38.dp else 44.dp,
+                        height = if (Edition.LOOPER) 34.dp else 44.dp,
                         onPress = { down ->
                             if (app.kaossMode) {
                                 if (b < Edition.motions) motionButton(b, down) else if (down) flash(Edition.pro("MOTION B–D"))
@@ -1262,6 +1266,15 @@ fun MpcRoot(actions: SampleActions) {
                             app.flash("LOOPER ON · EMPTY PAD = REC · LOOP PAD = PLAY/STOP", 3000)
                         }
                     }
+                }
+                if (Edition.LOOPER) HwButton(
+                    "CAPTURE", Modifier.fillMaxWidth(),
+                    led = app.captureCount > 0, ledColor = Skin.LedGreen,
+                    height = 28.dp,
+                    labelSize = 7.sp,
+                ) {
+                    if (app.seqPlaying) flash("CAPTURE WORKS WHILE STOPPED · PLAY PADS, THEN CAPTURE")
+                    else app.capture(context)
                 }
             }
 
