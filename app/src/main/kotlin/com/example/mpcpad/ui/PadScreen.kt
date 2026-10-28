@@ -108,6 +108,8 @@ fun MpcRoot(actions: SampleActions) {
 
     var eraseHold: Job? = null
     var eraseHeld = false
+    var captureHold: Job? = null
+    var captureHeld = false
 
     // ---- RESAMPLE ----
     var resampleHold: Job? = null
@@ -1269,12 +1271,24 @@ fun MpcRoot(actions: SampleActions) {
                 }
                 if (Edition.LOOPER) HwButton(
                     "CAPTURE", Modifier.fillMaxWidth(),
-                    led = app.captureCount > 0, ledColor = Skin.LedGreen,
+                    led = app.captureCount > 0, ledColor = Skin.LedAmber,
                     height = 28.dp,
                     labelSize = 7.sp,
+                    onPress = { down ->
+                        captureHold?.cancel()
+                        if (down) captureHold = scope.launch {
+                            delay(2000)   // удержание > 2 с — буфер пуст
+                            captureHeld = true
+                            app.captureClear()
+                            flash("CAPTURE CLEARED")
+                        }
+                    },
                 ) {
-                    if (app.seqPlaying) flash("CAPTURE WORKS WHILE STOPPED · PLAY PADS, THEN CAPTURE")
-                    else app.capture(context)
+                    when {
+                        captureHeld -> captureHeld = false
+                        app.seqPlaying -> flash("CAPTURE WORKS WHILE STOPPED · PLAY PADS, THEN CAPTURE")
+                        else -> app.capture(context)
+                    }
                 }
             }
 

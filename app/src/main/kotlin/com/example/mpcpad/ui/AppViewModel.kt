@@ -831,6 +831,12 @@ class AppViewModel : ViewModel() {
         captureCount = capHits.size
     }
 
+    /** Удержание CAPTURE: забыть сыгранное. */
+    fun captureClear() {
+        capHits.clear()
+        captureCount = 0
+    }
+
     fun captureRelease(pad: Int) {
         capHits.lastOrNull { it.pad == pad && it.off == 0L }?.off = System.nanoTime()
     }
@@ -853,11 +859,8 @@ class AppViewModel : ViewModel() {
         val grid = com.example.mpcpad.Settings.quantize
         fun q(tick: Long) = if (grid > 0) Math.round(tick.toDouble() / grid) * grid else tick
         val lastTick = q(Math.round((hits.last().t - t0) / tickNs))
-        val bars = when {
-            lastTick < BAR_TICKS -> 1
-            lastTick < 2 * BAR_TICKS -> 2
-            else -> 4
-        }.coerceAtMost(Edition.maxBars)
+        // Длина — сколько тактов сыграно (целых), от 1 до 4; дольше — берутся первые 4 такта.
+        val bars = (lastTick / BAR_TICKS + 1).toInt().coerceIn(1, minOf(4, Edition.maxBars))
         val total = bars * BAR_TICKS
         val events = ArrayList<Long>()
         for (h in hits) {
