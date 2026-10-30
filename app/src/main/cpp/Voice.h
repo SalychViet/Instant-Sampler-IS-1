@@ -22,6 +22,10 @@ struct PadParams {
     float attackMs = 0.0f;
     float releaseMs = 15.0f;
     float detune = 0.0f;   // центы
+    // Огибающая высоты (ISL-1): 5 точек, X — доля региона по возрастанию, Y — полутоны.
+    bool pEnvOn = false;
+    float pEnvX[5] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+    float pEnvY[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     const Sample* sample = nullptr;  // владелец — EngineCore
 };
 
@@ -71,6 +75,12 @@ private:
     float glide_ = 0.0f;                      // коэффициент сглаживания на кадр
     float velocity_ = 1.0f;
     bool fromSeq_ = false;
+    // Огибающая высоты: копия точек пада на момент ноты; шаг пересчитывается каждые 32 кадра.
+    bool envOn_ = false;
+    float envX_[5] = {};
+    float envY_[5] = {};
+    double baseInc_ = 0.0;
+    int envLeft_ = 0;
     float env_ = 0.0f, attackInc_ = 1.0f, releaseInc_ = 0.01f;
     float releaseRate_ = 0.01f;  // release из параметров пада (для обычного release())
 };

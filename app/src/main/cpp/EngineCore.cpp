@@ -202,6 +202,14 @@ void EngineCore::apply(const Command& c) {
         case CmdType::SetParam: {
             PadParams& p = pads_[c.pad];
             const float v = c.value;
+            if (c.param >= kParamPEnvY0) {
+                p.pEnvY[c.param - kParamPEnvY0] = std::clamp(v, -24.0f, 24.0f);
+                break;
+            }
+            if (c.param >= kParamPEnvX0) {
+                p.pEnvX[c.param - kParamPEnvX0] = std::clamp(v, 0.0f, 1.0f);
+                break;
+            }
             switch (c.param) {
                 case kParamVolume:
                     p.volume = std::clamp(v, 0.0f, 2.0f);
@@ -222,6 +230,7 @@ void EngineCore::apply(const Command& c) {
                 case kParamAttackMs:  p.attackMs = std::clamp(v, 0.0f, 2000.0f); break;
                 case kParamReleaseMs: p.releaseMs = std::clamp(v, 0.0f, 5000.0f); break;
                 case kParamDetune:    p.detune = std::clamp(v, -50.0f, 50.0f); break;
+                case kParamPEnvOn:    p.pEnvOn = v > 0.5f; break;
                 default: break;
             }
             break;

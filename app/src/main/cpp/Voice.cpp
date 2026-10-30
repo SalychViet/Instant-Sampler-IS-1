@@ -44,6 +44,15 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
     const double ratio = (static_cast<double>(s->sampleRate) / engineRate) *
                          std::exp2((static_cast<double>(p.pitch) + static_cast<double>(p.detune) * 0.01) / 12.0);
     inc_ = p.reverse ? -ratio : ratio;
+    baseInc_ = inc_;
+    envOn_ = p.pEnvOn;
+    envLeft_ = 0;
+    if (envOn_) {
+        for (int k = 0; k < 5; ++k) {
+            envX_[k] = p.pEnvX[k];
+            envY_[k] = p.pEnvY[k];
+        }
+    }
     const double off = std::clamp(offset01, 0.0, 0.999999) * (en - st);
     pos_ = p.reverse ? en - 1e-6 - off : st + off;
 
@@ -99,6 +108,19 @@ bool Voice::render(float* out, int numFrames, float bus) {
     const double len = endF_ - startF_;
 
     for (int i = 0; i < numFrames; ++i) {
+        // --- огибающая высоты: X — место в регионе (для реверса — от конца) ---
+        if (envOn_ && --envLeft_ <= 0) {
+            envLeft_ = 32;
+            const double ph = std::clamp((pos_ - startF_) / len, 0.0, 1.0);
+            const float x = static_cast<float>(inc_ > 0.0 ? ph : 1.0 - ph);
+            int k = 0;
+            while (k < 3 && x > envX_[k + 1]) ++k;
+            const float span = std::max(envX_[k + 1] - envX_[k], 1e-5f);
+            const float t = std::clamp((x - envX_[k]) / span, 0.0f, 1.0f);
+            const float semis = envY_[k] + (envY_[k + 1] - envY_[k]) * t;
+            inc_ = baseInc_ * std::exp2(static_cast<double>(semis) / 12.0);
+        }
+
         // --- границы региона ---
         if (inc_ > 0.0) {
             if (pos_ >= endF_) {

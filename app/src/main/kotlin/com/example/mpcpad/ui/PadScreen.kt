@@ -547,6 +547,14 @@ fun MpcRoot(actions: SampleActions) {
         }
     }
 
+    /** Копия звука пада в буфер: следующее касание пустого пада вставит её. */
+    suspend fun copyPad(global: Int) {
+        val clip = withContext(Dispatchers.Default) { padClip(global) } ?: return
+        app.clipboard = SampleClipboard(clip, PadLibrary.infos[global]?.name ?: "SAMPLE", app.pads[global], false, global)
+        app.pasteArmed = true
+        app.flash("COPY ${padName(global)} → TOUCH EMPTY PAD", 4000)
+    }
+
     /** Удалить звук пада (one-shot или петлю) без подтверждения — при удерживаемом ERASE. */
     fun quickErase(global: Int): Boolean {
         if (PadLibrary.infos[global] == null || global == app.loopRecPad) return false
@@ -623,6 +631,10 @@ fun MpcRoot(actions: SampleActions) {
                         looperTap(global)
                     // ISL-1: пад в режиме LOOP включается и выключается касанием (держать не нужно).
                     Edition.LOOPER && app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
+                        longPress[global] = scope.launch {
+                            delay(3000)
+                            app.padMenu = global
+                        }
                         app.loopToggle(global)
                         flash(
                             "LOOP ${padName(global)} " + when (global) {
@@ -643,13 +655,16 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.noteOn(global, vel)
                         if (Edition.LOOPER) app.captureHit(global, vel)   // CAPTURE помнит сыгранное
                         // Долгое нажатие — скопировать семпл; касание пустого пада вставит копию.
+                        // ISL-1: удержание 3 с — меню пада (COPY / SLICE / PTCH ENV).
                         if (PadLibrary.infos[global] != null) {
                             longPress[global] = scope.launch {
-                                delay(700)
-                                val clip = withContext(Dispatchers.Default) { padClip(global) } ?: return@launch
-                                app.clipboard = SampleClipboard(clip, PadLibrary.infos[global]?.name ?: "SAMPLE", app.pads[global], false, global)
-                                app.pasteArmed = true
-                                app.flash("COPY ${padName(global)} → TOUCH EMPTY PAD", 4000)
+                                if (Edition.LOOPER) {
+                                    delay(3000)
+                                    app.padMenu = global
+                                } else {
+                                    delay(700)
+                                    copyPad(global)
+                                }
                             }
                         }
                     }
@@ -1486,6 +1501,11 @@ fun MpcRoot(actions: SampleActions) {
 
         // ---- ввод темпа цифрами ----
         if (app.tempoEntry) TempoEntry(app, Modifier.fillMaxSize())
+
+        // ---- ISL-1: меню пада (удержание 3 с) ----
+        if (Edition.LOOPER && app.padMenu >= 0) {
+            PadMenu(app, onCopy = { p -> scope.launch { copyPad(p) } }, Modifier.fillMaxSize())
+        }
 
         // ---- PRJCT: сохранить / открыть проект ----
         if (app.projectOpen) ProjectScreen(app, actions, Modifier.fillMaxSize())

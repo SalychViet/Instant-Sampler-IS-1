@@ -185,6 +185,7 @@ object ProjectStore {
         AudioEngine.setParam(pad, PadParam.PAN, u.pan)
         AudioEngine.setParam(pad, PadParam.PITCH, u.pitch)
         AudioEngine.setParam(pad, PadParam.DETUNE, u.detune)
+        applyPitchEnv(pad, u)
         AudioEngine.setParam(pad, PadParam.START, u.start)
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
@@ -194,17 +195,36 @@ object ProjectStore {
         AudioEngine.setParam(pad, PadParam.RELEASE_MS, u.releaseMs)
     }
 
+    /** Огибающая высоты пада — в движок (точки только если она включена: очередь команд не резиновая). */
+    fun applyPitchEnv(pad: Int, u: PadUi) {
+        AudioEngine.setParam(pad, PadParam.PENV_ON, if (u.pEnvOn) 1f else 0f)
+        if (!u.pEnvOn) return
+        for (i in 0 until 5) {
+            AudioEngine.setParam(pad, PadParam.PENV_X0 + i, u.pEnvX[i])
+            AudioEngine.setParam(pad, PadParam.PENV_Y0 + i, u.pEnvY[i])
+        }
+    }
+
     internal fun padToJson(u: PadUi) = JSONObject()
         .put("vol", u.volume.toDouble()).put("pan", u.pan.toDouble()).put("pitch", u.pitch.toDouble()).put("detune", u.detune.toDouble())
         .put("start", u.start.toDouble()).put("end", u.end.toDouble()).put("mode", u.mode)
         .put("rev", u.reverse).put("choke", u.choke).put("rel", u.releaseMs.toDouble())
         .put("atk", u.attackMs.toDouble()).put("loopDiv", u.loopDiv)
+        .apply {
+            if (u.pEnvOn) {
+                put("penvX", JSONArray().apply { u.pEnvX.forEach { put(it.toDouble()) } })
+                put("penvY", JSONArray().apply { u.pEnvY.forEach { put(it.toDouble()) } })
+            }
+        }
 
     internal fun padFromJson(o: JSONObject) = PadUi(
         volume = o.optDouble("vol", 1.0).toFloat(),
         pan = o.optDouble("pan", 0.0).toFloat(),
         pitch = o.optDouble("pitch", 0.0).toFloat(),
         detune = o.optDouble("detune", 0.0).toFloat(),
+        pEnvOn = o.has("penvY"),
+        pEnvX = o.optJSONArray("penvX")?.takeIf { it.length() == 5 }?.let { a -> List(5) { a.getDouble(it).toFloat() } } ?: PadUi().pEnvX,
+        pEnvY = o.optJSONArray("penvY")?.takeIf { it.length() == 5 }?.let { a -> List(5) { a.getDouble(it).toFloat() } } ?: PadUi().pEnvY,
         start = o.optDouble("start", 0.0).toFloat(),
         end = o.optDouble("end", 1.0).toFloat(),
         mode = o.optInt("mode", 0),

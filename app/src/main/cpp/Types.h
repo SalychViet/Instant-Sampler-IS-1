@@ -25,7 +25,10 @@ enum ParamId : int {
     kParamAttackMs,
     kParamReleaseMs,
     kParamDetune,        // центы, -50..50 (точная подстройка к полутонам PITCH)
-    kParamCount
+    kParamPEnvOn,        // ISL-1, огибающая высоты: 0/1
+    kParamPEnvX0,        // 5 точек: положение 0..1 в регионе START–END (X0..X4 подряд)
+    kParamPEnvY0 = kParamPEnvX0 + 5,   // значения, полутоны -24..24 (Y0..Y4 подряд)
+    kParamCount = kParamPEnvY0 + 5
 };
 
 }  // namespace mpc

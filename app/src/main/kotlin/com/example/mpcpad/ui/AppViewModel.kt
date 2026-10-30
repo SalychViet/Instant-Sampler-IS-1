@@ -46,6 +46,10 @@ data class PadUi(
     val pitch: Float = 0f,
     /** Точная подстройка, центы -50..50 (ручка DETUNE в EDIT). */
     val detune: Float = 0f,
+    /** Огибающая высоты (ISL-1): 5 точек, X — доля звука 0..1, Y — полутоны -24..24. */
+    val pEnvOn: Boolean = false,
+    val pEnvX: List<Float> = listOf(0f, 0.25f, 0.5f, 0.75f, 1f),
+    val pEnvY: List<Float> = listOf(0f, 0f, 0f, 0f, 0f),
     val start: Float = 0f,
     val end: Float = 1f,
     val mode: Int = PlayMode.ONE_SHOT,
@@ -90,6 +94,9 @@ const val MAX_UI_BARS = 4
  * Общее состояние экрана устройства. Живёт, пока жива активити (переживает смену режимов).
  * Быстро меняющиеся значения (позиция секвенсора) читаются только в фазе рисования — см. [seqPos].
  */
+private val DEFAULT_BOUNDS = listOf(0.25f, 0.5f, 0.75f)
+private const val MIN_PART = 0.01f   // самая короткая часть — 1 % звука
+
 class AppViewModel : ViewModel() {
     // ---- режимы ----
     var mode by mutableStateOf(Mode.PAD)
@@ -315,6 +322,7 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.PAN, u.pan)
         AudioEngine.setParam(pad, PadParam.PITCH, u.pitch)
         AudioEngine.setParam(pad, PadParam.DETUNE, u.detune)
+        ProjectStore.applyPitchEnv(pad, u)
         AudioEngine.setParam(pad, PadParam.START, u.start)
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
@@ -370,18 +378,36 @@ class AppViewModel : ViewModel() {
 
     fun loopOriginal(pad: Int): SampleClip? = loopOriginals[pad]
 
-    /** Показать части петли [pad]. Петля из прошлого запуска — её нынешний звук становится исходником. */
+    /** Границы частей пада: 3 числа 0..1 по возрастанию. По умолчанию — 4 равные части. */
+    val partBounds = mutableStateMapOf<Int, List<Float>>()
+    /** В окне частей показана огибающая высоты (иначе — части). */
+    var partsShowEnv by mutableStateOf(false)
+    /** Меню пада (удержание 3 с в PAD): номер пада, -1 — закрыто. */
+    var padMenu by mutableIntStateOf(-1)
+
+    fun boundsOf(pad: Int): List<Float> = partBounds[pad] ?: DEFAULT_BOUNDS
+
+    /**
+     * Показать части звука [pad] (петля или one-shot). Звук из прошлого запуска — нынешний файл
+     * становится исходником; у one-shot берём только то, что слышно (START–END).
+     */
     fun openLoopParts(pad: Int) {
         if (loopOriginals.containsKey(pad)) {
             partsEditPad = pad
             return
         }
         viewModelScope.launch {
+            val u = pads[pad]
             val clip = withContext(Dispatchers.Default) {
-                PadStore.readWav(PadSampler.appContext, pad)?.let { com.example.mpcpad.audio.SampleOps.parseWav(it) }
+                PadStore.readWav(PadSampler.appContext, pad)
+                    ?.let { com.example.mpcpad.audio.SampleOps.parseWav(it) }
+                    ?.let { c ->
+                        if (u.mode == PlayMode.LOOP || (u.start <= 0f && u.end >= 1f)) c
+                        else c.slice((u.start * c.frames).toInt(), (u.end * c.frames).toInt())
+                    }
             }
             if (clip == null) {
-                flash("LOOP ${padName(pad)}: NO AUDIO", 1500)
+                flash("${padName(pad)}: NO AUDIO", 1500)
                 return@launch
             }
             loopOriginals[pad] = clip
@@ -392,25 +418,49 @@ class AppViewModel : ViewModel() {
 
     /** Включить/выключить часть [part] (0..3): играют только включённые части, подряд, без пауз. */
     fun toggleLoopPart(pad: Int, part: Int) {
-        val orig = loopOriginals[pad] ?: return
+        if (!loopOriginals.containsKey(pad)) return
         val mask = (loopParts[pad] ?: 0b1111) xor (1 shl part)
         if (mask == 0) {
             flash("AT LEAST ONE PART", 1200)
             return
         }
         loopParts[pad] = mask
+        rebuildParts(pad)
+        val on = Integer.bitCount(mask)
+        flash("${padName(pad)} · PARTS " + (0 until 4).filter { mask and (1 shl it) != 0 }.joinToString(" ") { "${it + 1}" } + " · $on/4", 1500)
+    }
+
+    /** Граница [i] (0..2) двигается пальцем: только на экране, звук — в [commitPartBounds]. */
+    fun movePartBound(pad: Int, i: Int, x: Float) {
+        val b = boundsOf(pad).toMutableList()
+        val lo = (if (i == 0) 0f else b[i - 1]) + MIN_PART
+        val hi = (if (i == 2) 1f else b[i + 1]) - MIN_PART
+        b[i] = x.coerceIn(lo, hi)
+        partBounds[pad] = b
+    }
+
+    fun commitPartBounds(pad: Int) = rebuildParts(pad)
+
+    /** Звук из включённых частей (между границами) — в движок. */
+    private fun rebuildParts(pad: Int) {
+        val orig = loopOriginals[pad] ?: return
+        val mask = loopParts[pad] ?: 0b1111
         val ch = orig.channels
         val n = orig.frames
-        val bounds = IntArray(5) { (it.toLong() * n / 4).toInt() }
+        val bl = boundsOf(pad)
+        val edges = IntArray(5)
+        for (i in 1..3) edges[i] = (bl[i - 1] * n).toInt().coerceIn(0, n)
+        edges[4] = n
         val fade = (orig.sampleRate / 500).coerceAtLeast(1)   // 2 мс на стыках — без щелчков
         var total = 0
-        for (i in 0 until 4) if (mask and (1 shl i) != 0) total += bounds[i + 1] - bounds[i]
+        for (i in 0 until 4) if (mask and (1 shl i) != 0) total += edges[i + 1] - edges[i]
+        if (total < 2) return
         val data = FloatArray(total * ch)
         var at = 0
         for (i in 0 until 4) {
             if (mask and (1 shl i) == 0) continue
-            val len = bounds[i + 1] - bounds[i]
-            System.arraycopy(orig.data, bounds[i] * ch, data, at * ch, len * ch)
+            val len = edges[i + 1] - edges[i]
+            System.arraycopy(orig.data, edges[i] * ch, data, at * ch, len * ch)
             if (mask != 0b1111) {
                 com.example.mpcpad.audio.SampleOps.fadeIn(data, ch, at, at + minOf(fade, len / 2))
                 com.example.mpcpad.audio.SampleOps.fadeOut(data, ch, at + len - minOf(fade, len / 2), at + len)
@@ -418,8 +468,29 @@ class AppViewModel : ViewModel() {
             at += len
         }
         applyLoopClip(pad, SampleClip(data, ch, orig.sampleRate))
-        val on = Integer.bitCount(mask)
-        flash("LOOP ${padName(pad)} · PARTS " + (0 until 4).filter { mask and (1 shl it) != 0 }.joinToString(" ") { "${it + 1}" } + " · $on/4", 1500)
+    }
+
+    fun setPitchEnvOn(pad: Int, on: Boolean) {
+        update(pad) { it.copy(pEnvOn = on) }
+        ProjectStore.applyPitchEnv(pad, pads[pad])
+    }
+
+    /** Точка огибающей: X — доля звука (крайние точки не двигаются по X), Y — полутоны. */
+    fun movePitchEnvPoint(pad: Int, i: Int, x: Float, semis: Float) {
+        val u = pads[pad]
+        val xs = u.pEnvX.toMutableList()
+        val ys = u.pEnvY.toMutableList()
+        if (i in 1..3) xs[i] = x.coerceIn(xs[i - 1] + 0.01f, xs[i + 1] - 0.01f)
+        ys[i] = semis.coerceIn(-24f, 24f)
+        update(pad) { it.copy(pEnvX = xs, pEnvY = ys) }
+        AudioEngine.setParam(pad, PadParam.PENV_X0 + i, xs[i])
+        AudioEngine.setParam(pad, PadParam.PENV_Y0 + i, ys[i])
+    }
+
+    fun resetPitchEnv(pad: Int) {
+        val d = PadUi()
+        update(pad) { it.copy(pEnvX = d.pEnvX, pEnvY = d.pEnvY) }
+        ProjectStore.applyPitchEnv(pad, pads[pad])
     }
 
     /** RVS: петля играет задом наперёд (и обратно); если играет — подхватывается сразу, в такт сетки. */
@@ -433,7 +504,8 @@ class AppViewModel : ViewModel() {
                 AudioEngine.noteOnAt(pad, 1f, (System.nanoTime() - t0).toDouble().mod(lenNs) / lenNs)
             }
         }
-        flash("LOOP ${padName(pad)} " + if (rev) "◀ REVERSE" else "▶ FORWARD", 1200)
+        if (pad !in loopsPlaying && pads[pad].mode != PlayMode.LOOP) AudioEngine.noteOn(pad, 1f)   // one-shot — слышно сразу
+        flash(padName(pad) + if (rev) " ◀ REVERSE" else " ▶ FORWARD", 1200)
     }
 
     /** Новый звук петли: в движок; если петля играла — продолжает в такт сетки (с того же «нуля»). */
@@ -441,9 +513,13 @@ class AppViewModel : ViewModel() {
         if (!AudioEngine.loadSample(pad, clip.data, clip.channels, clip.sampleRate)) return
         AudioEngine.setParam(pad, PadParam.START, 0f)
         AudioEngine.setParam(pad, PadParam.END, 1f)
-        loopsPlaying[pad]?.let { t0 ->
+        update(pad) { it.copy(start = 0f, end = 1f) }
+        val t0 = loopsPlaying[pad]
+        if (t0 != null) {
             val lenNs = clip.frames * 1e9 / clip.sampleRate
             AudioEngine.noteOnAt(pad, 1f, (System.nanoTime() - t0).toDouble().mod(lenNs) / lenNs)
+        } else if (pads[pad].mode != PlayMode.LOOP) {
+            AudioEngine.noteOn(pad, 1f)   // one-shot: результат слышно сразу
         }
         val name = PadLibrary.infos[pad]?.name ?: ("LOOP_" + padName(pad))
         viewModelScope.launch {
@@ -456,7 +532,9 @@ class AppViewModel : ViewModel() {
     fun forgetLoop(pad: Int) {
         loopOriginals.remove(pad)
         loopParts.remove(pad)
+        partBounds.remove(pad)
         if (partsEditPad == pad) partsEditPad = -1
+        AudioEngine.setParam(pad, PadParam.PENV_ON, 0f)
     }
 
     /** Идёт сетка тактов петель (после первой петли и до STOP). */
@@ -709,6 +787,7 @@ class AppViewModel : ViewModel() {
         loopsPlaying[pad] = loopStart   // фаза круга на паде — от начала петли
         loopOriginals[pad] = clip       // целиком — для деления на части
         loopParts[pad] = 0b1111
+        partBounds.remove(pad)
         if (first) applyLoopLength()
         startSequencerOnBar()
         flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
@@ -928,6 +1007,7 @@ class AppViewModel : ViewModel() {
         AudioEngine.seqSelect(0, immediate = true)
         loopOriginals.clear()
         loopParts.clear()
+        partBounds.clear()
         partsEditPad = -1
         loopRecPad = -1
         loopClosing = false

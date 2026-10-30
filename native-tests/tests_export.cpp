@@ -190,3 +190,54 @@ TEST(LooperTest, LoopVolumeOnlyLoops) {
         else EXPECT_GT(level, 0.1f);              // one-shot звучит
     }
 }
+
+// Огибающая высоты: ровные +12 полутонов проигрывают one-shot вдвое быстрее.
+TEST(PitchEnvTest, FlatOctaveUpPlaysTwiceAsFast) {
+    int lastFrames[2] = {0, 0};
+    for (int on = 0; on < 2; ++on) {
+        EngineCore core;
+        core.setSampleRate(48000);
+        auto s = std::make_unique<Sample>();
+        s->frames = 24000;
+        s->sampleRate = 48000;
+        s->data.assign(static_cast<size_t>(s->frames) * 2, 0.4f);
+        ASSERT_TRUE(core.loadSample(0, std::move(s)));
+        if (on) {
+            core.setParam(0, kParamPEnvOn, 1.0f);
+            for (int k = 0; k < 5; ++k) core.setParam(0, kParamPEnvY0 + k, 12.0f);
+        }
+        ASSERT_TRUE(core.noteOn(0, 1.0f));
+        std::vector<float> buf(2 * 256);
+        int frames = 0;
+        for (int k = 0; k < 200; ++k) {
+            core.render(buf.data(), 256);
+            if (core.activePadMask() == 0) break;
+            frames += 256;
+        }
+        lastFrames[on] = frames;
+    }
+    EXPECT_NEAR(lastFrames[1], lastFrames[0] / 2, 600);
+}
+
+// Огибающая по точкам: начало на +24, конец на 0 — быстрее обычного, но медленнее, чем ровные +24.
+TEST(PitchEnvTest, RampIsBetween) {
+    EngineCore core;
+    core.setSampleRate(48000);
+    auto s = std::make_unique<Sample>();
+    s->frames = 48000;
+    s->sampleRate = 48000;
+    s->data.assign(static_cast<size_t>(s->frames) * 2, 0.4f);
+    ASSERT_TRUE(core.loadSample(0, std::move(s)));
+    core.setParam(0, kParamPEnvOn, 1.0f);
+    core.setParam(0, kParamPEnvY0, 24.0f);   // остальные точки 0: спад к началу второй четверти
+    ASSERT_TRUE(core.noteOn(0, 1.0f));
+    std::vector<float> buf(2 * 256);
+    int frames = 0;
+    for (int k = 0; k < 400; ++k) {
+        core.render(buf.data(), 256);
+        if (core.activePadMask() == 0) break;
+        frames += 256;
+    }
+    EXPECT_LT(frames, 47000);
+    EXPECT_GT(frames, 12000);
+}
