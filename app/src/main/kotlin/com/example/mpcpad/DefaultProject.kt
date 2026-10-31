@@ -9,7 +9,7 @@ import java.util.zip.ZipInputStream
 import org.json.JSONObject
 
 /**
- * Проект «из коробки» (только Pro): assets/default_project.zip — project.json и pads/ ровно в том виде,
+ * Проект «из коробки»: assets/default_project.zip — project.json и pads/ ровно в том виде,
  * в каком их хранит приложение. При первом запуске после установки распаковывается в filesDir,
  * а дальше грузится обычным путём (ProjectStore.load, PadStore.loadAll).
  */
@@ -18,7 +18,6 @@ object DefaultProject {
 
     /** Звать до загрузки проекта и настройки движка. true — проект установлен. */
     fun installIfFresh(context: Context): Boolean {
-        if (Edition.FREE) return false
         val dir = context.filesDir
         val project = File(dir, "project.json")
         val pads = File(dir, "pads")

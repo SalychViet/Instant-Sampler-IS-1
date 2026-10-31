@@ -11,7 +11,7 @@
 .externalNativeBuild
 *.apk
 /build-tests
-# Фирменные логотипы IS-1 / SALYCH MUSIC — только для сборки PRO, в открытый код не попадают
+# Фирменные логотипы ISL-1 / SALYCH MUSIC — в открытый код не попадают
 /branding
 # HTML руководств — промежуточный результат сборки (python3 build.py), в репозиторий не кладём
 /docs/manual/*.html

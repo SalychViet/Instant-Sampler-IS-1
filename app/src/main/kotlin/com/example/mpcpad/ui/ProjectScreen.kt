@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.mpcpad.Edition
 import com.example.mpcpad.Settings
 import com.example.mpcpad.sample.PadLibrary
 
@@ -73,24 +72,15 @@ fun ProjectScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier 
                     maxLines = 1,
                 )
             }
-            if (Edition.FREE) {
-                // Free: только автосохранение одного проекта.
-                Text(
-                    "Your project is saved automatically. Saving and loading .sal project files is in IS-1 PRO.",
-                    color = Color(0xFFB0B4BA),
-                    fontSize = 11.sp,
-                )
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    HwButton("SAVE", Modifier.weight(1f), enabled = idle, height = 36.dp) { actions.saveProject() }
-                    HwButton("LOAD", Modifier.weight(1f), enabled = idle, height = 36.dp) { actions.openProject() }
-                }
-                Text(
-                    "LOAD replaces the current project — save it first.",
-                    color = Color(0xFFB0B4BA),
-                    fontSize = 10.sp,
-                )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                HwButton("SAVE", Modifier.weight(1f), enabled = idle, height = 36.dp) { actions.saveProject() }
+                HwButton("LOAD", Modifier.weight(1f), enabled = idle, height = 36.dp) { actions.openProject() }
             }
+            Text(
+                "LOAD replaces the current project — save it first.",
+                color = Color(0xFFB0B4BA),
+                fontSize = 10.sp,
+            )
             // NEW — пустой проект; второе нажатие подтверждает (всё удаляется).
             var confirmNew by remember { mutableStateOf(false) }
             val context = androidx.compose.ui.platform.LocalContext.current

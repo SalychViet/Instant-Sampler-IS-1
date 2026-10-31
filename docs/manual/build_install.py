@@ -1,12 +1,12 @@
 # Инструкция по установке IS-1 (APK): python3 build_install.py -> install.html; PDF печатает headless Chrome.
-from parts import FREE, ISL, NAME, TRY, cover_logo, crop, page, table, write
+from parts import NAME, TRY, cover_logo, crop, page, table, write
 
 import os
 import re
 
-APK = "IS-1_FREE_0.4.1.apk" if FREE else "ISL-1_TRY_0.4.1.apk" if TRY else "ISL-1_0.4.1.apk" if ISL else "IS-1_PRO_0.4.1.apk"
+APK = "ISL-1_TRY_0.4.1.apk" if TRY else "ISL-1_0.4.1.apk"
 # Размер APK в МБ (передаётся при сборке: IS1_APK_MB=31,3 python3 build_install.py)
-MB = os.environ.get("IS1_APK_MB", "30,5" if FREE else "44,5" if TRY else "44,7" if ISL else "45,6")
+MB = os.environ.get("IS1_APK_MB", "44,5" if TRY else "44,7")
 
 
 def tip(t, kind="tip"):
@@ -41,9 +41,7 @@ def toggle_screen():
 
 
 def app_icon():
-    if ISL:
-        return f'<div class="appicon">{crop(1752, 40, 208, 84)}</div>'
-    return f'<div class="appicon">{crop(1755, 40, 190, 100)}</div>'
+    return f'<div class="appicon">{crop(1752, 40, 208, 84)}</div>'
 
 
 pages = []
@@ -65,7 +63,7 @@ pages.append(page(f'''
     <div class="farrow">→</div>
     <div><span class="fn">3</span>Установить<br>и открыть</div>
   </div>
-  <div class="cover-foot">Займёт около 5 минут · версия инструкции от {"1 ноября 2026" if ISL else "26 октября 2026"}</div>
+  <div class="cover-foot">Займёт около 5 минут · версия инструкции от {"1 ноября 2026"}</div>
 </div>''', "coverpage"))
 
 # Перед началом
@@ -171,7 +169,6 @@ pages.append(page(f'''
   </div>
 </div>'''))
 
-if ISL:
-    # Название программы — везде, кроме папки «Музыка/IS-1», где приложение сохраняет треки.
-    pages = [re.sub(r"(?<![/\w-])IS-1(?![\w-])", NAME, p) for p in pages]
+# Название программы — везде, кроме папки «Музыка/IS-1», где приложение сохраняет треки.
+pages = [re.sub(r"(?<![/\w-])IS-1(?![\w-])", NAME, p) for p in pages]
 write("install.html", "ru", "Установка IS-1", "ru install", pages)

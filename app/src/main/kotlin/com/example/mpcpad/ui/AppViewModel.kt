@@ -13,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.mpcpad.Edition
 import com.example.mpcpad.ProjectStore
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.BAR_TICKS
@@ -351,12 +350,6 @@ class AppViewModel : ViewModel() {
             setParam(pad, PadParam.END, 1f) { it.copy(end = 1f, loopDiv = -1) }
         }
         return next
-    }
-
-    /** Петля по темпу: END = START + длина ноты при текущем BPM. div = -1 — свободная петля. */
-    fun setLoopDiv(pad: Int, div: Int, bpm: Float) {
-        update(pad) { it.copy(loopDiv = div) }
-        applyLoopDiv(pad, bpm)
     }
 
     // ---- ISL-1 MUTE ----
@@ -967,7 +960,7 @@ class AppViewModel : ViewModel() {
         fun q(tick: Long) = if (grid > 0) Math.round(tick.toDouble() / grid) * grid else tick
         val lastTick = q(Math.round((hits.last().t - t0) / tickNs))
         // Длина — сколько тактов сыграно (целых), от 1 до 4; дольше — берутся первые 4 такта.
-        val bars = (lastTick / BAR_TICKS + 1).toInt().coerceIn(1, minOf(4, Edition.maxBars))
+        val bars = (lastTick / BAR_TICKS + 1).toInt().coerceIn(1, 4)
         val total = bars * BAR_TICKS
         val events = ArrayList<Long>()
         for (h in hits) {

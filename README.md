@@ -11,7 +11,7 @@ chop (авто по атакам / поровну / вручную), назна�
 1. **Android Studio** (Koala 2024.1+): *File → Open* → папка проекта. Студия сама скачает Gradle 8.9,
    предложит поставить **NDK** и **CMake 3.22.1** (SDK Manager → SDK Tools) — согласитесь.
 2. Подключите телефон с **Android 10+** (отладка по USB включена) и запустите конфигурацию `app`.
-3. Либо из терминала: `./gradlew assembleDebug`, затем `adb install app/build/outputs/apk/debug/app-debug.apk`
+3. Либо из терминала: `./gradlew assembleIslDebug` (ISL-1) или `assembleTrialDebug` (ISL-1 TRY), затем `adb install app/build/outputs/apk/isl/debug/app-isl-debug.apk`
    (нужны `ANDROID_HOME` и установленный NDK).
 
 ## Что проверить на телефоне
@@ -88,10 +88,7 @@ SampleViewModel ── SampleOps (C++: peaks, normalize, fade, reverse, тран
 
 ## Руководства
 
-- `docs/IS-1_FREE_Manual.pdf`, `docs/IS-1_FREE_Manual_EN.pdf`, `docs/IS-1_FREE_Install_RU.pdf` — руководства для IS-1 FREE (без фирменных логотипов).
-- Исходники руководств — `docs/manual` (HTML собирается скриптами, PDF печатает headless Chrome):
-  - FREE: `cd docs/manual && IS1_EDITION=free python3 build.py` (и `build_en.py`, `build_install.py`) → `*_free.html`;
-  - фирменная версия PRO: то же без `IS1_EDITION`; скриншоты с логотипами берутся из приватной папки `branding/manual`, а если её нет — используются копии без логотипов из `docs/manual/free`.
+Исходники руководств — `docs/manual` (HTML собирается скриптами, PDF печатает headless Chrome): `cd docs/manual && python3 build.py` (и `build_en.py`, `build_isl.py`, `build_install.py`; для ISL-1 TRY — `IS1_EDITION=try python3 build_install.py`). Скриншоты с логотипами берутся из приватной папки `branding/manual`.
 
 ## Лицензия / License
 
@@ -101,8 +98,8 @@ IS-1 — свободная программа. © 2026 Salavat (SALYCH MUSIC).
 
 - Сторонние библиотеки и их лицензии перечислены в [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md): Ableton Link (GPL-2.0-or-later), Asio (Boost 1.0), LAME (LGPL-2.0-or-later), Oboe, AndroidX, Jetpack Compose и Kotlin (Apache-2.0).
 - Почему GPLv3, а не GPLv2: Ableton Link разрешает «v2 или любую более позднюю», а библиотеки под Apache-2.0 совместимы только с GPLv3.
-- Каждый, кто получил APK (FREE или PRO), имеет право получить исходный код этой версии. Ссылка на исходники показывается в приложении: SETUP → «О программе». Адрес задаётся в `app/build.gradle.kts` (`SOURCE_URL`).
-- Фирменные логотипы IS-1 и SALYCH MUSIC не входят в открытый код: они есть только в официальной сборке PRO (приватная папка `branding/`, см. `app/build.gradle.kts`). Сборка из этого репозитория показывает вместо логотипов название текстом.
+- Каждый, кто получил APK, имеет право получить исходный код этой версии. Ссылка на исходники показывается в приложении: SETUP → «О программе». Адрес задаётся в `app/build.gradle.kts` (`SOURCE_URL`).
+- Фирменные логотипы IS-1 и SALYCH MUSIC не входят в открытый код: они есть только в официальной сборке (приватная папка `branding/`, см. `app/build.gradle.kts`). Сборка из этого репозитория показывает вместо логотипов название текстом.
 - Название «IS-1» и логотипы — знаки автора; лицензия на код не даёт права выпускать изменённые версии под этим названием.
 - «Ableton Link» — товарный знак Ableton AG. IS-1 не связан с Ableton и не одобрен ею.
 

@@ -49,7 +49,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mpcpad.R
-import com.example.mpcpad.Edition
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.Kaoss
@@ -134,7 +133,7 @@ fun MpcRoot(actions: SampleActions) {
 
     // Лупер всегда держит вход открытым: вход мог закрыться после сворачивания, смены источника или
     // быстрого выкл/вкл, пока прошлая запись ещё завершалась. Ошибку не повторяем без конца.
-    if (Edition.LOOPER) LaunchedEffect(app.looperMode, app.srcSelf, app.sampleSource, cap.armed, cap.arming, foreground) {
+    LaunchedEffect(app.looperMode, app.srcSelf, app.sampleSource, cap.armed, cap.arming, foreground) {
         if (cap.armed) inputRetries[0] = 0
         if (!app.looperMode || !foreground || app.srcSelf) return@LaunchedEffect
         if (cap.armed && cap.source != app.sampleSource) {
@@ -179,7 +178,7 @@ fun MpcRoot(actions: SampleActions) {
                 recLevel.floatValue = r
                 holdPad.intValue = PadCapture.holdingPad
                 // ISL-1: круги на падах-петлях крутятся — перерисовываем, пока что-то играет или пишется.
-                if (Edition.LOOPER && (app.loopsPlaying.isNotEmpty() || app.loopsWaiting.isNotEmpty() || app.loopRecPad >= 0)) {
+                if (app.loopsPlaying.isNotEmpty() || app.loopsWaiting.isNotEmpty() || app.loopRecPad >= 0) {
                     loopFrame.longValue = now
                 }
 
@@ -193,7 +192,7 @@ fun MpcRoot(actions: SampleActions) {
                 app.seqLinkWaiting = st.linkWaiting
                 app.songIndex = st.songIndex
                 if (app.resampling && !AudioEngine.resampling()) finishResample()   // 30 с набралось
-                if (app.resampling && AudioEngine.resampleFrames() >= Edition.resampleSeconds * AudioEngine.sampleRate()) finishResample()
+                if (app.resampling && AudioEngine.resampleFrames() >= 30 * AudioEngine.sampleRate()) finishResample()
 
                 if (now - lastSlow > 120_000_000L) {
                     lastSlow = now
@@ -712,11 +711,11 @@ fun MpcRoot(actions: SampleActions) {
                     }
                     // ISL-1 LOOPER: касание — запись, второе касание — конец записи и петля играет.
                     // (пад с обычным семплом в LOOPER играет как one-shot — петли пишутся только на пустые пады)
-                    Edition.LOOPER && app.looperMode &&
+                    app.looperMode &&
                         (PadLibrary.infos[global] == null || app.pads[global].mode == PlayMode.LOOP || global == app.loopRecPad) ->
                         looperTap(global)
                     // ISL-1: пад в режиме LOOP включается и выключается касанием (держать не нужно).
-                    Edition.LOOPER && app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
+                    app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
                         longPress[global] = scope.launch {
                             delay(2000)
                             app.padMenu = global
@@ -748,18 +747,12 @@ fun MpcRoot(actions: SampleActions) {
                     else -> {
                         route[global] = 1
                         AudioEngine.noteOn(global, vel)
-                        if (Edition.LOOPER) app.captureHit(global, vel)   // CAPTURE помнит сыгранное
-                        // Долгое нажатие — скопировать семпл; касание пустого пада вставит копию.
-                        // ISL-1: удержание 2 с — меню пада (COPY / SLICE / PTCH ENV).
+                        app.captureHit(global, vel)   // CAPTURE помнит сыгранное
+                        // Удержание 2 с — меню пада (COPY / SLICE / PTCH ENV).
                         if (PadLibrary.infos[global] != null) {
                             longPress[global] = scope.launch {
-                                if (Edition.LOOPER) {
-                                    delay(2000)
-                                    app.padMenu = global
-                                } else {
-                                    delay(700)
-                                    copyPad(global)
-                                }
+                                delay(2000)
+                                app.padMenu = global
                             }
                         }
                     }
@@ -769,9 +762,6 @@ fun MpcRoot(actions: SampleActions) {
                 // SEQ: пад = паттерн
                 val src = app.copySource
                 when {
-                    app.songRec && app.songDraft.size >= Edition.maxSong -> {
-                        app.flash(Edition.pro("SONG > ${Edition.maxSong} PATTERNS"), 2000)
-                    }
                     app.songRec -> {
                         // Запись цепочки: паттерны идут в том порядке, в каком их касаются.
                         AudioEngine.songAppend(global)
@@ -853,7 +843,7 @@ fun MpcRoot(actions: SampleActions) {
             }
             1 -> {
                 AudioEngine.noteOff(global)
-                if (Edition.LOOPER) app.captureRelease(global)
+                app.captureRelease(global)
             }
             2 -> PadCapture.end()
             6 -> {
@@ -925,7 +915,7 @@ fun MpcRoot(actions: SampleActions) {
                     shownY = { kShown[1] },
                     shownTouch = { kShown[2] > 0.5f },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                ) else if (Edition.LOOPER && app.partsEditPad >= 0) LoopParts(
+                ) else if (app.partsEditPad >= 0) LoopParts(
                     app = app,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) else Lcd(
@@ -947,7 +937,7 @@ fun MpcRoot(actions: SampleActions) {
                     for (b in Kaoss.BANKS.indices) {
                         val cur = app.kaossProgram / Kaoss.PER_BANK
                         SoftKey(b + 1, Kaoss.BANKS[b], Modifier.weight(1f), active = cur == b) {
-                            val n = Edition.kaossPerBank   // Free: программы 1–5 набора
+                            val n = Kaoss.PER_BANK
                             app.kaossProgram = if (cur == b) {
                                 b * Kaoss.PER_BANK + (app.kaossProgram % Kaoss.PER_BANK + 1) % n
                             } else {
@@ -1035,9 +1025,7 @@ fun MpcRoot(actions: SampleActions) {
                         app.loopStopAll()
                     }
                     HwButton("REC", Modifier.weight(1f), led = app.seqRecording || app.seqCountIn || app.songRec || app.fxRecording, ledColor = Skin.LedRed, glyph = Glyph.REC, height = 28.dp) {
-                        if (app.kaossMode && Edition.FREE) {
-                            flash(Edition.pro("FX RECORDING"))
-                        } else if (app.kaossMode) {
+                        if (app.kaossMode) {
                             // KAOSS: REC пишет все манипуляции с эффектами на одну длину Song.
                             if (app.fxRecording) {
                                 app.fxRecording = false
@@ -1112,12 +1100,12 @@ fun MpcRoot(actions: SampleActions) {
                             app.kTouch = false
                         }
                         // ISL-1: KAOSS переключает SRC на SELF — приложение слышит само себя (дальше — вручную).
-                        val toSelf = Edition.LOOPER && app.kaossMode && !app.srcSelf && app.loopRecPad < 0
+                        val toSelf = app.kaossMode && !app.srcSelf && app.loopRecPad < 0
                         if (toSelf) changeSource { app.srcSelf = true }
                         flash(if (toSelf) "KAOSS · SRC: SELF" else if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
                     }
                     HwButton("LEN", Modifier.weight(1f), height = 28.dp) {
-                        val bars = app.patternBars % Edition.maxBars + 1
+                        val bars = app.patternBars % 4 + 1
                         val pat = app.seqPattern
                         val old = app.patternBars
                         app.pushUndo("LENGTH") { AudioEngine.seqSetLength(pat, old) }
@@ -1152,7 +1140,7 @@ fun MpcRoot(actions: SampleActions) {
                         onPress = { down ->
                             eraseHold?.cancel()
                             if (!app.kaossMode && app.mode == Mode.PAD) app.eraseHolding = down
-                            if (down && Edition.LOOPER && app.kaossMode) {
+                            if (down && app.kaossMode) {
                                 // ISL-1, KAOSS: удержание ERASE стирает запись эффектов (короткое — удаление петли).
                                 eraseHold = scope.launch {
                                     delay(700)
@@ -1190,7 +1178,7 @@ fun MpcRoot(actions: SampleActions) {
                     ) {
                         if (eraseHeld) {
                             eraseHeld = false
-                        } else if (Edition.LOOPER && app.kaossMode) {
+                        } else if (app.kaossMode) {
                             // ISL-1, KAOSS: ERASE → коснуться пада-петли — петля удаляется.
                             if (app.mode != Mode.PAD) app.switchView(Mode.PAD, false)
                             app.eraseLatch = !app.eraseLatch
@@ -1224,7 +1212,7 @@ fun MpcRoot(actions: SampleActions) {
                     }
                     if (app.kaossMode) HwButton(
                         "RESMPL", Modifier.weight(1f),
-                        led = app.resampling || app.resampleClip != null || (Edition.LOOPER && app.looperMode && app.srcSelf),
+                        led = app.resampling || app.resampleClip != null || (app.looperMode && app.srcSelf),
                         ledColor = if (app.resampling || (app.loopRecFromEngine && app.loopRecPad >= 0)) Skin.LedRed else Skin.LedAmber,
                         height = 28.dp,
                         onPress = { down ->
@@ -1248,7 +1236,7 @@ fun MpcRoot(actions: SampleActions) {
                     ) {
                         if (resampleHeld) {
                             resampleHeld = false
-                        } else if (Edition.LOOPER && app.looperMode) {
+                        } else if (app.looperMode) {
                             // ISL-1: RESMP в LOOPER — петли пишутся с выхода (сумма петель через эффекты KAOSS).
                             if (app.loopRecPad >= 0) {
                                 flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
@@ -1264,7 +1252,7 @@ fun MpcRoot(actions: SampleActions) {
                         } else {
                             AudioEngine.resampleStart()
                             app.resampling = true
-                            app.flash("● RESAMPLING (MAX ${Edition.resampleSeconds} S) · PRESS TO STOP", 3000)
+                            app.flash("● RESAMPLING (MAX 30 S) · PRESS TO STOP", 3000)
                         }
                     } else HwButton(
                         "SAMPLE", Modifier.weight(1f),
@@ -1275,7 +1263,7 @@ fun MpcRoot(actions: SampleActions) {
                             if (down) {
                                 app.sampleHeld = true
                                 app.sampleTook = false
-                                app.sampleArmedByPress = !PadCapture.isBusy && !app.selfArmed && !(Edition.LOOPER && app.looperMode)
+                                app.sampleArmedByPress = !PadCapture.isBusy && !app.selfArmed && !app.looperMode
                                 if (app.sampleArmedByPress) {
                                     app.switchView(Mode.PAD, false)
                                     armSample()
@@ -1283,7 +1271,7 @@ fun MpcRoot(actions: SampleActions) {
                                 }
                             } else if (app.sampleHeld) {
                                 app.sampleHeld = false
-                                if (Edition.LOOPER && app.looperMode) {
+                                if (app.looperMode) {
                                     // ISL-1: вход уже открыт лупером — просто переходим к обычной записи семплов.
                                     if (app.loopRecPad >= 0) {
                                         flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
@@ -1321,8 +1309,7 @@ fun MpcRoot(actions: SampleActions) {
                             when {
                                 app.srcSelf -> { app.srcSelf = false; app.sampleSource = CaptureSource.MIC }
                                 app.sampleSource == CaptureSource.MIC -> app.sampleSource = CaptureSource.INTERNAL
-                                Edition.LOOPER -> app.srcSelf = true
-                                else -> app.sampleSource = CaptureSource.MIC
+                                else -> app.srcSelf = true
                             }
                         }
                         flash(
@@ -1348,7 +1335,7 @@ fun MpcRoot(actions: SampleActions) {
 
             // ================= банки =================
             Column(
-                Modifier.width(if (Edition.LOOPER) 50.dp else 44.dp).fillMaxHeight(),
+                Modifier.width(50.dp).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
             ) {
                 // DRY/WET эффекта KAOSS: своё значение у каждой программы, 3 тапа — все на 100%.
@@ -1376,11 +1363,9 @@ fun MpcRoot(actions: SampleActions) {
                             else -> Skin.LedAmber
                         },
                         enabled = !pageMode || b < app.patternBars,
-                        height = if (Edition.LOOPER) 34.dp else 44.dp,
+                        height = 34.dp,
                         onPress = { down ->
-                            if (app.kaossMode) {
-                                if (b < Edition.motions) motionButton(b, down) else if (down) flash(Edition.pro("MOTION B–D"))
-                            }
+                            if (app.kaossMode) motionButton(b, down)
                         },
                     ) {
                         when {
@@ -1390,13 +1375,12 @@ fun MpcRoot(actions: SampleActions) {
                                 app.stepBar = b
                                 flash("PAGE ${b + 1}/${app.patternBars}")
                             }
-                            b >= Edition.banks -> flash(Edition.pro("BANKS B–D"))
                             else -> app.bank = b
                         }
                     }
                 }
                 // ISL-1: LOOPER — запись петель прямо на пады
-                if (Edition.LOOPER) HwButton(
+                HwButton(
                     "LOOPER", Modifier.fillMaxWidth(),
                     led = app.looperMode,
                     ledColor = if (app.loopRecPad >= 0) Skin.LedRed else Skin.LedAmber,
@@ -1419,7 +1403,7 @@ fun MpcRoot(actions: SampleActions) {
                         }
                     }
                 }
-                if (Edition.LOOPER) HwButton(
+                HwButton(
                     "CAPTURE", Modifier.fillMaxWidth(),
                     led = app.captureCount > 0, ledColor = Skin.LedAmber,
                     height = 28.dp,
@@ -1442,7 +1426,7 @@ fun MpcRoot(actions: SampleActions) {
                 }
                 // Нажатие: красная, касание пада глушит его; выключение открывает все пады.
                 // Удержание: касания и свайпы как у ERASE, после отпускания пады играют, заглушённые молчат.
-                if (Edition.LOOPER) HwButton(
+                HwButton(
                     "MUTE", Modifier.fillMaxWidth(),
                     led = app.muteLatch || app.muteHolding || app.muteMask != 0L, ledColor = Skin.LedRed,
                     height = 28.dp,
@@ -1499,7 +1483,7 @@ fun MpcRoot(actions: SampleActions) {
                 // Пока держат CHOKE — на падах номер группы (G1…G4), чтобы разные группы было видно.
                 badge = { g -> if (app.chokeHold && app.pads[g].choke > 0) "G${app.pads[g].choke}" else null },
                 muted = { app.muteMask },
-                loopRing = if (!Edition.LOOPER) ({ Float.NaN }) else ({ g ->
+                loopRing = { g ->
                     loopFrame.longValue   // читаем такт кадра — круг перерисовывается
                     when {
                         app.mode != Mode.PAD -> Float.NaN
@@ -1512,7 +1496,7 @@ fun MpcRoot(actions: SampleActions) {
                             if (len <= 0) 0f else ((System.nanoTime() - t0) % len).toFloat() / len
                         } ?: LOOP_RING_STOPPED
                     }
-                }),
+                },
                 onPadDown = ::padDown,
                 onPadUp = ::padUp,
                 onPadSlide = ::padSlide,
@@ -1529,32 +1513,26 @@ fun MpcRoot(actions: SampleActions) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    // Логотипы есть только в фирменной сборке PRO: они лежат в приватной папке branding/
+                    // Логотипы есть только в фирменной сборке: они лежат в приватной папке branding/
                     // (её нет в открытом коде). Без неё — просто название текстом.
                     val logoSalych = brandingDrawable("logo_salych")
-                    val logoIs1 = brandingDrawable("logo_is1")
-                    if (logoSalych != 0 && logoIs1 != 0) {
+                    val logoIsl1 = brandingDrawable("logo_isl1")
+                    if (logoSalych != 0) {
                         Image(
                             painterResource(logoSalych), "SALYCH MUSIC",
                             Modifier.height(42.dp).aspectRatio(613f / 814f),
                             contentScale = ContentScale.Fit,
                         )
-                        // У ISL-1 — свой логотип тем же шрифтом (двойной штрих, как у IS-1).
-                        val logoIsl1 = brandingDrawable("logo_isl1")
-                        if (Edition.LOOPER && logoIsl1 != 0) Image(
+                        if (logoIsl1 != 0) Image(
                             painterResource(logoIsl1), "ISL-1",
                             Modifier.width(88.dp),
                             contentScale = ContentScale.Fit,
-                        ) else if (Edition.LOOPER) Text(
+                        ) else Text(
                             "ISL-1", color = Skin.Ink, fontSize = 22.sp, fontWeight = FontWeight.Black,
-                        ) else Image(
-                            painterResource(logoIs1), "IS-1",
-                            Modifier.width(78.dp),
-                            contentScale = ContentScale.Fit,
                         )
                     } else {
                         Text(
-                            if (Edition.FREE) "IS-1 FREE" else if (Edition.LOOPER) "ISL-1" else "IS-1",
+                            "ISL-1",
                             color = Skin.Ink,   // тёмная «шелкография» на алюминиевой панели
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Black,
@@ -1573,47 +1551,21 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.setMasterVolume(v)
                         app.flash("MASTER %.0f%%".format(v * 100), 900)
                     }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.8f / 1.2f)
-                    if (Edition.LOOPER) {
-                        // ISL-1: SEQ — громкость секвенсора и one-shot отдельно от петель (клик — в SETUP).
-                        Fader("SEQ", Settings.seqVolume / 1.5f, { n ->
-                            val v = n * 1.5f
-                            Settings.seqVolume = v
-                            AudioEngine.setSeqVolume(v)
-                            app.flash("SEQ VOL %.0f%%".format(v * 100), 900)
-                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 1f / 1.5f)
-                    } else Fader("CLICK", Settings.metroLevel, { n ->
-                        Settings.metroLevel = n
-                        AudioEngine.seqSetMetronome(Settings.metroMode, n)
-                        app.flash("CLICK %.0f%%".format(n * 100), 900)
-                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.7f)
-                    val loopPad = app.pads[app.selected].mode == PlayMode.LOOP
-                    if (Edition.LOOPER) {
-                        // ISL-1: LOOPER — громкость всех петель (пара к SEQ). Отдельная петля — ручкой VOL,
-                        // уровень входа — в SETUP.
-                        Fader("LOOPER", Settings.loopVolume / 1.5f, { n ->
-                            val v = n * 1.5f
-                            Settings.loopVolume = v
-                            AudioEngine.setLoopVolume(v)
-                            app.flash("LOOPER VOL %.0f%%".format(v * 100), 900)
-                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 1f / 1.5f)
-                    } else if (loopPad) {
-                        // LOOP: фейдер выбирает длину петли по темпу; внизу — FREE (END вручную).
-                        val steps = LOOP_DIVS.size
-                        val div = app.pads[app.selected].loopDiv
-                        Fader("LOOP", (div + 1).toFloat() / steps, { n ->
-                            val d = (n * steps).roundToInt() - 1
-                            if (d != app.pads[app.selected].loopDiv) {
-                                app.setLoopDiv(app.selected, d, Settings.bpm)
-                                app.flash("LOOP " + if (d < 0) "FREE" else LOOP_DIVS[d].first, 900)
-                            }
-                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0f)
-                    } else {
-                        Fader("GAIN", norm(Settings.recGainDb, -12f, 24f), { n ->
-                            val v = denorm(n, -12f, 24f).roundToInt().toFloat()
-                            Settings.recGainDb = v
-                            app.flash("REC GAIN %+.0f DB".format(v), 900)
-                        }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = norm(0f, -12f, 24f))
-                    }
+                    // ISL-1: SEQ — громкость секвенсора и one-shot отдельно от петель (клик — в SETUP).
+                    Fader("SEQ", Settings.seqVolume / 1.5f, { n ->
+                        val v = n * 1.5f
+                        Settings.seqVolume = v
+                        AudioEngine.setSeqVolume(v)
+                        app.flash("SEQ VOL %.0f%%".format(v * 100), 900)
+                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 1f / 1.5f)
+                    // ISL-1: LOOPER — громкость всех петель (пара к SEQ). Отдельная петля — ручкой VOL,
+                    // уровень входа — в SETUP.
+                    Fader("LOOPER", Settings.loopVolume / 1.5f, { n ->
+                        val v = n * 1.5f
+                        Settings.loopVolume = v
+                        AudioEngine.setLoopVolume(v)
+                        app.flash("LOOPER VOL %.0f%%".format(v * 100), 900)
+                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 1f / 1.5f)
                     Fader("TRIM", norm(Settings.trimDb, -72f, -20f), { n ->
                         val v = denorm(n, -72f, -20f).roundToInt().toFloat()
                         Settings.trimDb = v
@@ -1667,7 +1619,7 @@ fun MpcRoot(actions: SampleActions) {
         if (app.tempoEntry) TempoEntry(app, Modifier.fillMaxSize())
 
         // ---- ISL-1: меню пада (удержание 2 с) ----
-        if (Edition.LOOPER && app.padMenu >= 0) {
+        if (app.padMenu >= 0) {
             PadMenu(app, onCopy = { p -> scope.launch { copyPad(p) } }, Modifier.fillMaxSize())
         }
 

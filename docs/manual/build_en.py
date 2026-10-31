@@ -1,5 +1,5 @@
 # English IS-1 manual: python3 build_en.py -> manual_en.html; the PDF is printed with headless Chrome.
-from parts import FREE, ISL, NAME, btn, cover_logo, crop, fx_tables, legend, mock_pads, pads_order, page, table, write
+from parts import NAME, btn, cover_logo, crop, fx_tables, legend, mock_pads, pads_order, page, table, write
 
 
 def tip(t, kind="tip"):
@@ -89,9 +89,9 @@ pages.append(page(f'''
 <div class="cover">
   {cover_logo()}
   <h1>{NAME}</h1>
-  <div class="cover-sub">{"Sampler · looper · sequencer · KAOSS effects" if ISL else "Sampler · sequencer · KAOSS effects"}</div>
+  <div class="cover-sub">{"Sampler · looper · sequencer · KAOSS effects"}</div>
   <div class="cover-img">{crop(0, 0, 2000, 900)}</div>
-  <div class="cover-foot">User Manual · version of {"1 November 2026" if ISL else "24 October 2026"}</div>
+  <div class="cover-foot">User Manual · version of {"1 November 2026"}</div>
 </div>''', "coverpage"))
 
 # Contents
@@ -102,12 +102,9 @@ toc = [
     ("10", "Sequencer: patterns (SEQ)"), ("11", "Step input (STEP)"), ("12", "Song (SONG) and UNDO"),
     ("13", "KAOSS: effects on the whole mix"), ("14", "All 50 effects"), ("15", "The EDIT window"),
     ("16", "EXPORT: save your track"), ("17", "SETUP: Ableton Link and latency"), ("18", "Cheat sheet"),
-    ("19", "IS-1 FREE and IS-1 Pro"),
 ]
 pages.append(page('<h2>Contents</h2><ol class="toc">' + "".join(
-    f'<li><span class="tn">{n}</span>{t}<span class="tp">{STARTS[n]}</span></li>' for n, t in toc) + '</ol>' + (tip(
-    "This manual is for the free edition, <b>IS-1 FREE</b>. It describes everything IS-1 can do; the features that are "
-    "only in the full IS-1 Pro are listed in the table in section 19.", "warn") if FREE else "") + tip(
+    f'<li><span class="tn">{n}</span>{t}<span class="tp">{STARTS[n]}</span></li>' for n, t in toc) + '</ol>' + tip(
     "Button labels in the app are shown in <b>bold</b> in this manual, for example <b>PLAY</b> or <b>ERASE</b>.") + tip(
     "Your project (pads, patterns, song, effects) is saved automatically when you minimise or close the app.", "warn")))
 
@@ -116,8 +113,8 @@ pages.append(page(f'''
 <h2><span class="sn">1</span>Meet the panel</h2>
 <p class="lead">IS-1 is laid out like a hardware sampler: the display on the left with knobs and buttons below it, the banks and 16 pads
 in the middle, and the faders on the right. Hold your phone in landscape.</p>
-<div class="fig">{crop(0, 0, 2000, 900, [(1, 420, 230), (2, 86, 482), (3, 86, 600), (4, 86, 760), (5, 748, 165 if ISL else 292),
-                                            (6, 748, 300 if ISL else 800), (7, 1120, 455), (8, 1632, 430), (9, 1632, 805)])}</div>
+<div class="fig">{crop(0, 0, 2000, 900, [(1, 420, 230), (2, 86, 482), (3, 86, 600), (4, 86, 760), (5, 748, 165),
+                                            (6, 748, 300), (7, 1120, 455), (8, 1632, 430), (9, 1632, 805)])}</div>
 {legend([
     (1, "Display", "what is selected, tempo, the waveform, parameters and hints. In KAOSS mode the effects touch pad appears here."),
     (2, "Keys 1–5", "switch modes: PAD, SEQ, STEP, EDIT, IMPORT. In KAOSS they pick the effect sets."),
@@ -224,7 +221,7 @@ pages.append(page(f'''
 pages.append(page(f'''
 <h2><span class="sn">6</span>Banks, faders and the right column</h2>
 <div class="row2">
-  <div class="fig">{crop(678, 85, 135, 640, [(1, 700, 165), (2, 702, 262), (3, 702, 540)], "tall") if ISL else crop(678, 160, 135, 600, [(1, 700, 238), (2, 702, 318), (3, 702, 662)], "tall")}</div>
+  <div class="fig">{crop(678, 85, 135, 640, [(1, 700, 165), (2, 702, 262), (3, 702, 540)], "tall")}</div>
   <div>{legend([
     (1, "DRY/WET", "how much of the KAOSS effect you hear. Each of the 50 effects has its own value. <b>Three quick taps</b> set every effect back to 100 %."),
     (2, "A–D", "pad banks: 4 × 16 = 64 sounds. The current bank is lit."),
@@ -398,7 +395,7 @@ pages.append(page(f'''
 pages.append(page(f'''
 <h2><span class="sn">13</span>KAOSS: effects on the whole mix</h2>
 <p class="lead">Press <b>KAOSS</b> and the display turns into an effects touch pad, like a hardware X/Y pad. Touch it to switch the effect on; move your finger to change two parameters at once: horizontally (X) and vertically (Y).</p>
-<div class="fig">{crop(70, 0, 1560 if ISL else 1930, 900, [(1, 610, 80), (2, 545, 150), (3, 600, 300), (4, 662, 405), (5, 92, 482),
+<div class="fig">{crop(70, 0, 1560, 900, [(1, 610, 80), (2, 545, 150), (3, 600, 300), (4, 662, 405), (5, 92, 482),
                                             (6, 224, 806), (7, 343, 733), (8, 756, 292), (9, 756, 792), (10, 343, 658)], src="kaoss.png", cls="small", overlays=[
     (118, 56, 450, 48, "3·REPEAT  8/10  R08", 33, "color:#29b6ff"),
     (118, 118, 400, 66, "SCRATCH LOOP", 50, "color:#b3e5fc;font-weight:700"),
@@ -535,29 +532,5 @@ pages.append(page(f'''
     ["reset a knob", "double-tap the knob"],
     ["set all effects to 100 %", "three taps on DRY/WET"],
 ], "plain cheat")}'''))
-
-# 19. FREE and Pro
-pages.append(page(f'''
-<h2><span class="sn">19</span>IS-1 FREE and IS-1 Pro</h2>
-<p class="lead">IS-1 comes in two editions. <b>IS-1 FREE</b> costs nothing: you can record sounds, program beats and play with effects. <b>IS-1</b> (Pro) is the full version without limits. {"This manual is for IS-1 FREE: it covers all of IS-1, and the table below shows what is only in Pro. Screenshots were taken in Pro." if FREE else "Everything in this manual describes Pro; in FREE some features are locked."}</p>
-{table(["Feature", "IS-1 FREE", "IS-1 Pro"], [
-    ["Pads", "1 bank (A), 16 sounds", "4 banks (A–D), 64 sounds"],
-    ["Sample recording, EDIT, IMPORT", "full", "full"],
-    ["Sequencer, STEP, step parameters, CHOKE, UNDO", "full", "full"],
-    ["Patterns", "16 (A01–A16), up to 2 bars", "64, up to 4 bars"],
-    ["Song (SONG)", "up to 4 patterns", "unlimited"],
-    ["KAOSS effects", "programs 1–5 in every set (25 effects)", "all 50"],
-    ["KAOSS MOTION", "1 memory (A)", "4 memories (A–D)"],
-    ["KAOSS effects recording (FX REC)", "—", "yes"],
-    ["RESAMPLE", "up to 10 seconds", "up to 30 seconds"],
-    ["EXPORT", "MP3 128 kbps, first minute", "WAV and MP3 320 kbps, up to 10 minutes, TO PAD"],
-    ["PRJCT: .sal project files", "— (the project is saved automatically)", "save and load"],
-    ["SETUP: banks", "IMPORT BANK into bank A", "IMPORT and SAVE BANK, A–D"],
-    ["Ableton Link", "—", "yes"],
-], "plain freepro")}
-<div class="row2">
-  <div>{tip("Locked buttons are not hidden. If you press something that is Pro-only, the display shows a hint such as <b>BANKS B–D · IS-1 PRO</b>.")}</div>
-  <div>{tip("FREE and Pro are separate apps: both can be installed on the same phone, each with its own pads and projects. A bank saved in Pro (SAVE BANK) can be loaded into FREE with IMPORT BANK.")}</div>
-</div>'''))
 
 write("manual_en.html", "en", "IS-1 User Manual", "en", pages)

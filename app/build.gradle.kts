@@ -42,30 +42,14 @@ android {
         buildConfig = true
     }
 
-    // Версии из одного кода: pro — полная, free — бесплатная с ограничениями, isl — ISL-1:
-    // полная версия + LOOPER на падах (см. Edition.kt). У каждой свой applicationId — можно ставить рядом.
+    // Две версии из одного кода: isl — ISL-1, trial — ISL-1 TRY.
+    // У каждой свой applicationId — можно ставить рядом.
     flavorDimensions += "edition"
     productFlavors {
-        create("pro") {
-            dimension = "edition"
-            buildConfigField("boolean", "FREE", "false")
-            buildConfigField("boolean", "LOOPER", "false")
-            resValue("string", "app_name", "IS-1")
-        }
-        create("free") {
-            dimension = "edition"
-            applicationIdSuffix = ".free"
-            versionNameSuffix = "-free"
-            buildConfigField("boolean", "FREE", "true")
-            buildConfigField("boolean", "LOOPER", "false")
-            resValue("string", "app_name", "IS-1 FREE")
-        }
         create("isl") {
             dimension = "edition"
             applicationIdSuffix = ".isl"
             versionNameSuffix = "-isl"
-            buildConfigField("boolean", "FREE", "false")
-            buildConfigField("boolean", "LOOPER", "true")
             resValue("string", "app_name", "ISL-1")
         }
         // ISL-1 TRY: все функции ISL-1 на 10 дней (см. Trial.kt).
@@ -73,24 +57,15 @@ android {
             dimension = "edition"
             applicationIdSuffix = ".trial"
             versionNameSuffix = "-try"
-            buildConfigField("boolean", "FREE", "false")
-            buildConfigField("boolean", "LOOPER", "true")
             buildConfigField("int", "TRIAL_DAYS", "10")
             resValue("string", "app_name", "ISL-1 TRY")
         }
     }
 
-    // Фирменные логотипы лежат в приватной папке branding/ (в .gitignore) и подключаются только к PRO.
-    // Без этой папки (сборка из открытого кода, а также FREE) вместо логотипов показывается название текстом.
+    // Фирменные логотипы лежат в приватной папке branding/ (в .gitignore).
+    // Без этой папки (сборка из открытого кода) вместо логотипов показывается название текстом.
     val branding = rootProject.file("branding/res")
-    if (branding.exists()) {
-        sourceSets.getByName("pro").res.srcDir(branding)
-        sourceSets.getByName("isl").res.srcDir(branding)
-        sourceSets.getByName("trial").res.srcDir(branding)
-    }
-    // ISL-1 стартует с тем же проектом из коробки, что и PRO.
-    sourceSets.getByName("isl").assets.srcDir("src/pro/assets")
-    sourceSets.getByName("trial").assets.srcDir("src/pro/assets")
+    if (branding.exists()) sourceSets.getByName("main").res.srcDir(branding)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

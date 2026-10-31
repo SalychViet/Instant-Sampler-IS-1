@@ -4,26 +4,19 @@ import html
 import os
 import re
 
-# IS1_EDITION=free python3 build.py  ->  руководство для IS-1 FREE: скриншоты из free/ (без логотипов),
-# обложка без логотипа, файл *_free.html.
-FREE = os.environ.get("IS1_EDITION") == "free"
-# IS1_EDITION=isl или try python3 build_install.py  ->  инструкция по установке ISL-1 или ISL-1 TRY.
-ISL = os.environ.get("IS1_EDITION") in ("isl", "try")
+# IS1_EDITION=try python3 build_install.py  ->  инструкция по установке ISL-1 TRY, без него — ISL-1.
 TRY = os.environ.get("IS1_EDITION") == "try"
-NAME = "IS-1 FREE" if FREE else "ISL-1 TRY" if TRY else "ISL-1" if ISL else "IS-1"
+NAME = "ISL-1 TRY" if TRY else "ISL-1"
 
 # Скриншоты с фирменными логотипами лежат в приватной папке branding/manual (её нет в открытом коде).
-# Для FREE и для сборки без branding/ берутся копии без логотипов из free/.
 BRANDING = "../../branding/manual"
 
 
 def image_path(src):
-    if ISL and src == "panel.png":
+    if src == "panel.png":
         src = "isl_panel.png"
-    if not FREE and os.path.exists(os.path.join(BRANDING, src)):
+    if os.path.exists(os.path.join(BRANDING, src)):
         return f"{BRANDING}/{src}"
-    if os.path.exists(os.path.join("free", src)):
-        return "free/" + src
     return src
 
 
@@ -103,16 +96,13 @@ def fx_tables(fx, tails, head, tail_label):
 
 
 def cover_logo():
-    """Логотип на обложке — только в фирменном (PRO) руководстве."""
-    if FREE or not image_path("panel.png").startswith(BRANDING):
+    if not image_path("panel.png").startswith(BRANDING):
         return ""
-    if ISL:
-        return f'<div class="cover-logo">{crop(1676, 28, 290, 104)}</div>'
-    return f'<div class="cover-logo">{crop(1638, 40, 300, 115)}</div>'
+    return f'<div class="cover-logo">{crop(1676, 28, 290, 104)}</div>'
 
 
-# Руководство ISL-1 собирается из того же текста: IS1_EDITION=isl python3 build.py -> manual_isl.html.
-# Здесь только то, что в ISL-1 работает иначе. Лупер описан в отдельном дополнении (build_isl.py).
+# Замены в общем тексте руководства: python3 build.py -> manual_isl.html.
+# Лупер описан в отдельном дополнении (build_isl.py).
 ISL_TEXT = {
     "ru": [
         ("MAIN, CLICK, GAIN (или LOOP), TRIM.", "MAIN, SEQ, LOOPER, TRIM."),
@@ -160,12 +150,9 @@ ISL_TEXT = {
 
 
 def isl_manual(pages, lang):
-    """Текст руководства IS-1 -> руководство ISL-1: без страницы о версиях FREE и Pro."""
+    """Подставить в текст руководства название и особенности ISL-1."""
     out = []
     for p in pages:
-        if re.search(r"</span>IS-1 FREE (и|and) IS-1 Pro</h2>", p):
-            continue
-        p = re.sub(r'<li><span class="tn">19</span>.*?</li>', "", p)
         for a, b in ISL_TEXT[lang]:
             p = p.replace(a, b)
         p = p.replace("<b>RESMP</b>", "<b>RESMPL</b>").replace(">RESMP<", ">RESMPL<")
@@ -174,17 +161,13 @@ def isl_manual(pages, lang):
 
 
 def write(path, lang, title, body_cls, pages):
-    if FREE:
-        path = path.replace(".html", "_free.html")
-        title = title.replace("IS-1", "IS-1 FREE", 1)
-        body_cls += " free"
-    if ISL:
+    if not path.startswith("looper"):
         path = path.replace(".html", "_try.html" if TRY else "_isl.html")
         title = title.replace("IS-1", NAME, 1)
         body_cls += " isl"
-        if path.startswith("manual"):
-            pages = isl_manual(pages, lang)
-            body_cls += " man"
+    if path.startswith("manual"):
+        pages = isl_manual(pages, lang)
+        body_cls += " man"
     css = open("style.css", encoding="utf-8").read()
     doc = (f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><title>{title}</title>'
            f'<style>{css}</style></head><body class="{body_cls}">{"".join(pages)}</body></html>')

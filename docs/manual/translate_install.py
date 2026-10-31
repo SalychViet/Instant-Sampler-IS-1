@@ -1,5 +1,5 @@
 # English install guides for ISL-1: python3 translate_install.py -> install_isl_en.html, install_try_en.html.
-# Run after IS1_EDITION=isl and IS1_EDITION=try python3 build_install.py. Every Russian phrase must be in EN.
+# Run after python3 build_install.py and IS1_EDITION=try python3 build_install.py. Every Russian phrase must be in EN.
 import html
 import re
 
