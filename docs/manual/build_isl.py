@@ -104,6 +104,7 @@ def pages_ru():
     ["Удержание <b>SAMPL</b>", "пока держите, записывайте пады один за другим; отпустили — запись выключена"],
     ["<b>T-HEAD</b>, <b>T-TAIL</b>", "если включены, срабатывают сразу после записи"],
     ["Удержание <b>ERASE</b>", "касание сразу удаляет пад, свайп — целый ряд или столбец"],
+    ["<b>SOUND ON/OFF</b> в EDIT", "OFF: правки и ручки не озвучиваются, слушать кнопкой <b>▶ PREVIEW</b>"],
 ], "plain")}
 <h2>SETUP: настройки петель</h2>
 {table(["Настройка", "Что делает"], [
@@ -212,6 +213,7 @@ The next tap closes the loop at once on the bar line just passed. It waits for t
     ["Hold <b>SAMPL</b>", "record pads one after another while holding; release to stop"],
     ["<b>T-HEAD</b>, <b>T-TAIL</b>", "when on, they apply right after recording"],
     ["Hold <b>ERASE</b>", "a touch deletes a pad at once, a swipe clears a row or column"],
+    ["<b>SOUND ON/OFF</b> in EDIT", "OFF: edits and knobs make no sound; listen with <b>▶ PREVIEW</b>"],
 ], "plain")}
 <h2>SETUP: loop settings</h2>
 {table(["Setting", "What it does"], [

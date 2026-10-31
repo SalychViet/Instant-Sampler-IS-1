@@ -271,7 +271,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
                     canUndo = true
                     if (keepView) show(r, selStart, selEnd, marks) else show(r)
                     message = done
-                    previewSelection()   // результат правки слышно сразу
+                    autoPreview()   // результат правки слышно сразу
                 }
             } catch (e: Exception) {
                 message = "Error: ${e.message}"
@@ -294,7 +294,7 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
         show(s.clip, s.start, s.end, s.marks)
         canUndo = undoStack.isNotEmpty()
         message = "Undone"
-        previewSelection()
+        autoPreview()
     }
 
     private fun show(newClip: SampleClip, start: Float = 0f, end: Float = 1f, newMarks: List<Float> = emptyList()) {
@@ -322,6 +322,11 @@ class SampleViewModel(app: Application) : AndroidViewModel(app) {
         val c = clip ?: return noSample()
         val (s, e) = selFrames(c)
         preview.play(c, s, e, previewRate)
+    }
+
+    /** Прослушивание после правки: только если в EDIT включён SOUND. */
+    fun autoPreview() {
+        if (Settings.editSound) previewSelection()
     }
 
     fun stopPreview() = preview.stop()

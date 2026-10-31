@@ -17,6 +17,7 @@ android {
         versionCode = 5
         versionName = "0.4.1"
         // Где лежит исходный код (GPL требует дать к нему доступ). Замените на адрес своего репозитория.
+        buildConfigField("int", "TRIAL_DAYS", "0")   // 0 — без ограничения срока
         buildConfigField("String", "SOURCE_URL", "\"https://github.com/SalychViet/Instant-Sampler-IS-1\"")
 
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
@@ -67,6 +68,16 @@ android {
             buildConfigField("boolean", "LOOPER", "true")
             resValue("string", "app_name", "ISL-1")
         }
+        // ISL-1 TRY: все функции ISL-1 на 10 дней (см. Trial.kt).
+        create("trial") {
+            dimension = "edition"
+            applicationIdSuffix = ".trial"
+            versionNameSuffix = "-try"
+            buildConfigField("boolean", "FREE", "false")
+            buildConfigField("boolean", "LOOPER", "true")
+            buildConfigField("int", "TRIAL_DAYS", "10")
+            resValue("string", "app_name", "ISL-1 TRY")
+        }
     }
 
     // Фирменные логотипы лежат в приватной папке branding/ (в .gitignore) и подключаются только к PRO.
@@ -75,9 +86,11 @@ android {
     if (branding.exists()) {
         sourceSets.getByName("pro").res.srcDir(branding)
         sourceSets.getByName("isl").res.srcDir(branding)
+        sourceSets.getByName("trial").res.srcDir(branding)
     }
     // ISL-1 стартует с тем же проектом из коробки, что и PRO.
     sourceSets.getByName("isl").assets.srcDir("src/pro/assets")
+    sourceSets.getByName("trial").assets.srcDir("src/pro/assets")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

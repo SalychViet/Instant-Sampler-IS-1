@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -32,6 +33,8 @@ import com.example.mpcpad.sample.SampleViewModel
 import com.example.mpcpad.ui.AppViewModel
 import com.example.mpcpad.ui.MpcRoot
 import com.example.mpcpad.ui.SampleActions
+import com.example.mpcpad.ui.TrialExpiredScreen
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity(), SampleActions {
 
@@ -123,18 +126,50 @@ class MainActivity : ComponentActivity(), SampleActions {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        Trial.check(this)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) { MpcRoot(actions = this@MainActivity) }
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                if (Trial.expired) {
+                    TrialExpiredScreen()
+                } else {
+                    MpcRoot(actions = this@MainActivity)
+                    if (Trial.ON) LaunchedEffect(Unit) {
+                        appVm.flash("TRIAL: ${Trial.daysLeft} DAYS LEFT", 3000)
+                        // Приложение могут не закрывать сутками — срок проверяем и пока оно открыто.
+                        while (true) {
+                            delay(60_000)
+                            Trial.check(this@MainActivity)
+                            if (Trial.expired) {
+                                ProjectStore.save(this@MainActivity, appVm)
+                                stopForTrial()
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     // Поток вывода живёт только пока приложение на экране; запись при этом идёт в foreground-сервисе.
     override fun onStart() {
         super.onStart()
-        AudioEngine.start()
+        Trial.check(this)
+        if (Trial.expired) stopForTrial() else AudioEngine.start()
+    }
+
+    /** Срок ISL-1 TRY вышел: звук и запись останавливаются. */
+    private fun stopForTrial() {
+        if (PadCapture.isBusy) CaptureService.disarm(this)
+        AudioEngine.allNotesOff()
+        AudioEngine.seqStop()
+        AudioEngine.stop()
     }
 
     override fun onStop() {
+        if (Trial.expired) {
+            super.onStop()
+            return
+        }
         ProjectStore.save(this, appVm)   // проект переживает выход из приложения
         AudioEngine.allNotesOff()   // чтобы Gate/Loop-голоса не «залипали» после возврата
         AudioEngine.seqStop()

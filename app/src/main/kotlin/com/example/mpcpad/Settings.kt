@@ -51,6 +51,7 @@ object Settings {
     // ---- ISL-1 LOOPER ----
     private val _loopOffsetMs = mutableFloatStateOf(0f)
     private val _loopQuantize = mutableStateOf(false)
+    private val _editSound = mutableStateOf(true)
     private val _loopQuantStrength = mutableFloatStateOf(0.6f)
     private val _loopQuantGrid = mutableIntStateOf(4)
     private val _seqVolume = mutableFloatStateOf(1f)
@@ -80,6 +81,8 @@ object Settings {
     var latencyMs: Float get() = _latencyMs.floatValue; set(v) { _latencyMs.floatValue = v; putFloat("latencyMs", v) }
     /** Ручная подстройка петель ISL-1 к услышанному, мс: плюс — петля ложится раньше. */
     var loopOffsetMs: Float get() = _loopOffsetMs.floatValue; set(v) { _loopOffsetMs.floatValue = v; putFloat("loopOffsetMs", v) }
+    /** EDIT → SOUND: правки и ручки звучат сразу (выключено — только по ▶ PREVIEW). */
+    var editSound: Boolean get() = _editSound.value; set(v) { _editSound.value = v; putBool("editSound", v) }
     /** ISL-1, SETUP → LOOP QUANTIZE: удары новой петли сдвигаются к сетке. */
     var loopQuantize: Boolean get() = _loopQuantize.value; set(v) { _loopQuantize.value = v; putBool("loopQuantize", v) }
     /** Сила: 0..1 — на какую часть расстояния до сетки сдвигается удар. */
@@ -111,6 +114,7 @@ object Settings {
         _latencyMs.floatValue = p.getFloat("latencyMs", 0f).coerceIn(-100f, 100f)
         _loopOffsetMs.floatValue = p.getFloat("loopOffsetMs", 0f).coerceIn(-150f, 150f)
         _loopQuantize.value = p.getBoolean("loopQuantize", false)
+        _editSound.value = p.getBoolean("editSound", true)
         _loopQuantStrength.floatValue = p.getFloat("loopQuantStrength", 0.6f).coerceIn(0f, 1f)
         _loopQuantGrid.intValue = p.getInt("loopQuantGrid", 4).coerceIn(1, 8)
         _seqVolume.floatValue = p.getFloat("seqVolume", 1f).coerceIn(0f, 1.5f)

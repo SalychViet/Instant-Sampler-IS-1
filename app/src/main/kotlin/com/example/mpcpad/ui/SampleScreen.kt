@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.PadParam
 import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.capture.CaptureStatus
@@ -169,14 +170,14 @@ fun SampleBody(
                     Knob("PITCH", (pu.pitch + 12f) / 24f, { n ->
                         val v = (n * 24f - 12f).roundToInt().toFloat()
                         app.setParam(app.selected, PadParam.PITCH, v) { it.copy(pitch = v) }
-                    }, diameter = 34.dp, defaultValue = 0.5f, onTouch = { down -> if (!down) vm.previewSelection() })
+                    }, diameter = 34.dp, defaultValue = 0.5f, onTouch = { down -> if (!down) vm.autoPreview() })
                     Text("%+.0f ST".format(pu.pitch), color = TextMain, fontSize = 10.sp)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Knob("DETUNE", (pu.detune + 50f) / 100f, { n ->
                         val v = (n * 100f - 50f).roundToInt().toFloat()
                         app.setParam(app.selected, PadParam.DETUNE, v) { it.copy(detune = v) }
-                    }, diameter = 34.dp, defaultValue = 0.5f, onTouch = { down -> if (!down) vm.previewSelection() })
+                    }, diameter = 34.dp, defaultValue = 0.5f, onTouch = { down -> if (!down) vm.autoPreview() })
                     Text("%+.0f CT".format(pu.detune), color = TextMain, fontSize = 10.sp)
                 }
             }
@@ -189,6 +190,10 @@ fun SampleBody(
         ) {
             Chip("▶ PREVIEW", enabled = canEdit, compact = true) { vm.previewSelection() }
             Chip("■", enabled = clip != null, compact = true) { vm.stopPreview() }
+            Chip(if (Settings.editSound) "SOUND ON" else "SOUND OFF", active = Settings.editSound, compact = true) {
+                Settings.editSound = !Settings.editSound
+                if (!Settings.editSound) vm.stopPreview()
+            }
             Chip("TRIM", enabled = canEdit, compact = true) { vm.trimToSelection() }
             Chip("NORMALIZE", enabled = canEdit, compact = true) { vm.normalize() }
             Chip("FADE IN", enabled = canEdit, compact = true) { vm.fadeIn() }
@@ -272,7 +277,7 @@ private fun WaveformView(vm: SampleViewModel, modifier: Modifier = Modifier) {
                             which = if (abs(f - vm.selStart) <= abs(f - vm.selEnd)) 1 else 2
                         },
                         // отпустил границу выделения — сразу слышно, что осталось
-                        onDragEnd = { if (vm.clip != null) vm.previewSelection() },
+                        onDragEnd = { if (vm.clip != null) vm.autoPreview() },
                         onDrag = { change, _ ->
                             change.consume()
                             if (vm.clip != null) {
