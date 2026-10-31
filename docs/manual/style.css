@@ -317,3 +317,5 @@ body.free .page::after { content: "IS-1 FREE · руководство поль�
 body.free.en .page::after { content: "IS-1 FREE · User Manual"; }
 body.free.install .page::after { content: "IS-1 FREE · установка на телефон"; }
 body.free .coverpage::after { content: none; }
+body.isl .page::after { content: "ISL-1 · дополнение к руководству"; }
+body.isl.en .page::after { content: "ISL-1 · manual addendum"; }

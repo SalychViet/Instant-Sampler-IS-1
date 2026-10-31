@@ -91,7 +91,7 @@ pages.append(page(f'''
   <h1>{NAME}</h1>
   <div class="cover-sub">Sampler · sequencer · KAOSS effects</div>
   <div class="cover-img">{crop(0, 0, 2000, 900)}</div>
-  <div class="cover-foot">User Manual · version of 24 October 2026</div>
+  <div class="cover-foot">User Manual · version of 31 October 2026</div>
 </div>''', "coverpage"))
 
 # Contents
@@ -213,8 +213,8 @@ pages.append(page(f'''
     (9, "LEN", "pattern length: 1 → 2 → 3 → 4 bars."),
     (10, "ONE / GATE / LOOP", "how the selected pad plays (section 9)."),
     (11, "ERASE", "delete: depends on the mode (section 8). In SEQ, <b>holding</b> it erases the song."),
-    (12, "SAMPLE", "arm recording, then hold a pad: it records while you hold. In KAOSS this button is <b>RESMP</b>."),
-    (13, "SRC:MIC / SRC:INT", "record from the microphone or from other apps on the phone (the button may read SRC:MI or SRC:IN)."),
+    (12, "SAMPLE", "record to a pad: press it, then hold a pad; it turns off after the take. <b>Hold SAMPLE</b> to record several pads in a row. In KAOSS this button is <b>RESMP</b>."),
+    (13, "SRC", "where to record from. The button icon shows it: microphone is MIC, cassette is the sound of other apps (INT). Screenshots show the older SRC:MI label."),
     (14, "T-HEAD", "automatically skip silence at the start of samples."),
     (15, "T-TAIL", "automatically cut silence at the end of samples."),
 ])}
@@ -250,11 +250,11 @@ pages.append(page(f'''
 <h2><span class="sn">7</span>Recording samples</h2>
 <p class="lead">You can record straight onto a pad, from the microphone or from any app on the phone (YouTube, a player…).</p>
 <div class="flow">
-  <div class="fstep"><span class="fn">1</span>{btn("SRC:MIC")}<p>Pick the source: <b>SRC:MIC</b> is the microphone, <b>SRC:INT</b> is the phone's own sound.</p></div>
+  <div class="fstep"><span class="fn">1</span>{btn("SRC")}<p>Pick the source by its icon: microphone is <b>MIC</b>, cassette is the phone's own sound (<b>INT</b>).</p></div>
   <div class="farrow">→</div>
   <div class="fstep"><span class="fn">2</span>{btn("SAMPLE", on=True, red=True)}<p>Press <b>SAMPLE</b> and it lights up. Display: <b>HOLD A PAD TO RECORD</b>.</p></div>
   <div class="farrow">→</div>
-  <div class="fstep"><span class="fn">3</span><div class="mpad big rec">●</div><p><b>Hold</b> a pad: it records while your finger is on it. Let go and the sound is on the pad.</p></div>
+  <div class="fstep"><span class="fn">3</span><div class="mpad big rec">●</div><p><b>Hold</b> a pad: it records while your finger is on it. Let go: the sound is on the pad and <b>SAMPLE</b> turns off.</p></div>
 </div>
 <div class="row2">
   <div>
@@ -263,10 +263,11 @@ pages.append(page(f'''
       <div class="tw"><i class="sil"></i><i class="snd"></i><i class="sil r"></i></div>
       <div class="tl"><span>T-HEAD cuts</span><span>sound</span><span>T-TAIL cuts</span></div>
     </div>
-    <p>The <b>TRIM</b> fader decides where "silence" ends: the higher it is, the louder a sound can be and still count as silence.</p>
+    <p>T-HEAD and T-TAIL apply right after recording. The <b>TRIM</b> fader decides where "silence" ends: the higher it is, the louder a sound can be and still count as silence.</p>
   </div>
   <div>
     {tip("To record other apps, Android asks for screen/audio capture permission. That is normal: IS-1 records only the sound.")}
+    {tip("<b>Hold SAMPLE</b> and record pads one after another. Release it to stop.", "hold")}
     {tip("Recording level is the <b>GAIN</b> fader. You can see the level on the display while recording.")}
     {tip("Some apps block recording of their audio (DRM protection). If there are 3 seconds of silence, the editor tells you.", "warn")}
   </div>
@@ -286,6 +287,7 @@ pages.append(page(f'''
 <h4>Deleting: the ERASE button in each mode</h4>
 {table(["Where you are", "What to do", "What is deleted"], [
     ["PAD", "<b>ERASE</b>, then touch a pad", "the sample on that pad"],
+    ["PAD", "<b>hold ERASE</b> and touch pads, or swipe across them", "each touched pad at once; a swipe clears a row or column"],
     ["SEQ", "<b>ERASE</b>, then touch a pattern", "all notes of the pattern"],
     ["SEQ", "<b>hold ERASE</b>", "the song (pattern chain)"],
     ["STEP", "<b>ERASE</b>", "all steps of the selected sound in the pattern"],
