@@ -52,7 +52,7 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
             Chip("ЗАКРЫТЬ", active = true, compact = true) { app.setupOpen = false }
         }
 
-        // ISL-1: LINK TO LOOP — длина паттерна по петле
+        // ISL-1: настройки петель
         if (Edition.LOOPER) Column(
             Modifier
                 .widthIn(max = 560.dp)
@@ -60,22 +60,6 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("LINK TO LOOP", color = TextMain, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                Chip(if (Settings.linkToLoop) "ВКЛ" else "ВЫКЛ", active = Settings.linkToLoop) {
-                    Settings.linkToLoop = !Settings.linkToLoop
-                    app.applyLoopLength()
-                    app.flash("LINK TO LOOP " + if (Settings.linkToLoop) "ON" else "OFF")
-                }
-            }
-            val beats = Settings.loopBeats
-            Text(
-                (if (beats > 0) "Петля: ${(beats + 3) / 4} такт(а). " else "Петля ещё не записана. ") +
-                    "Включено — длина паттерна равна длине первой петли; выключено — длину задаёт кнопка LEN.",
-                color = TextDim,
-                fontSize = 12.sp,
-            )
-            Spacer(Modifier.height(4.dp))
             ParamSlider(
                 label = "LOOP OFFSET",
                 valueText = "%+.0f мс".format(Settings.loopOffsetMs),
@@ -124,11 +108,24 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 }
             }
             Text(
-                "Включено — удары в новой петле выравниваются по 1/16 (транзиенты двигаются к ближайшей доле сетки): " +
-                    "ритм ровнее и цельнее. На уже записанные петли не влияет.",
+                "Включено — удары в новой петле сдвигаются к сетке, звук склеивается плавно. " +
+                    "На уже записанные петли не влияет.",
                 color = TextDim,
                 fontSize = 12.sp,
             )
+            ParamSlider(
+                label = "СИЛА КВАНТИЗАЦИИ",
+                valueText = "%.0f %%".format(Settings.loopQuantStrength * 100),
+                value = Settings.loopQuantStrength,
+                range = 0f..1f,
+                steps = 19,
+            ) { Settings.loopQuantStrength = it }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("СЕТКА", color = TextDim, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                for ((name, div) in listOf("1/4" to 1, "1/8" to 2, "1/16" to 4, "1/32" to 8)) {
+                    Chip(name, active = Settings.loopQuantGrid == div, compact = true) { Settings.loopQuantGrid = div }
+                }
+            }
             val lat = AudioEngine.outputLatencyMs()
             Text(
                 (if (lat > 0) "Задержка выхода телефона: ~%.0f мс — учитывается сама. ".format(lat) else "") +

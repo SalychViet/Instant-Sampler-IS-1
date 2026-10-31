@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mpcpad.audio.PlayMode
 
-/** ISL-1: меню пада (удержание 3 с в режиме PAD): COPY, SLICE и — у one-shot — огибающая высоты. */
+/** ISL-1: меню пада (удержание 2 с в режиме PAD): COPY, SLICE и — у one-shot — огибающая высоты. */
 @Composable
 fun PadMenu(app: AppViewModel, onCopy: (Int) -> Unit, modifier: Modifier = Modifier) {
     val pad = app.padMenu

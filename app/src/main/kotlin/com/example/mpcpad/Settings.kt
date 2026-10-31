@@ -49,10 +49,10 @@ object Settings {
     private val _latencyMs = mutableFloatStateOf(0f)
 
     // ---- ISL-1 LOOPER ----
-    private val _linkToLoop = mutableStateOf(false)
-    private val _loopBeats = mutableIntStateOf(0)
     private val _loopOffsetMs = mutableFloatStateOf(0f)
     private val _loopQuantize = mutableStateOf(false)
+    private val _loopQuantStrength = mutableFloatStateOf(0.6f)
+    private val _loopQuantGrid = mutableIntStateOf(4)
     private val _seqVolume = mutableFloatStateOf(1f)
     private val _loopVolume = mutableFloatStateOf(1f)
 
@@ -78,14 +78,14 @@ object Settings {
     var linkEnabled: Boolean get() = _linkEnabled.value; set(v) { _linkEnabled.value = v; putBool("linkEnabled", v) }
     /** Сдвиг звука относительно сетки Ableton Link, мс: плюс — играть раньше. */
     var latencyMs: Float get() = _latencyMs.floatValue; set(v) { _latencyMs.floatValue = v; putFloat("latencyMs", v) }
-    /** ISL-1, SETUP → LINK TO LOOP: длина паттерна = длина первой петли (иначе — кнопкой LEN). */
-    var linkToLoop: Boolean get() = _linkToLoop.value; set(v) { _linkToLoop.value = v; putBool("linkToLoop", v) }
-    /** Длина первой петли в долях (0 — петли ещё не записывали): по ней темп и LINK TO LOOP. */
-    var loopBeats: Int get() = _loopBeats.intValue; set(v) { _loopBeats.intValue = v; putInt("loopBeats", v) }
     /** Ручная подстройка петель ISL-1 к услышанному, мс: плюс — петля ложится раньше. */
     var loopOffsetMs: Float get() = _loopOffsetMs.floatValue; set(v) { _loopOffsetMs.floatValue = v; putFloat("loopOffsetMs", v) }
-    /** ISL-1, SETUP → LOOP QUANTIZE: удары новой петли выравниваются по 1/16. */
+    /** ISL-1, SETUP → LOOP QUANTIZE: удары новой петли сдвигаются к сетке. */
     var loopQuantize: Boolean get() = _loopQuantize.value; set(v) { _loopQuantize.value = v; putBool("loopQuantize", v) }
+    /** Сила: 0..1 — на какую часть расстояния до сетки сдвигается удар. */
+    var loopQuantStrength: Float get() = _loopQuantStrength.floatValue; set(v) { _loopQuantStrength.floatValue = v; putFloat("loopQuantStrength", v) }
+    /** Сетка: делений на долю (1 = 1/4, 2 = 1/8, 4 = 1/16, 8 = 1/32). */
+    var loopQuantGrid: Int get() = _loopQuantGrid.intValue; set(v) { _loopQuantGrid.intValue = v; putInt("loopQuantGrid", v) }
     /** ISL-1, фейдер SEQ: громкость всего, кроме петель лупера (секвенсор и one-shot), 0..1.5. */
     var seqVolume: Float get() = _seqVolume.floatValue; set(v) { _seqVolume.floatValue = v; putFloat("seqVolume", v) }
     /** ISL-1, фейдер LOOPER: громкость всех петель лупера, 0..1.5. */
@@ -109,10 +109,10 @@ object Settings {
         _fullLevel.value = p.getBoolean("fullLevel", false)
         _linkEnabled.value = p.getBoolean("linkEnabled", false)
         _latencyMs.floatValue = p.getFloat("latencyMs", 0f).coerceIn(-100f, 100f)
-        _linkToLoop.value = p.getBoolean("linkToLoop", false)
-        _loopBeats.intValue = p.getInt("loopBeats", 0).coerceIn(0, 256)
         _loopOffsetMs.floatValue = p.getFloat("loopOffsetMs", 0f).coerceIn(-150f, 150f)
         _loopQuantize.value = p.getBoolean("loopQuantize", false)
+        _loopQuantStrength.floatValue = p.getFloat("loopQuantStrength", 0.6f).coerceIn(0f, 1f)
+        _loopQuantGrid.intValue = p.getInt("loopQuantGrid", 4).coerceIn(1, 8)
         _seqVolume.floatValue = p.getFloat("seqVolume", 1f).coerceIn(0f, 1.5f)
         _loopVolume.floatValue = p.getFloat("loopVolume", 1f).coerceIn(0f, 1.5f)
     }

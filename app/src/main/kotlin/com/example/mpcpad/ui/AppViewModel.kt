@@ -106,6 +106,12 @@ class AppViewModel : ViewModel() {
     var setupOpen by mutableStateOf(false)
     /** PAD: ERASE удерживается — касание пада сразу удаляет звук, свайп — ряд или столбец. */
     var eraseHolding by mutableStateOf(false)
+    /** SAMPLE нажата сейчас: пока держат — записывается сколько угодно падов. */
+    var sampleHeld = false
+    /** Нажатие SAMPLE само включило запись (отпускание её не выключает). */
+    var sampleArmedByPress = false
+    /** За это нажатие SAMPLE уже что-то записали. */
+    var sampleTook = false
     var exportOpen by mutableStateOf(false)
     var bank by mutableIntStateOf(0)
     /** Выбранный «звук» (пад 0..63): его параметры правят ручки, его шаги видны в STEP. */
@@ -300,18 +306,21 @@ class AppViewModel : ViewModel() {
      * Трогаем только пады, где граница не менялась вручную.
      */
     fun applyTrim(head: Boolean, on: Boolean) {
-        for (p in 0 until 64) {
-            val info = PadLibrary.infos[p] ?: continue
-            val ui = pads[p]
-            if (head) {
-                val target = info.soundStart.coerceIn(0f, ui.end - 0.01f)
-                if (on && ui.start == 0f && target > 0f) setParam(p, PadParam.START, target) { it.copy(start = target) }
-                if (!on && ui.start != 0f && ui.start == target) setParam(p, PadParam.START, 0f) { it.copy(start = 0f) }
-            } else {
-                val target = info.soundEnd.coerceIn(ui.start + 0.01f, 1f)
-                if (on && ui.end == 1f && target < 1f) setParam(p, PadParam.END, target) { it.copy(end = target) }
-                if (!on && ui.end != 1f && ui.end == target) setParam(p, PadParam.END, 1f) { it.copy(end = 1f) }
-            }
+        for (p in 0 until 64) trimPad(p, head, on)
+    }
+
+    /** T-HEAD / T-TAIL одного пада: и по кнопке, и сразу после записи нового семпла. */
+    fun trimPad(p: Int, head: Boolean, on: Boolean) {
+        val info = PadLibrary.infos[p] ?: return
+        val ui = pads[p]
+        if (head) {
+            val target = info.soundStart.coerceIn(0f, ui.end - 0.01f)
+            if (on && ui.start == 0f && target > 0f) setParam(p, PadParam.START, target) { it.copy(start = target) }
+            if (!on && ui.start != 0f && ui.start == target) setParam(p, PadParam.START, 0f) { it.copy(start = 0f) }
+        } else {
+            val target = info.soundEnd.coerceIn(ui.start + 0.01f, 1f)
+            if (on && ui.end == 1f && target < 1f) setParam(p, PadParam.END, target) { it.copy(end = target) }
+            if (!on && ui.end != 1f && ui.end == target) setParam(p, PadParam.END, 1f) { it.copy(end = 1f) }
         }
     }
 
@@ -357,8 +366,12 @@ class AppViewModel : ViewModel() {
     var loopRecPad by mutableIntStateOf(-1)
     var loopRecStartNanos = 0L
     var loopRecEndNanos = 0L
-    /** LOOPER + KAOSS + RESMP: петли пишутся не со входа, а с выхода приложения (сумма петель через эффекты). */
-    var resampleLoop by mutableStateOf(false)
+    /** SRC SELF (или RESMPL в LOOPER): запись идёт не со входа, а с выхода приложения (всё, что звучит, с эффектами). */
+    var srcSelf by mutableStateOf(false)
+    /** SAMPLE при источнике SELF: держишь пад — пишется выход приложения (микрофон не нужен). */
+    var selfArmed by mutableStateOf(false)
+    /** Пад, на который сейчас пишется выход приложения; -1 — нет. */
+    var selfHoldPad by mutableIntStateOf(-1)
     /** Текущая запись петли идёт с выхода приложения (ресемплинг), а не со входа. */
     var loopRecFromEngine = false
     /** Второе касание было чуть раньше конца такта: запись идёт до черты такта, потом петля играет. */
@@ -382,7 +395,7 @@ class AppViewModel : ViewModel() {
     val partBounds = mutableStateMapOf<Int, List<Float>>()
     /** В окне частей показана огибающая высоты (иначе — части). */
     var partsShowEnv by mutableStateOf(false)
-    /** Меню пада (удержание 3 с в PAD): номер пада, -1 — закрыто. */
+    /** Меню пада (удержание 2 с в PAD): номер пада, -1 — закрыто. */
     var padMenu by mutableIntStateOf(-1)
 
     fun boundsOf(pad: Int): List<Float> = partBounds[pad] ?: DEFAULT_BOUNDS
@@ -579,12 +592,13 @@ class AppViewModel : ViewModel() {
     /**
      * Где закончить запись петли, если второе касание — в [now]. Есть сетка тактов — на ближайшей черте
      * такта (не короче одного такта от начала записи), иначе — ровно по касанию.
+     * [waitFrom] — с какой доли такта ждём следующую черту, а не берём уже пройденную.
      */
-    fun loopRecEndFor(now: Long): Long {
+    fun loopRecEndFor(now: Long, waitFrom: Double = 0.5): Long {
         if (loopGridNanos == 0L) return now
         val barNs = 4 * 60e9 / com.example.mpcpad.Settings.bpm
         val start = nearestBar(loopRecStartNanos)
-        val bars = kotlin.math.max(1L, kotlin.math.round((now - start) / barNs).toLong())
+        val bars = kotlin.math.max(1L, kotlin.math.floor((now - start) / barNs + 1.0 - waitFrom).toLong())
         return start + (bars * barNs).toLong()
     }
 
@@ -675,19 +689,6 @@ class AppViewModel : ViewModel() {
 
     fun loopToggle(pad: Int) = if (pad in loopsPlaying) loopStop(pad) else loopLaunch(pad)
 
-    /** LINK TO LOOP: длина текущего паттерна = длина первой петли (в тактах, до 16). */
-    fun applyLoopLength() {
-        if (!com.example.mpcpad.Settings.linkToLoop) return
-        val beats = com.example.mpcpad.Settings.loopBeats
-        if (beats <= 0) return
-        val bars = ((beats + 3) / 4).coerceIn(1, 16)
-        if (AudioEngine.seqPatternBars(seqPattern) != bars) {
-            AudioEngine.seqSetLength(seqPattern, bars)
-            patternBars = bars
-            if (stepBar >= bars) stepBar = 0
-        }
-    }
-
     /** Длина одного круга петли пада в наносекундах (с учётом START/END и высоты) — для круга на паде. */
     fun loopLengthNanos(pad: Int): Long {
         val info = PadLibrary.infos[pad] ?: return 0L
@@ -734,7 +735,6 @@ class AppViewModel : ViewModel() {
             target = kotlin.math.round(tapSec * sr).toInt()
             loopStart = startNanos
             cutFrom = startNanos
-            com.example.mpcpad.Settings.loopBeats = beats
             com.example.mpcpad.Settings.bpm = bpm.toFloat()
             AudioEngine.seqSetBpm(bpm.toFloat())
             resyncLoops(bpm.toFloat())
@@ -750,7 +750,9 @@ class AppViewModel : ViewModel() {
             // Сыгранное в такт услышанному лежит в записи позже на задержку выхода — берём звук с этим сдвигом.
             // (Ресемплинг пишет выход приложения напрямую — задержки нет.)
             if (!fromEngine) s += loopCompNanos()
-            if (s < clipT0) s += barNs.toLong()   // звука до этой черты нет — со следующего такта
+            // Звука до этой черты нет — со следующего такта. Допуск: черта и начало записи могут разойтись
+            // на доли миллисекунды из-за округления, и тогда конец петли стал бы тишиной.
+            if (clipT0 - s > 5_000_000L) s += barNs.toLong()
             cutFrom = s
         }
         // Ровно target кадров от начала петли: лишнее отрезаем, недостающее — тишиной.
@@ -759,8 +761,12 @@ class AppViewModel : ViewModel() {
         val data = FloatArray(target * ch)
         if (from < recorded.data.size) System.arraycopy(recorded.data, from, data, 0, minOf(recorded.data.size - from, data.size))
         var clip = SampleClip(data, ch, sr)
-        // LOOP QUANTIZE (SETUP): удары — на ближайшую 1/16 круга
-        if (com.example.mpcpad.Settings.loopQuantize) clip = com.example.mpcpad.sample.LoopQuantize.apply(clip, beats * 4)
+        // LOOP QUANTIZE (SETUP): удары сдвигаются к сетке
+        if (com.example.mpcpad.Settings.loopQuantize) {
+            clip = com.example.mpcpad.sample.LoopQuantize.apply(
+                clip, beats, com.example.mpcpad.Settings.loopQuantGrid, com.example.mpcpad.Settings.loopQuantStrength,
+            )
+        }
         // микро-фейды на стыке круга — без щелчка
         val fade = (sr / 400).coerceAtMost(clip.frames / 4)
         com.example.mpcpad.audio.SampleOps.fadeIn(clip.data, ch, 0, fade)
@@ -788,7 +794,6 @@ class AppViewModel : ViewModel() {
         loopOriginals[pad] = clip       // целиком — для деления на части
         loopParts[pad] = 0b1111
         partBounds.remove(pad)
-        if (first) applyLoopLength()
         startSequencerOnBar()
         flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
 
@@ -1011,7 +1016,6 @@ class AppViewModel : ViewModel() {
         partsEditPad = -1
         loopRecPad = -1
         loopClosing = false
-        com.example.mpcpad.Settings.loopBeats = 0
         undoStack.clear()
         canUndo = false
         projectName = ""

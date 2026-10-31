@@ -74,7 +74,9 @@ object PadSampler {
             val n = frames * channels
             val data = FloatArray(n) { i -> (shorts[i] / 32768f * gain).coerceIn(-1f, 1f) }
             if (shorts.none { it.toInt() != 0 }) {
-                val reason = if (source == CaptureSource.INTERNAL) {
+                val reason = if (asLoop && source == CaptureSource.INTERNAL) {
+                    "Вход INT слышит только другие приложения, и там тишина. Свой звук в луп: KAOSS → RESMPL"
+                } else if (source == CaptureSource.INTERNAL) {
                     "Источник молчит: ничего не играло или приложение запрещает захват (DRM)"
                 } else {
                     "Ничего не записано: тишина"
@@ -122,8 +124,10 @@ object PadSampler {
             return
         }
         // Обрезка могла вернуть тот же объект — копируем, чтобы фейды не испортили исходник.
-        val clip = if (trimmed.clip === raw) raw.copy() else trimmed.clip
         val msFrames = rate / 1000
+        // Обрезка съела почти всё — лучше целая запись, чем никакой.
+        val keepRaw = trimmed.clip.frames < msFrames * MIN_FRAMES_MS
+        val clip = if (trimmed.clip === raw || keepRaw) raw.copy() else trimmed.clip
         if (clip.frames < msFrames * MIN_FRAMES_MS) {
             _events.emit(SamplerEvent.Rejected(pad, "Слишком короткая запись"))
             return
@@ -132,7 +136,9 @@ object PadSampler {
         SampleOps.fadeIn(clip.data, channels, 0, minOf(n, msFrames))
         SampleOps.fadeOut(clip.data, channels, maxOf(0, n - msFrames * 3), n)
         if (assignToPad(pad, clip, name)) {
-            _events.emit(SamplerEvent.Assigned(pad, name, clip, trimmed.headMs, trimmed.tailMs, capped))
+            val headMs = if (keepRaw) 0L else trimmed.headMs
+            val tailMs = if (keepRaw) 0L else trimmed.tailMs
+            _events.emit(SamplerEvent.Assigned(pad, name, clip, headMs, tailMs, capped))
         } else {
             _events.emit(SamplerEvent.Rejected(pad, "Не удалось назначить на пад " + padName(pad)))
         }

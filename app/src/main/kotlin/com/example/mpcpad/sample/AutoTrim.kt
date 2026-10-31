@@ -27,6 +27,7 @@ object AutoTrim {
     const val HEAD_MARGIN_MS = 1
     const val TAIL_MARGIN_MS = 20
     private const val WINDOW_MS = 5
+    private const val CLICK_MS = 60
 
     class Result(val clip: SampleClip, val headMs: Long, val tailMs: Long)
 
@@ -58,13 +59,24 @@ object AutoTrim {
         val peakDb = db(peak)
         var thrDb = maxOf(thresholdDb, minOf(db(noise) + 10f, peakDb - 30f), peakDb - 45f)
         thrDb = minOf(thrDb, peakDb - 6f)   // громкий звук никогда не считается тишиной
-        val thr = 10f.pow(thrDb / 20f)
+        var thr = 10f.pow(thrDb / 20f)
 
         var first = -1
         for (w in 0 until nWin) if (rms[w] >= thr) { first = w; break }
         if (first < 0) return null
         var last = first
         for (w in nWin - 1 downTo first) if (rms[w] >= thr) { last = w; break }
+
+        // Выше порога только щелчок (палец по стеклу рядом с микрофоном громче самого звука):
+        // опускаем порог к шумовому фону, иначе от записи останется один щелчок.
+        if ((last - first + 1) * WINDOW_MS < CLICK_MS) {
+            val low = 10f.pow(maxOf(thresholdDb, db(noise) + 6f) / 20f)
+            if (low < thr) {
+                thr = low
+                for (w in 0 until nWin) if (rms[w] >= thr) { first = w; break }
+                for (w in nWin - 1 downTo first) if (rms[w] >= thr) { last = w; break }
+            }
+        }
 
         fun amp(i: Int): Float {
             var m = 0f

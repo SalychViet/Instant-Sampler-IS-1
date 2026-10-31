@@ -44,6 +44,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mpcpad.R
 import com.example.mpcpad.Edition
@@ -97,14 +100,50 @@ fun MpcRoot(actions: SampleActions) {
     val recLevel = remember { mutableFloatStateOf(0f) }
     val holdPad = remember { mutableIntStateOf(-1) }
     val loopFrame = remember { mutableLongStateOf(0L) }
-    if (Edition.LOOPER) {
-        LaunchedEffect(Settings.linkToLoop, Settings.loopBeats, app.seqPattern) { app.applyLoopLength() }
-    }
     /** Как был нажат каждый пад: 0 — никак, 1 — нота, 2 — запись семпла, 3 — удержание шага. */
     val route = remember { IntArray(64) }
     /** ISL-1: удержание пада-петли уже открыло её части (тогда отпускание не включает/выключает петлю). */
     val partsHeld = remember { BooleanArray(64) }
     val cap by PadCapture.state.collectAsState()
+    val lifeState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val foreground = lifeState.isAtLeast(Lifecycle.State.STARTED)
+    val inputRetries = remember { IntArray(1) }
+
+    fun armSample() {
+        if (app.srcSelf) app.selfArmed = true else actions.armPadCapture()
+    }
+
+    fun sampleOff() {
+        app.selfArmed = false
+        if (PadCapture.isBusy) actions.disarmPadCapture()
+    }
+
+    /** Смена источника: включённый SAMPLE открывается заново уже с нового входа (лупер — сам, см. ниже). */
+    fun changeSource(change: () -> Unit) {
+        val sampling = !app.looperMode && (PadCapture.isBusy || app.selfArmed)
+        change()
+        if (!sampling) return
+        sampleOff()
+        scope.launch {
+            // ждём, пока старый вход закроется (до 2 с)
+            var tries = 0
+            while (PadCapture.isBusy && tries++ < 40) delay(50)
+            if (!app.looperMode) armSample()
+        }
+    }
+
+    // Лупер всегда держит вход открытым: вход мог закрыться после сворачивания, смены источника или
+    // быстрого выкл/вкл, пока прошлая запись ещё завершалась. Ошибку не повторяем без конца.
+    if (Edition.LOOPER) LaunchedEffect(app.looperMode, app.srcSelf, app.sampleSource, cap.armed, cap.arming, foreground) {
+        if (cap.armed) inputRetries[0] = 0
+        if (!app.looperMode || !foreground || app.srcSelf) return@LaunchedEffect
+        if (cap.armed && cap.source != app.sampleSource) {
+            actions.disarmPadCapture()
+        } else if (!cap.armed && !cap.arming && !PadCapture.isBusy && inputRetries[0] < 2) {
+            inputRetries[0]++
+            actions.armPadCapture()
+        }
+    }
 
     var eraseHold: Job? = null
     var eraseHeld = false
@@ -195,6 +234,8 @@ fun MpcRoot(actions: SampleActions) {
             when (e) {
                 is SamplerEvent.Assigned -> {
                     app.resetRegion(e.pad)
+                    if (Settings.trimStart) app.trimPad(e.pad, head = true, on = true)
+                    if (Settings.trimEnd) app.trimPad(e.pad, head = false, on = true)
                     if (app.mode == Mode.PAD) app.selected = e.pad
                     val trim = e.headTrimMs + e.tailTrimMs
                     app.flash(
@@ -202,6 +243,10 @@ fun MpcRoot(actions: SampleActions) {
                         2500,
                     )
                     if (e.capped) app.showToast("Запись/файл длиннее лимита — обрезано")
+                    // Семпл на паде готов — SAMPLE выключается (если кнопку не держат для следующих падов).
+                    if (e.name.startsWith("REC_") && !app.looperMode && !app.sampleHeld &&
+                        PadCapture.holdingPad < 0 && app.selfHoldPad < 0
+                    ) sampleOff()
                 }
                 is SamplerEvent.Rejected -> {
                     if (e.pad == app.loopRecPad) {
@@ -376,7 +421,8 @@ fun MpcRoot(actions: SampleActions) {
                 }
 
                 kShown[0] = x; kShown[1] = y; kShown[2] = if (t) 1f else 0f
-                app.shownProgram = prog
+                // Без касания автоматизация не звучит — на экране выбранная программа, а не записанная.
+                app.shownProgram = if (t) prog else app.kaossProgram
                 val mix = app.kaossMix.getOrElse(prog) { 1f }
                 if (x != sentX || y != sentY || t != sentT || prog != sentProg || mix != sentMix) {
                     AudioEngine.kaoss(prog, x, y, t, mix)
@@ -459,10 +505,12 @@ fun MpcRoot(actions: SampleActions) {
      * Пад, на котором петля уже есть, касанием включается/выключается — случайно не перезапишется
      * (перезаписать: сначала ERASE).
      */
+    val resampleLoopStart = remember { arrayOfNulls<Job>(1) }
+
     fun looperTap(global: Int) {
         val rec = app.loopRecPad
         val hasLoop = app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null
-        val fromMix = app.resampleLoop && app.kaossMode
+        val fromMix = app.srcSelf
         when {
             rec < 0 && !hasLoop && fromMix -> {
                 // Ресемплинг в петлю: с первой доли следующего такта (если сетка идёт), с выхода приложения.
@@ -473,16 +521,29 @@ fun MpcRoot(actions: SampleActions) {
                 app.loopRecPad = global
                 app.loopRecFromEngine = true
                 app.loopRecStartNanos = start
-                scope.launch {
+                resampleLoopStart[0] = scope.launch {
                     delay(((start - now) / 1_000_000).coerceAtLeast(0))
                     AudioEngine.resampleStart()
                 }
-                app.flash("● RESAMPLE LOOP ${padName(global)} · TAP AGAIN TO CLOSE", 30_000)
+                app.flash(
+                    if (start > now) "RESAMPLE LOOP ${padName(global)} · STARTS ON THE BAR · TAP = CANCEL"
+                    else "● RESAMPLE LOOP ${padName(global)} · TAP AGAIN TO CLOSE",
+                    30_000,
+                )
             }
             rec == global && app.loopRecFromEngine -> {
                 if (app.loopClosing) return
                 val now = System.nanoTime()
-                val end = maxOf(app.loopRecEndFor(now), app.loopRecStartNanos + 1)
+                if (now < app.loopRecStartNanos) {
+                    // Запись ещё не началась — касание её отменяет, а не ждёт лишний такт.
+                    resampleLoopStart[0]?.cancel()
+                    app.loopRecPad = -1
+                    app.loopRecFromEngine = false
+                    flash("RESAMPLE LOOP CANCELLED")
+                    return
+                }
+                // Закрываем сразу на пройденной черте; следующую ждём, только если до неё меньше четверти такта.
+                val end = maxOf(app.loopRecEndFor(now, waitFrom = 0.75), app.loopRecStartNanos + 1)
                 app.loopRecEndNanos = end
                 app.loopClosing = true
                 val pad = global
@@ -632,7 +693,7 @@ fun MpcRoot(actions: SampleActions) {
                     // ISL-1: пад в режиме LOOP включается и выключается касанием (держать не нужно).
                     Edition.LOOPER && app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
                         longPress[global] = scope.launch {
-                            delay(3000)
+                            delay(2000)
                             app.padMenu = global
                         }
                         app.loopToggle(global)
@@ -644,9 +705,18 @@ fun MpcRoot(actions: SampleActions) {
                             }
                         )
                     }
-                    PadCapture.isArmed -> {
+                    // SRC SELF: пока держат пад, пишется выход приложения; остальные пады в это время играют.
+                    app.selfArmed && !app.looperMode && app.selfHoldPad < 0 && !app.resampling -> {
+                        route[global] = 6
+                        app.selfHoldPad = global
+                        if (app.sampleHeld) app.sampleTook = true
+                        AudioEngine.resampleStart()
+                    }
+                    // В LOOPER вход открыт для петель: пад с семплом играет, а не записывается.
+                    PadCapture.isArmed && !app.looperMode -> {
                         if (PadCapture.holdingPad < 0) {
                             route[global] = 2
+                            if (app.sampleHeld) app.sampleTook = true
                             PadCapture.begin(global)
                         }
                     }
@@ -655,11 +725,11 @@ fun MpcRoot(actions: SampleActions) {
                         AudioEngine.noteOn(global, vel)
                         if (Edition.LOOPER) app.captureHit(global, vel)   // CAPTURE помнит сыгранное
                         // Долгое нажатие — скопировать семпл; касание пустого пада вставит копию.
-                        // ISL-1: удержание 3 с — меню пада (COPY / SLICE / PTCH ENV).
+                        // ISL-1: удержание 2 с — меню пада (COPY / SLICE / PTCH ENV).
                         if (PadLibrary.infos[global] != null) {
                             longPress[global] = scope.launch {
                                 if (Edition.LOOPER) {
-                                    delay(3000)
+                                    delay(2000)
                                     app.padMenu = global
                                 } else {
                                     delay(700)
@@ -761,6 +831,15 @@ fun MpcRoot(actions: SampleActions) {
                 if (Edition.LOOPER) app.captureRelease(global)
             }
             2 -> PadCapture.end()
+            6 -> {
+                app.selfHoldPad = -1
+                AudioEngine.resampleStop()
+                scope.launch {
+                    val data = withContext(Dispatchers.Default) { AudioEngine.resampleRead() }
+                    if (data.isEmpty()) flash("RESAMPLE: EMPTY")
+                    else PadSampler.importClip(global, SampleClip(data, 2, AudioEngine.sampleRate()), "REC_" + padName(global), false)
+                }
+            }
             3 -> {
                 val step = app.stepBar * STEPS_PER_BAR + global % 16
                 if (!stepAdded[global] && !app.heldStepEdited) {
@@ -826,8 +905,9 @@ fun MpcRoot(actions: SampleActions) {
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) else Lcd(
                     app = app,
-                    recording = holdPad.intValue >= 0,
+                    recording = holdPad.intValue >= 0 || app.selfHoldPad >= 0,
                     armedLabel = when {
+                        app.selfArmed -> "ARM:SELF"
                         cap.arming -> "ARMING"
                         cap.armed -> if (cap.source == CaptureSource.INTERNAL) "ARM:INT" else "ARM:MIC"
                         else -> null
@@ -856,6 +936,11 @@ fun MpcRoot(actions: SampleActions) {
                     SoftKey(1, "PAD", Modifier.weight(1f), active = app.mode == Mode.PAD) {
                         finishSongRec()
                         app.switchView(Mode.PAD, false); app.soundPick = false; app.eraseLatch = false; app.copySource = -1
+                        // Вошли в PAD играть: включённый SAMPLE не должен записывать поверх падов.
+                        if ((PadCapture.isBusy || app.selfArmed) && !app.looperMode) {
+                            sampleOff()
+                            flash("SAMPLE OFF")
+                        }
                     }
                     SoftKey(2, "SEQ", Modifier.weight(1f), active = app.mode == Mode.SEQ && !app.stepView) {
                         finishSongRec()
@@ -1001,13 +1086,13 @@ fun MpcRoot(actions: SampleActions) {
                             app.motionRecording = -1
                             app.kTouch = false
                         }
-                        flash(if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
+                        // ISL-1: KAOSS переключает SRC на INT (выбранный SELF не трогаем; дальше — вручную).
+                        val toInt = Edition.LOOPER && app.kaossMode && !app.srcSelf && app.loopRecPad < 0 &&
+                            app.sampleSource != CaptureSource.INTERNAL
+                        if (toInt) changeSource { app.sampleSource = CaptureSource.INTERNAL }
+                        flash(if (toInt) "KAOSS · SRC: INT" else if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
                     }
                     HwButton("LEN", Modifier.weight(1f), height = 28.dp) {
-                        if (Edition.LOOPER && Settings.linkToLoop) {
-                            flash("LEN = LOOP LENGTH (SETUP › LINK TO LOOP)")
-                            return@HwButton
-                        }
                         val bars = app.patternBars % Edition.maxBars + 1
                         val pat = app.seqPattern
                         val old = app.patternBars
@@ -1115,7 +1200,7 @@ fun MpcRoot(actions: SampleActions) {
                     }
                     if (app.kaossMode) HwButton(
                         "RESMPL", Modifier.weight(1f),
-                        led = app.resampling || app.resampleClip != null || (Edition.LOOPER && app.looperMode && app.resampleLoop),
+                        led = app.resampling || app.resampleClip != null || (Edition.LOOPER && app.looperMode && app.srcSelf),
                         ledColor = if (app.resampling || (app.loopRecFromEngine && app.loopRecPad >= 0)) Skin.LedRed else Skin.LedAmber,
                         height = 28.dp,
                         onPress = { down ->
@@ -1144,9 +1229,9 @@ fun MpcRoot(actions: SampleActions) {
                             if (app.loopRecPad >= 0) {
                                 flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
                             } else {
-                                app.resampleLoop = !app.resampleLoop
+                                app.srcSelf = !app.srcSelf
                                 app.flash(
-                                    if (app.resampleLoop) "LOOPER ← MIX + FX · TAP AN EMPTY PAD" else "LOOPER ← INPUT (${if (app.sampleSource == CaptureSource.MIC) "MIC" else "INT"})",
+                                    if (app.srcSelf) "LOOPER ← MIX + FX · TAP AN EMPTY PAD" else "LOOPER ← INPUT (${if (app.sampleSource == CaptureSource.MIC) "MIC" else "INT"})",
                                     2500,
                                 )
                             }
@@ -1159,44 +1244,70 @@ fun MpcRoot(actions: SampleActions) {
                         }
                     } else HwButton(
                         "SAMPLE", Modifier.weight(1f),
-                        led = cap.armed || cap.arming, ledColor = if (cap.armed) Skin.LedRed else Skin.LedAmber,
+                        led = cap.armed || cap.arming || app.selfArmed, ledColor = if (cap.armed || app.selfArmed) Skin.LedRed else Skin.LedAmber,
                         height = 28.dp,
-                    ) {
-                        if (Edition.LOOPER && app.looperMode) {
-                            // ISL-1: вход уже открыт лупером — просто переходим к обычной записи семплов.
-                            if (app.loopRecPad >= 0) {
-                                flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
-                            } else {
-                                app.looperMode = false
-                                if (!PadCapture.isBusy) actions.armPadCapture()
-                                app.flash("SAMPLE: HOLD A PAD TO RECORD · LOOPER OFF", 2500)
+                        // Нажатие включает запись одного семпла; пока кнопку держат — пишется в несколько падов подряд.
+                        onPress = { down ->
+                            if (down) {
+                                app.sampleHeld = true
+                                app.sampleTook = false
+                                app.sampleArmedByPress = !PadCapture.isBusy && !app.selfArmed && !(Edition.LOOPER && app.looperMode)
+                                if (app.sampleArmedByPress) {
+                                    app.switchView(Mode.PAD, false)
+                                    armSample()
+                                    flash("HOLD A PAD TO RECORD")
+                                }
+                            } else if (app.sampleHeld) {
+                                app.sampleHeld = false
+                                if (Edition.LOOPER && app.looperMode) {
+                                    // ISL-1: вход уже открыт лупером — просто переходим к обычной записи семплов.
+                                    if (app.loopRecPad >= 0) {
+                                        flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
+                                    } else {
+                                        app.looperMode = false
+                                        if (app.srcSelf) {
+                                            if (PadCapture.isBusy) actions.disarmPadCapture()
+                                            app.selfArmed = true
+                                        } else if (!PadCapture.isBusy) actions.armPadCapture()
+                                        app.flash("SAMPLE: HOLD A PAD TO RECORD · LOOPER OFF", 2500)
+                                    }
+                                } else if (app.sampleTook) {
+                                    // Запись на паде ещё идёт — SAMPLE выключится, когда семпл будет готов.
+                                    if (PadCapture.holdingPad < 0 && app.selfHoldPad < 0) sampleOff()
+                                    flash("SAMPLE OFF")
+                                } else if (!app.sampleArmedByPress && (PadCapture.isBusy || app.selfArmed)) {
+                                    sampleOff()
+                                    flash("SAMPLE OFF")
+                                }
                             }
-                        } else if (PadCapture.isBusy) {
-                            actions.disarmPadCapture()
-                            flash("SAMPLE OFF")
-                        } else {
-                            app.switchView(Mode.PAD, false)
-                            actions.armPadCapture()
-                            flash("HOLD A PAD TO RECORD")
-                        }
-                    }
+                        },
+                    ) {}
                     HwButton(
-                        if (app.sampleSource == CaptureSource.MIC) "SRC:MIC" else "SRC:INT", Modifier.weight(1f),
-                        // ISL-1: при включённом LOOPER источник переключается «на ходу» (вход переоткрывается)
-                        enabled = !PadCapture.isBusy || (Edition.LOOPER && app.looperMode && app.loopRecPad < 0),
+                        "SRC", Modifier.weight(1f),
+                        glyph = when {
+                            app.srcSelf -> Glyph.SELF
+                            app.sampleSource == CaptureSource.MIC -> Glyph.MIC
+                            else -> Glyph.CASSETTE
+                        },
+                        // Источник переключается всегда, кроме самой записи (вход переоткрывается)
+                        enabled = app.loopRecPad < 0 && holdPad.intValue < 0 && app.selfHoldPad < 0,
                         height = 28.dp,
                     ) {
-                        app.sampleSource = if (app.sampleSource == CaptureSource.MIC) CaptureSource.INTERNAL else CaptureSource.MIC
-                        flash(if (app.sampleSource == CaptureSource.MIC) "SOURCE: MIC" else "SOURCE: INTERNAL AUDIO")
-                        if (Edition.LOOPER && app.looperMode && PadCapture.isBusy) {
-                            actions.disarmPadCapture()
-                            scope.launch {
-                                // ждём, пока старый вход закроется (до 2 с), и открываем новый
-                                var tries = 0
-                                while (PadCapture.isBusy && tries++ < 40) delay(50)
-                                if (app.looperMode) actions.armPadCapture()
+                        changeSource {
+                            when {
+                                app.srcSelf -> { app.srcSelf = false; app.sampleSource = CaptureSource.MIC }
+                                app.sampleSource == CaptureSource.MIC -> app.sampleSource = CaptureSource.INTERNAL
+                                Edition.LOOPER -> app.srcSelf = true
+                                else -> app.sampleSource = CaptureSource.MIC
                             }
                         }
+                        flash(
+                            when {
+                                app.srcSelf -> "SOURCE: SELF (APP OUTPUT)"
+                                app.sampleSource == CaptureSource.MIC -> "SOURCE: MIC"
+                                else -> "SOURCE: INTERNAL AUDIO"
+                            }
+                        )
                     }
                     HwButton("T-HEAD", Modifier.weight(1f), led = Settings.trimStart, height = 28.dp) {
                         Settings.trimStart = !Settings.trimStart
@@ -1278,7 +1389,7 @@ fun MpcRoot(actions: SampleActions) {
                         else -> {
                             app.switchView(Mode.PAD, false)
                             app.kaossMode = false
-                            if (!PadCapture.isBusy) actions.armPadCapture()
+                            app.selfArmed = false
                             app.looperMode = true
                             app.flash("LOOPER ON · EMPTY PAD = REC · LOOP PAD = PLAY/STOP", 3000)
                         }
@@ -1340,7 +1451,8 @@ fun MpcRoot(actions: SampleActions) {
                     loopFrame.longValue   // читаем такт кадра — круг перерисовывается
                     when {
                         app.mode != Mode.PAD -> Float.NaN
-                        g == app.loopRecPad -> LOOP_RING_REC
+                        g == app.loopRecPad ->
+                            if (System.nanoTime() < app.loopRecStartNanos) LOOP_RING_WAIT else LOOP_RING_REC
                         g in app.loopsWaiting -> LOOP_RING_WAIT
                         app.pads[g].mode != PlayMode.LOOP || PadLibrary.infos[g] == null -> Float.NaN
                         else -> app.loopsPlaying[g]?.let { t0 ->
@@ -1502,7 +1614,7 @@ fun MpcRoot(actions: SampleActions) {
         // ---- ввод темпа цифрами ----
         if (app.tempoEntry) TempoEntry(app, Modifier.fillMaxSize())
 
-        // ---- ISL-1: меню пада (удержание 3 с) ----
+        // ---- ISL-1: меню пада (удержание 2 с) ----
         if (Edition.LOOPER && app.padMenu >= 0) {
             PadMenu(app, onCopy = { p -> scope.launch { copyPad(p) } }, Modifier.fillMaxSize())
         }

@@ -248,7 +248,7 @@ internal fun Fader(
     }
 }
 
-internal enum class Glyph { NONE, PLAY, REC, STOP }
+internal enum class Glyph { NONE, PLAY, REC, STOP, MIC, CASSETTE, SELF }
 
 /**
  * Кнопка «железа»: светлый колпачок с подписью, светодиод-индикатор в углу.
@@ -296,7 +296,7 @@ internal fun HwButton(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             if (glyph != Glyph.NONE) {
-                Canvas(Modifier.size(9.dp)) {
+                Canvas(Modifier.size(if (glyph == Glyph.MIC || glyph == Glyph.CASSETTE || glyph == Glyph.SELF) 14.dp else 9.dp)) {
                     when (glyph) {
                         Glyph.PLAY -> drawPath(
                             Path().apply {
@@ -306,6 +306,49 @@ internal fun HwButton(
                         )
                         Glyph.STOP -> drawRect(ink, Offset(size.width * 0.1f, size.height * 0.1f), Size(size.width * 0.8f, size.height * 0.8f))
                         Glyph.REC -> drawCircle(if (lit) Color.White else Color(0xFFB3141A), radius = size.minDimension / 2f)
+                        Glyph.MIC -> {
+                            val w = size.width
+                            val h = size.height
+                            val line = w * 0.09f
+                            // капсула, дуга держателя, ножка и подставка
+                            drawRoundRect(ink, Offset(w * 0.34f, 0f), Size(w * 0.32f, h * 0.6f), CornerRadius(w * 0.16f))
+                            drawArc(
+                                ink, 0f, 180f, false, Offset(w * 0.2f, h * 0.2f), Size(w * 0.6f, h * 0.56f),
+                                style = Stroke(line),
+                            )
+                            drawLine(ink, Offset(w * 0.5f, h * 0.76f), Offset(w * 0.5f, h * 0.96f), line)
+                            drawLine(ink, Offset(w * 0.3f, h * 0.96f), Offset(w * 0.7f, h * 0.96f), line)
+                        }
+                        Glyph.CASSETTE -> {
+                            val w = size.width
+                            val h = size.height
+                            val line = w * 0.08f
+                            // корпус, две катушки и лента между ними
+                            drawRoundRect(
+                                ink, Offset(0f, h * 0.16f), Size(w, h * 0.68f), CornerRadius(w * 0.08f), style = Stroke(line),
+                            )
+                            drawCircle(ink, w * 0.11f, Offset(w * 0.3f, h * 0.44f))
+                            drawCircle(ink, w * 0.11f, Offset(w * 0.7f, h * 0.44f))
+                            drawLine(ink, Offset(w * 0.3f, h * 0.44f), Offset(w * 0.7f, h * 0.44f), line)
+                            drawLine(ink, Offset(w * 0.22f, h * 0.84f), Offset(w * 0.3f, h * 0.66f), line)
+                            drawLine(ink, Offset(w * 0.3f, h * 0.66f), Offset(w * 0.7f, h * 0.66f), line)
+                            drawLine(ink, Offset(w * 0.7f, h * 0.66f), Offset(w * 0.78f, h * 0.84f), line)
+                        }
+                        Glyph.SELF -> {
+                            val w = size.width
+                            val line = w * 0.11f
+                            // круг со стрелкой: звук приходит сам в себя
+                            drawArc(
+                                ink, -40f, 300f, false, Offset(w * 0.14f, w * 0.14f), Size(w * 0.72f, w * 0.72f),
+                                style = Stroke(line),
+                            )
+                            drawPath(
+                                Path().apply {
+                                    moveTo(w * 0.98f, w * 0.1f); lineTo(w * 0.98f, w * 0.5f); lineTo(w * 0.58f, w * 0.38f); close()
+                                },
+                                ink,
+                            )
+                        }
                         Glyph.NONE -> {}
                     }
                 }
