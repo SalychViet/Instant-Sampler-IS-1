@@ -7,7 +7,7 @@ def tip(t, label):
     return f'<div class="note tip"><b>{label}.</b> {t}</div>'
 
 
-MARKS = [(1, 748, 665), (2, 748, 747), (3, 390, 834), (4, 272, 834), (5, 390, 760), (6, 1853, 640), (7, 1890, 774), (8, 1240, 540)]
+MARKS = [(1, 748, 626), (2, 748, 708), (3, 390, 834), (4, 272, 834), (5, 390, 760), (6, 1853, 640), (7, 1890, 774), (8, 1240, 540), (9, 748, 786)]
 
 
 def pages_ru():
@@ -27,7 +27,15 @@ def pages_ru():
     (6, "Фейдеры", "MAIN — общая громкость, SEQ — секвенсор, LOOPER — все петли, TRIM — порог тишины. Уровень входа — в SETUP."),
     (7, "SETUP", "настройки петель (последняя страница)."),
     (8, "Пады", "кольцо на паде показывает фазу петли, запись и ожидание такта."),
-])}'''),
+    (9, "MUTE", "глушит выбранные пады."),
+])}
+<h2>MUTE</h2>
+{table(["Действие", "Результат"], [
+    ["Нажать <b>MUTE</b>", "кнопка красная; касание пада глушит его или открывает, заглушённый пад красный"],
+    ["Нажать <b>MUTE</b> ещё раз", "выключено, все пады открыты"],
+    ["Удерживать <b>MUTE</b>", "касание и свайп как у <b>ERASE</b>: пад, ряд или столбец. После отпускания пады играют, заглушённые молчат; нажатие открывает все"],
+], "plain")}
+<p>Заглушённая петля идёт беззвучно и после открытия вступает в такт. Заглушённые пады не пишутся в SELF и EXPORT и не сохраняются в проекте.</p>'''),
         page(f'''
 <h2>Запись петель</h2>
 <div class="flow">
@@ -127,7 +135,15 @@ Everything else works as in the IS-1 manual. This addendum covers only what is d
     (6, "Faders", "MAIN is the master, SEQ the sequencer, LOOPER all loops, TRIM the silence threshold. Input level is in SETUP."),
     (7, "SETUP", "loop settings (last page)."),
     (8, "Pads", "the ring on a pad shows loop phase, recording and waiting for the bar."),
-])}'''),
+    (9, "MUTE", "silences chosen pads."),
+])}
+<h2>MUTE</h2>
+{table(["Action", "Result"], [
+    ["Press <b>MUTE</b>", "it turns red; touching a pad mutes or unmutes it, a muted pad is red"],
+    ["Press <b>MUTE</b> again", "off, all pads open"],
+    ["Hold <b>MUTE</b>", "touch and swipe as with <b>ERASE</b>: a pad, row or column. After release pads play and muted ones stay silent; a press opens them all"],
+], "plain")}
+<p>A muted loop keeps running silently and comes back in time. Muted pads are not recorded by SELF or EXPORT, and muting is not saved in the project.</p>'''),
         page(f'''
 <h2>Recording loops</h2>
 <div class="flow">

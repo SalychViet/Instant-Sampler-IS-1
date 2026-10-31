@@ -630,6 +630,21 @@ fun MpcRoot(actions: SampleActions) {
 
     /** ERASE удерживается и палец проехал по падам: по горизонтали — весь ряд, по вертикали — столбец. */
     fun padSlide(from: Int, to: Int) {
+        if (app.mode == Mode.PAD && app.muteHolding) {
+            // MUTE удерживается: ряд или столбец получает то же состояние, что и первый пад.
+            val state = app.isMuted(from)
+            val b = to / 16
+            val row = (from % 16) / 4 == (to % 16) / 4
+            val col = (from % 16) % 4 == (to % 16) % 4
+            val list = when {
+                row -> (0 until 4).map { b * 16 + (to % 16) / 4 * 4 + it }
+                col -> (0 until 4).map { b * 16 + it * 4 + (to % 16) % 4 }
+                else -> listOf(to)
+            }
+            for (p in list) if (PadLibrary.infos[p] != null) app.setMuted(p, state)
+            flash((if (row) "ROW" else if (col) "COLUMN" else padName(to)) + if (state) " MUTED" else " UNMUTED")
+            return
+        }
         if (app.mode != Mode.PAD || !app.eraseHolding) return
         val bank = to / 16
         val fr = (from % 16) / 4
@@ -666,6 +681,16 @@ fun MpcRoot(actions: SampleActions) {
             return
         }
         when {
+            app.mode == Mode.PAD && (app.muteHolding || app.muteLatch) -> {
+                route[global] = 0
+                if (app.muteHolding) app.muteTook = true
+                if (PadLibrary.infos[global] == null) {
+                    flash("${padName(global)} EMPTY")
+                } else {
+                    app.setMuted(global, !app.isMuted(global))
+                    flash(padName(global) + if (app.isMuted(global)) " MUTED" else " UNMUTED")
+                }
+            }
             app.mode == Mode.PAD && app.eraseHolding -> {
                 // ERASE удерживается: касание пада — сразу удалить (свайп — ряд/столбец, см. padSlide).
                 route[global] = 0
@@ -1416,6 +1441,33 @@ fun MpcRoot(actions: SampleActions) {
                         else -> app.capture(context)
                     }
                 }
+                // Нажатие: красная, касание пада глушит его; выключение открывает все пады.
+                // Удержание: касания и свайпы как у ERASE, после отпускания пады играют, заглушённые молчат.
+                if (Edition.LOOPER) HwButton(
+                    "MUTE", Modifier.fillMaxWidth(),
+                    led = app.muteLatch || app.muteHolding || app.muteMask != 0L, ledColor = Skin.LedRed,
+                    height = 28.dp,
+                    labelSize = 7.5.sp,
+                    onPress = { down ->
+                        if (down) {
+                            app.switchView(Mode.PAD, false)
+                            app.muteTook = false
+                            app.muteHolding = true
+                            flash("MUTE: TOUCH OR SWIPE PADS")
+                        } else if (app.muteHolding) {
+                            app.muteHolding = false
+                            if (!app.muteTook) {
+                                if (app.muteLatch || app.muteMask != 0L) {
+                                    app.unmuteAll()
+                                    flash("MUTE OFF · ALL PADS OPEN")
+                                } else {
+                                    app.muteLatch = true
+                                    flash("MUTE: TOUCH A PAD")
+                                }
+                            }
+                        }
+                    },
+                ) {}
             }
 
             // ================= пады =================
@@ -1447,6 +1499,7 @@ fun MpcRoot(actions: SampleActions) {
                 recPad = { holdPad.intValue },
                 // Пока держат CHOKE — на падах номер группы (G1…G4), чтобы разные группы было видно.
                 badge = { g -> if (app.chokeHold && app.pads[g].choke > 0) "G${app.pads[g].choke}" else null },
+                muted = { app.muteMask },
                 loopRing = if (!Edition.LOOPER) ({ Float.NaN }) else ({ g ->
                     loopFrame.longValue   // читаем такт кадра — круг перерисовывается
                     when {

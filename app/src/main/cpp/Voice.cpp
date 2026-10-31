@@ -56,7 +56,7 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
     const double off = std::clamp(offset01, 0.0, 0.999999) * (en - st);
     pos_ = p.reverse ? en - 1e-6 - off : st + off;
 
-    const float v = std::clamp(velocity, 0.0f, 1.0f) * std::max(p.volume, 0.0f);
+    const float v = p.muted ? 0.0f : std::clamp(velocity, 0.0f, 1.0f) * std::max(p.volume, 0.0f);
     const float ang = (std::clamp(p.pan, -1.0f, 1.0f) + 1.0f) * kQuarterPi;  // constant power
     gainL_ = v * std::cos(ang);
     gainR_ = v * std::sin(ang);

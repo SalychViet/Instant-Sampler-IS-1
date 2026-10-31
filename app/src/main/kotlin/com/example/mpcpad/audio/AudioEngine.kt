@@ -19,6 +19,7 @@ object PadParam {
     const val PENV_ON = 11  // огибающая высоты (ISL-1): 0/1
     const val PENV_X0 = 12  // 5 точек: положение 0..1 (X0..X4 подряд)
     const val PENV_Y0 = 17  // значения, полутоны -24..24 (Y0..Y4 подряд)
+    const val MUTE = 22     // ISL-1: 0/1
 }
 
 /** Должны совпадать с PlayMode в Types.h. */

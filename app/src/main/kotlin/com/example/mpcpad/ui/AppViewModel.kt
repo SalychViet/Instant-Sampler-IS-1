@@ -359,6 +359,28 @@ class AppViewModel : ViewModel() {
         applyLoopDiv(pad, bpm)
     }
 
+    // ---- ISL-1 MUTE ----
+    /** Кнопка включена: касание пада глушит его или открывает. */
+    var muteLatch by mutableStateOf(false)
+    /** Кнопку держат: касание и свайп глушат пады, пады остаются заглушёнными после отпускания. */
+    var muteHolding by mutableStateOf(false)
+    /** За это нажатие MUTE уже трогали пады. */
+    var muteTook = false
+    /** Заглушённые пады: бит i — пад i. */
+    var muteMask by mutableLongStateOf(0L)
+
+    fun isMuted(pad: Int) = (muteMask shr pad) and 1L != 0L
+
+    fun setMuted(pad: Int, on: Boolean) {
+        muteMask = if (on) muteMask or (1L shl pad) else muteMask and (1L shl pad).inv()
+        AudioEngine.setParam(pad, PadParam.MUTE, if (on) 1f else 0f)
+    }
+
+    fun unmuteAll() {
+        for (p in 0 until 64) if (isMuted(p)) setMuted(p, false)
+        muteLatch = false
+    }
+
     // ---- ISL-1 LOOPER: петли прямо на падах ----
     /** Режим LOOPER: касание пада — запись петли, второе касание — конец записи и воспроизведение. */
     var looperMode by mutableStateOf(false)
@@ -870,6 +892,7 @@ class AppViewModel : ViewModel() {
             val saved = ProjectStore.pads
             for (i in 0 until 64) pads[i] = saved?.getOrNull(i) ?: PadUi()
             kaossMix.clear(); kaossMix.addAll(ProjectStore.kaossMix)
+            unmuteAll()
             kaossProgram = ProjectStore.kaossProgram.coerceIn(0, 49)
             motionPlaying = -1
             motionRecording = -1
@@ -1002,6 +1025,7 @@ class AppViewModel : ViewModel() {
             applyPadUi(pad, PadUi())
         }
         kaossMix.clear(); kaossMix.addAll(List(50) { 1f })
+        unmuteAll()
         kaossProgram = 0
         motionPlaying = -1
         motionRecording = -1

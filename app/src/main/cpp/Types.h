@@ -28,7 +28,8 @@ enum ParamId : int {
     kParamPEnvOn,        // ISL-1, огибающая высоты: 0/1
     kParamPEnvX0,        // 5 точек: положение 0..1 в регионе START–END (X0..X4 подряд)
     kParamPEnvY0 = kParamPEnvX0 + 5,   // значения, полутоны -24..24 (Y0..Y4 подряд)
-    kParamCount = kParamPEnvY0 + 5
+    kParamMute = kParamPEnvY0 + 5,     // ISL-1, MUTE: 0/1 — пад играет беззвучно, фаза петли не теряется
+    kParamCount
 };
 
 }  // namespace mpc

@@ -61,6 +61,8 @@ fun PadGrid(
     loopRing: (globalPad: Int) -> Float = { Float.NaN },
     /** Палец, нажавший [fromPad], переехал на другой пад [toPad] (не отпуская) — для свайпа по падам. */
     onPadSlide: (fromPad: Int, toPad: Int) -> Unit = { _, _ -> },
+    /** Заглушённые пады (ISL-1, MUTE): красные. Маска читается при рисовании. */
+    muted: () -> Long = { 0L },
 ) {
     val currentBank by rememberUpdatedState(bank)
     val currentFull by rememberUpdatedState(fullLevel)
@@ -170,6 +172,10 @@ fun PadGrid(
                 if (global == selectedPad) {
                     drawRoundRect(PadSelected, topLeft + Offset(2.dp.toPx(), 2.dp.toPx()),
                         Size(sz.width - 4.dp.toPx(), sz.height - 4.dp.toPx()), radius, style = Stroke(1.5.dp.toPx()))
+                }
+                if ((muted() shr global) and 1L != 0L) {
+                    drawRoundRect(Skin.LedRed.copy(alpha = 0.3f), topLeft, sz, radius)
+                    drawRoundRect(Skin.LedRed, topLeft, sz, radius, style = Stroke(2.dp.toPx()))
                 }
                 drawText(labels[padInBank], topLeft = Offset(topLeft.x + 8.dp.toPx(), topLeft.y + 5.dp.toPx()))
                 val ring = loopRing(global)

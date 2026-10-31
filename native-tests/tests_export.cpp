@@ -220,6 +220,34 @@ TEST(PitchEnvTest, FlatOctaveUpPlaysTwiceAsFast) {
 }
 
 // Огибающая по точкам: начало на +24, конец на 0 — быстрее обычного, но медленнее, чем ровные +24.
+TEST(MuteTest, SilencesPlayingAndNewNotesAndKeepsVoice) {
+    EngineCore core;
+    core.setSampleRate(48000);
+    auto s = std::make_unique<Sample>();
+    s->frames = 48000;
+    s->sampleRate = 48000;
+    s->data.assign(static_cast<size_t>(s->frames) * 2, 0.4f);
+    ASSERT_TRUE(core.loadSample(0, std::move(s)));
+    core.setParam(0, kParamMode, 2.0f);   // петля
+    ASSERT_TRUE(core.noteOn(0, 1.0f));
+    std::vector<float> buf(2 * 256);
+    auto peak = [&] {
+        float p = 0.0f;
+        for (int k = 0; k < 40; ++k) {
+            core.render(buf.data(), 256);
+            p = 0.0f;
+            for (float v : buf) p = std::max(p, std::abs(v));
+        }
+        return p;
+    };
+    EXPECT_GT(peak(), 0.05f);
+    core.setParam(0, kParamMute, 1.0f);
+    EXPECT_LT(peak(), 0.001f);
+    EXPECT_NE(core.activePadMask(), 0u);   // петля идёт беззвучно
+    core.setParam(0, kParamMute, 0.0f);
+    EXPECT_GT(peak(), 0.05f);
+}
+
 TEST(PitchEnvTest, RampIsBetween) {
     EngineCore core;
     core.setSampleRate(48000);

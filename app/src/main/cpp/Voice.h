@@ -12,6 +12,7 @@ namespace mpc {
 // Параметры пада. Читаются и пишутся ТОЛЬКО из аудио-потока (через команды).
 struct PadParams {
     float volume = 1.0f;
+    bool muted = false;
     float pan = 0.0f;
     float pitch = 0.0f;
     float start = 0.0f;

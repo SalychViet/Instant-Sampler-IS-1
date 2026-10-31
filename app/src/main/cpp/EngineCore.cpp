@@ -202,22 +202,26 @@ void EngineCore::apply(const Command& c) {
         case CmdType::SetParam: {
             PadParams& p = pads_[c.pad];
             const float v = c.value;
-            if (c.param >= kParamPEnvY0) {
+            if (c.param >= kParamPEnvY0 && c.param < kParamMute) {
                 p.pEnvY[c.param - kParamPEnvY0] = std::clamp(v, -24.0f, 24.0f);
                 break;
             }
-            if (c.param >= kParamPEnvX0) {
+            if (c.param >= kParamPEnvX0 && c.param < kParamMute) {
                 p.pEnvX[c.param - kParamPEnvX0] = std::clamp(v, 0.0f, 1.0f);
                 break;
             }
             switch (c.param) {
                 case kParamVolume:
                     p.volume = std::clamp(v, 0.0f, 2.0f);
-                    voices_.updateLevel(c.pad, p.volume, p.pan);   // слышно сразу, а не со следующей ноты
+                    voices_.updateLevel(c.pad, p.muted ? 0.0f : p.volume, p.pan);   // слышно сразу, а не со следующей ноты
                     break;
                 case kParamPan:
                     p.pan = std::clamp(v, -1.0f, 1.0f);
-                    voices_.updateLevel(c.pad, p.volume, p.pan);
+                    voices_.updateLevel(c.pad, p.muted ? 0.0f : p.volume, p.pan);
+                    break;
+                case kParamMute:
+                    p.muted = v > 0.5f;
+                    voices_.updateLevel(c.pad, p.muted ? 0.0f : p.volume, p.pan);
                     break;
                 case kParamPitch:     p.pitch = std::clamp(v, -48.0f, 48.0f); break;
                 case kParamStart:     p.start = std::clamp(v, 0.0f, 1.0f); break;
