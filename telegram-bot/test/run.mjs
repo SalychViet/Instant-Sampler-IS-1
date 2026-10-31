@@ -321,4 +321,122 @@ await test("sale date shown as 31 December for 2027-01-01 00:00 MSK", async () =
   env.SALE_UNTIL = saved;
 });
 
+await test("FAQ: free-text questions get automatic answers (RU/EN)", async () => {
+  const cases = [["Как установить приложение?", /Как установить/], ["Работает на айфоне?", /Android 10/],
+                 ["чем про отличается от фри", /4 банка/], ["Сколько стоит?", /\$8\.99/], ["можно вернуть деньги?", /14 дней/],
+                 ["я оплатил но файлы не пришли", /\/mypro/], ["как подключить к Ableton", /SETUP → Ableton Link/],
+                 ["приложение вылетает", /Перезапустите/]];
+  for (const [q, re] of cases) {
+    await post(msg(user(USER), q));
+    assert.match(texts(), re, q);
+    assert.equal(sent("sendMessage")[0].body.reply_markup.inline_keyboard[0][0].callback_data, "ask");
+  }
+  await post(msg(user(OTHER, "en"), "does it work on iPhone"));
+  assert.match(texts(), /no iPhone/);
+});
+
+await test("FAQ: greeting shows the menu, no question stored", async () => {
+  await env.DB.delete("q:" + USER);
+  await post(msg(user(USER), "Привет!"));
+  assert.ok(sent("sendPhoto").length === 1);
+  assert.equal(await env.DB.get("q:" + USER), null);
+});
+
+await test("FAQ: unknown question → offer, then forwarded to the author only on tap", async () => {
+  await post(msg(user(USER), "Будет ли версия для Windows?"));
+  assert.match(texts(), /Готового ответа/);
+  assert.ok(!calls.some((c) => c.method === "sendMessage" && c.body.chat_id === String(ADMIN)));
+  await post(cb(user(USER), "ask"));
+  const toAdmin = sent("sendMessage").find((c) => String(c.body.chat_id) === String(ADMIN));
+  assert.match(toAdmin.body.text, /ВОПРОС/);
+  assert.match(toAdmin.body.text, /Windows/);
+  assert.match(texts(), /отправлено автору/);
+  await post(cb(user(USER), "ask"));
+  assert.match(texts(), /ещё раз/);
+});
+
+await test("FAQ: menu button, topic buttons and /faq", async () => {
+  await post(msg(user(USER), "/faq"));
+  const rows = sent("sendMessage")[0].body.reply_markup.inline_keyboard;
+  assert.ok(rows.length >= 10);
+  await post(cb(user(USER), "faq:promo"));
+  assert.match(texts(), /\/promo КОД/);
+  await post(cb(user(USER), "faq:pay"));
+  assert.match(texts(), /450 ⭐/);
+});
+
+await test("bot commands are refreshed once after an update (faq added)", async () => {
+  await env.DB.delete("cmds_rev");
+  await post(msg(user(USER), "/start"));
+  const c = sent("setMyCommands");
+  assert.equal(c.length, 2);
+  assert.ok(c[0].body.commands.some((x) => x.command === "faq"));
+  await post(msg(user(USER), "/start"));
+  assert.equal(sent("setMyCommands").length, 0);
+});
+
+await test("admin free text is not treated as a buyer question", async () => {
+  await post(msg(user(ADMIN), "как установить"));
+  assert.match(texts(), /Команды автора/);
+});
+
+const stats = async () => JSON.parse((await env.DB.get("stats")) || "null");
+
+await test("stats: FREE downloads counted, contacts saved, admin not counted", async () => {
+  const before = (await stats()).total;
+  await post(cb(user(555), "free"));
+  await post(msg(user(555), "/free"));
+  await post(cb(user(ADMIN), "free"));
+  const after = (await stats()).total;
+  assert.equal(after.freeDl - before.freeDl, 2);
+  assert.equal(after.freeUsers - before.freeUsers, 1);
+  const c = JSON.parse(await env.DB.get("free:555"));
+  assert.equal(c.username, "user555");
+  assert.equal(c.downloads, 2);
+  assert.equal(await env.DB.get("free:" + ADMIN), null);
+});
+
+await test("stats: Stars sale, PRO downloads, refund; /stats is admin-only", async () => {
+  const before = (await stats()).total;
+  await post({ message: { from: user(666), chat: { id: 666 }, successful_payment: { currency: "XTR", total_amount: 450, invoice_payload: "pro:450:", telegram_payment_charge_id: "CHG666" } } });
+  await post(msg(user(666), "/mypro"));
+  let after = (await stats()).total;
+  assert.equal(after.starsN - before.starsN, 1);
+  assert.equal(after.starsSum - before.starsSum, 450);
+  assert.equal(after.proDl - before.proDl, 2);
+  assert.equal(JSON.parse(await env.DB.get("buyer:666")).first_name, "U666");
+  await post(msg(user(666), "/stats"));
+  assert.ok(!/Статистика/.test(texts()));
+  await post(msg(user(ADMIN), "/stats"));
+  assert.match(texts(), /Статистика IS-1/);
+  assert.match(texts(), /За всё время/);
+  assert.match(texts(), /≈ \$\d+\.\d\d к выводу/);
+  await post(msg(user(ADMIN), "/refund 666"));
+  after = (await stats()).total;
+  assert.equal(after.refundStars - before.refundStars, 450);
+});
+
+await test("/contacts sends FREE and PRO tables as CSV files", async () => {
+  await post({ message: { from: user(777), chat: { id: 777 }, successful_payment: { currency: "XTR", total_amount: 450, invoice_payload: "pro:450:", telegram_payment_charge_id: "CHG777" } } });
+  await post(msg(user(ADMIN), "/contacts"));
+  const docs = sent("sendDocument");
+  assert.equal(docs.length, 2);
+  const free = await docs[0].body.document.text(), pro = await docs[1].body.document.text();
+  assert.deepEqual([...new Uint8Array(await docs[0].body.document.arrayBuffer()).slice(0, 3)], [0xef, 0xbb, 0xbf], "UTF-8 BOM for Excel");
+  assert.ok(free.replace(/^\uFEFF/, "").startsWith("user_id;username"));
+  assert.match(free, /555;user555;U555/);
+  assert.match(pro, /777;user777;U777;;ru;.*;stars;450/);
+  assert.match(docs[0].body.caption, /FREE/);
+  await post(msg(user(ADMIN), "/contacts pro"));
+  assert.equal(sent("sendDocument").length, 1);
+});
+
+await test("stats rebuild from recorded payments when the stats record is missing", async () => {
+  await env.DB.delete("stats");
+  await post({ message: { from: user(888), chat: { id: 888 }, successful_payment: { currency: "XTR", total_amount: 450, invoice_payload: "pro:450:", telegram_payment_charge_id: "CHG888" } } });
+  const t = (await stats()).total;
+  assert.ok(t.starsN >= 4, "earlier Stars payments recovered from paid: records");
+  assert.ok(t.usdtN >= 2);
+});
+
 console.log(`\n${passed} tests passed · KV writes used: ${env.DB.writes}`);
