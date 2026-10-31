@@ -6,7 +6,10 @@ import os
 # IS1_EDITION=free python3 build.py  ->  руководство для IS-1 FREE: скриншоты из free/ (без логотипов),
 # обложка без логотипа, файл *_free.html.
 FREE = os.environ.get("IS1_EDITION") == "free"
-NAME = "IS-1 FREE" if FREE else "IS-1"
+# IS1_EDITION=isl или try python3 build_install.py  ->  инструкция по установке ISL-1 или ISL-1 TRY.
+ISL = os.environ.get("IS1_EDITION") in ("isl", "try")
+TRY = os.environ.get("IS1_EDITION") == "try"
+NAME = "IS-1 FREE" if FREE else "ISL-1 TRY" if TRY else "ISL-1" if ISL else "IS-1"
 
 # Скриншоты с фирменными логотипами лежат в приватной папке branding/manual (её нет в открытом коде).
 # Для FREE и для сборки без branding/ берутся копии без логотипов из free/.
@@ -14,6 +17,8 @@ BRANDING = "../../branding/manual"
 
 
 def image_path(src):
+    if ISL and src == "panel.png":
+        src = "isl_panel.png"
     if not FREE and os.path.exists(os.path.join(BRANDING, src)):
         return f"{BRANDING}/{src}"
     if os.path.exists(os.path.join("free", src)):
@@ -100,6 +105,8 @@ def cover_logo():
     """Логотип на обложке — только в фирменном (PRO) руководстве."""
     if FREE or not image_path("panel.png").startswith(BRANDING):
         return ""
+    if ISL:
+        return f'<div class="cover-logo">{crop(1676, 28, 290, 104)}</div>'
     return f'<div class="cover-logo">{crop(1638, 40, 300, 115)}</div>'
 
 
@@ -108,6 +115,10 @@ def write(path, lang, title, body_cls, pages):
         path = path.replace(".html", "_free.html")
         title = title.replace("IS-1", "IS-1 FREE", 1)
         body_cls += " free"
+    if ISL:
+        path = path.replace(".html", "_try.html" if TRY else "_isl.html")
+        title = title.replace("IS-1", NAME, 1)
+        body_cls += " isl"
     css = open("style.css", encoding="utf-8").read()
     doc = (f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><title>{title}</title>'
            f'<style>{css}</style></head><body class="{body_cls}">{"".join(pages)}</body></html>')

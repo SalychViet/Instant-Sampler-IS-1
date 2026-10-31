@@ -319,3 +319,4 @@ body.free.install .page::after { content: "IS-1 FREE · установка на 
 body.free .coverpage::after { content: none; }
 body.isl .page::after { content: "ISL-1 · дополнение к руководству"; }
 body.isl.en .page::after { content: "ISL-1 · manual addendum"; }
+body.isl.install .page::after { content: "ISL-1 · установка на телефон"; }

@@ -79,10 +79,10 @@ await test("rejects webhook without secret", async () => {
 await test("/start shows RU menu with price", async () => {
   await post(msg(user(USER), "/start"));
   const m = sent("sendMessage")[0];
-  assert.match(m.body.text, /<b>PRO<\/b>/);
+  assert.match(m.body.text, /ISL-1 TRY/);
   assert.match(m.body.text, /<s>\$9\.99<\/s> <b>\$8\.99<\/b> · <b>450 ⭐<\/b>/);
   assert.match(m.body.text, /Скидка до/);
-  assert.equal(m.body.reply_markup.inline_keyboard[0][0].callback_data, "free");
+  assert.equal(m.body.reply_markup.inline_keyboard[0][0].callback_data, "try");
 });
 
 await test("/start in English for non-RU users", async () => {
@@ -91,14 +91,14 @@ await test("/start in English for non-RU users", async () => {
 });
 
 await test("free download before files are uploaded → 'not ready' + admin alert", async () => {
-  await post(cb(user(USER), "free"));
+  await post(cb(user(USER), "try"));
   assert.match(texts(), /ещё загружаются/);
   assert.equal(sent("sendMediaGroup").length, 0);
 });
 
 await test("non-admin documents are ignored", async () => {
-  await post({ message: { from: user(USER), chat: { id: USER }, document: { file_name: "IS-1_PRO_0.4.1.apk", file_id: "EVIL" } } });
-  assert.equal(await env.DB.get("file:pro_apk"), null);
+  await post({ message: { from: user(USER), chat: { id: USER }, document: { file_name: "ISL-1_0.4.1.apk", file_id: "EVIL" } } });
+  assert.equal(await env.DB.get("file:isl_apk"), null);
 });
 
 await test("admin claim: wrong key refused, right key works once", async () => {
@@ -112,8 +112,8 @@ await test("admin claim: wrong key refused, right key works once", async () => {
 });
 
 await test("admin uploads all release files", async () => {
-  const names = ["IS-1_FREE_0.4.1.apk", "IS-1_FREE_Install_RU.pdf", "IS-1_FREE_Manual.pdf", "IS-1_FREE_Manual_EN.pdf",
-                 "IS-1_PRO_0.4.1.apk", "IS-1_PRO_Install_RU.pdf", "IS-1_PRO_Manual.pdf", "IS-1_PRO_Manual_EN.pdf"];
+  const names = ["ISL-1_TRY_0.4.1.apk", "ISL-1_TRY_Install_RU.pdf", "ISL-1_0.4.1.apk", "ISL-1_Install_RU.pdf",
+                 "ISL-1_Manual_RU.pdf", "ISL-1_Manual_EN.pdf", "ISL-1_Looper_RU.pdf", "ISL-1_Looper_EN.pdf"];
   for (const n of names) await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: n, file_id: "ID_" + n } } });
   assert.match(texts(), /Осталось: 2/);
   await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "random.zip", file_id: "X" } } });
@@ -123,9 +123,9 @@ await test("admin uploads all release files", async () => {
 });
 
 await test("admin uploads banner and avatar → photo file_id stored, avatar set", async () => {
-  await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "IS-1_bot_banner.jpg", file_id: "DOC_BANNER" } } });
-  assert.equal(await env.DB.get("img:banner"), "BANNER_PHOTO");
-  await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "IS-1_bot_avatar.jpg", file_id: "DOC_AVATAR" } } });
+  await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "ISL-1_bot_banner.jpg", file_id: "DOC_BANNER" } } });
+  assert.equal(await env.DB.get("img:isl_banner"), "BANNER_PHOTO");
+  await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "ISL-1_bot_avatar.jpg", file_id: "DOC_AVATAR" } } });
   const av = sent("setMyProfilePhoto")[0].body;
   assert.equal(JSON.parse(av.photo).photo, "attach://avatar");
   assert.ok(av.avatar instanceof Blob);
@@ -140,17 +140,17 @@ await test("welcome uses the banner photo once uploaded", async () => {
   assert.ok(ph.caption.length <= 1024);
 });
 
-await test("FREE download sends 4 FREE documents, no PRO", async () => {
-  await post(cb(user(USER), "free"));
+await test("TRY download sends the TRY kit, the 10-day offer, no full APK", async () => {
+  await post(cb(user(USER), "try"));
   const g = sent("sendMediaGroup")[0].body.media.map((x) => x.media);
-  assert.deepEqual(g, ["ID_IS-1_FREE_0.4.1.apk", "ID_IS-1_FREE_Install_RU.pdf", "ID_IS-1_FREE_Manual.pdf", "ID_IS-1_FREE_Manual_EN.pdf"]);
-  assert.ok(!JSON.stringify(calls).includes("PRO_0.4.1"));
+  assert.deepEqual(g, ["ID_ISL-1_TRY_0.4.1.apk", "ID_ISL-1_TRY_Install_RU.pdf", "ID_ISL-1_Manual_RU.pdf", "ID_ISL-1_Manual_EN.pdf", "ID_ISL-1_Looper_RU.pdf", "ID_ISL-1_Looper_EN.pdf"]);
+  assert.ok(!JSON.stringify(calls).includes("ID_ISL-1_0.4.1"));
 });
 
 await test("/mypro without purchase → no PRO files", async () => {
   await post(msg(user(USER), "/mypro"));
   assert.match(texts(), /не найдено/);
-  assert.ok(!JSON.stringify(calls).includes("PRO_0.4.1"));
+  assert.ok(!JSON.stringify(calls).includes("ID_ISL-1_0.4.1"));
 });
 
 await test("buy shows terms and both payment buttons", async () => {
@@ -167,7 +167,7 @@ await test("Stars invoice uses XTR, empty provider, right price", async () => {
   const inv = sent("sendInvoice")[0].body;
   assert.equal(inv.currency, "XTR");
   assert.equal(inv.provider_token, "");
-  assert.deepEqual(inv.prices, [{ label: "IS-1 PRO", amount: 450 }]);
+  assert.deepEqual(inv.prices, [{ label: "ISL-1", amount: 450 }]);
   assert.equal(inv.payload, "pro:450:");
 });
 
@@ -184,7 +184,7 @@ await test("successful Stars payment delivers PRO and notifies admin once", asyn
   const pay = { message: { from: user(USER), chat: { id: USER }, successful_payment: { currency: "XTR", total_amount: 450, invoice_payload: "pro:450:", telegram_payment_charge_id: "CHG1" } } };
   await post(pay);
   assert.match(texts(), /Спасибо за покупку/);
-  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_IS-1_PRO_0.4.1.apk");
+  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_ISL-1_0.4.1.apk");
   assert.ok(sent("sendMessage").some((c) => c.body.chat_id === String(ADMIN) && /Продажа/.test(c.body.text)));
   assert.equal(JSON.parse(await env.DB.get("buyer:" + USER)).ref, "CHG1");
   await post(pay); // duplicate update
@@ -193,7 +193,7 @@ await test("successful Stars payment delivers PRO and notifies admin once", asyn
 
 await test("/mypro after purchase resends PRO", async () => {
   await post(msg(user(USER), "/mypro"));
-  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_IS-1_PRO_0.4.1.apk");
+  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_ISL-1_0.4.1.apk");
 });
 
 await test("USDT: invoice, unpaid check, foreign user can't claim, paid check delivers", async () => {
@@ -297,7 +297,7 @@ await test("after the sale ends: $9.99 / 500 ⭐, promo still $7.99", async () =
   const saved = env.SALE_UNTIL;
   env.SALE_UNTIL = new Date(Date.now() - 1000).toISOString();
   await post(cb(user(USER), "buy"));
-  assert.match(texts(), /Цена PRO: <b>\$9\.99<\/b> · <b>500 ⭐<\/b>/);
+  assert.match(texts(), /Цена ISL-1: <b>\$9\.99<\/b> · <b>500 ⭐<\/b>/);
   await post(cb(user(USER), "pay_stars"));
   assert.equal(sent("sendInvoice")[0].body.prices[0].amount, 500);
   await post({ pre_checkout_query: { id: "pcA", from: user(USER), currency: "XTR", total_amount: 450, invoice_payload: "pro:450:" } });
@@ -323,7 +323,7 @@ await test("sale date shown as 31 December for 2027-01-01 00:00 MSK", async () =
 
 await test("FAQ: free-text questions get automatic answers (RU/EN)", async () => {
   const cases = [["Как установить приложение?", /Как установить/], ["Работает на айфоне?", /Android 10/],
-                 ["чем про отличается от фри", /4 банка/], ["Сколько стоит?", /\$8\.99/], ["можно вернуть деньги?", /14 дней/],
+                 ["чем про отличается от фри", /10 дней/], ["Сколько стоит?", /\$8\.99/], ["можно вернуть деньги?", /14 дней/],
                  ["я оплатил но файлы не пришли", /\/mypro/], ["как подключить к Ableton", /SETUP → Ableton Link/],
                  ["приложение вылетает", /Перезапустите/]];
   for (const [q, re] of cases) {
@@ -384,16 +384,16 @@ const stats = async () => JSON.parse((await env.DB.get("stats")) || "null");
 
 await test("stats: FREE downloads counted, contacts saved, admin not counted", async () => {
   const before = (await stats()).total;
-  await post(cb(user(555), "free"));
-  await post(msg(user(555), "/free"));
-  await post(cb(user(ADMIN), "free"));
+  await post(cb(user(555), "try"));
+  await post(msg(user(555), "/try"));
+  await post(cb(user(ADMIN), "try"));
   const after = (await stats()).total;
-  assert.equal(after.freeDl - before.freeDl, 2);
-  assert.equal(after.freeUsers - before.freeUsers, 1);
-  const c = JSON.parse(await env.DB.get("free:555"));
+  assert.equal(after.tryDl - before.tryDl, 2);
+  assert.equal(after.tryUsers - before.tryUsers, 1);
+  const c = JSON.parse(await env.DB.get("try:555"));
   assert.equal(c.username, "user555");
   assert.equal(c.downloads, 2);
-  assert.equal(await env.DB.get("free:" + ADMIN), null);
+  assert.equal(await env.DB.get("try:" + ADMIN), null);
 });
 
 await test("stats: Stars sale, PRO downloads, refund; /stats is admin-only", async () => {
@@ -408,7 +408,7 @@ await test("stats: Stars sale, PRO downloads, refund; /stats is admin-only", asy
   await post(msg(user(666), "/stats"));
   assert.ok(!/Статистика/.test(texts()));
   await post(msg(user(ADMIN), "/stats"));
-  assert.match(texts(), /Статистика IS-1/);
+  assert.match(texts(), /Статистика ISL-1/);
   assert.match(texts(), /За всё время/);
   assert.match(texts(), /≈ \$\d+\.\d\d к выводу/);
   await post(msg(user(ADMIN), "/refund 666"));
@@ -416,19 +416,129 @@ await test("stats: Stars sale, PRO downloads, refund; /stats is admin-only", asy
   assert.equal(after.refundStars - before.refundStars, 450);
 });
 
-await test("/contacts sends FREE and PRO tables as CSV files", async () => {
-  await post({ message: { from: user(777), chat: { id: 777 }, successful_payment: { currency: "XTR", total_amount: 450, invoice_payload: "pro:450:", telegram_payment_charge_id: "CHG777" } } });
+await test("/contacts sends three category tables as CSV files", async () => {
   await post(msg(user(ADMIN), "/contacts"));
   const docs = sent("sendDocument");
-  assert.equal(docs.length, 2);
-  const free = await docs[0].body.document.text(), pro = await docs[1].body.document.text();
+  assert.equal(docs.length, 3);
+  const tr = await docs[0].body.document.text(), buy = await docs[2].body.document.text();
   assert.deepEqual([...new Uint8Array(await docs[0].body.document.arrayBuffer()).slice(0, 3)], [0xef, 0xbb, 0xbf], "UTF-8 BOM for Excel");
-  assert.ok(free.replace(/^\uFEFF/, "").startsWith("user_id;username"));
-  assert.match(free, /555;user555;U555/);
-  assert.match(pro, /777;user777;U777;;ru;.*;stars;450/);
-  assert.match(docs[0].body.caption, /FREE/);
-  await post(msg(user(ADMIN), "/contacts pro"));
+  assert.ok(tr.replace(/^\uFEFF/, "").startsWith("user_id;username"));
+  assert.match(tr, /555;user555;U555/);
+  assert.match(docs[0].body.caption, /TRY/);
+  assert.match(buy, /user_id;username/);
+  await post(msg(user(ADMIN), "/contacts buy"));
   assert.equal(sent("sendDocument").length, 1);
+});
+
+await test("old links and buttons for FREE lead to TRY", async () => {
+  await post(cb(user(800), "free"));
+  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_ISL-1_TRY_0.4.1.apk");
+  await post(msg(user(801), "/start free"));
+  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_ISL-1_TRY_0.4.1.apk");
+});
+
+await test("TRY offer: 10 days, Instagram rules and the button", async () => {
+  await post(cb(user(802), "try"));
+  const offer = sent("sendMessage").at(-1).body;
+  assert.match(offer.text, /10 дней/);
+  assert.match(offer.text, /@salychmusic/);
+  assert.match(offer.text, /запись с экрана/);
+  assert.equal(offer.reply_markup.inline_keyboard[0][0].callback_data, "want");
+  assert.equal(offer.reply_markup.inline_keyboard[0][0].text, "🎁 Хочу бесплатно!");
+});
+
+const lastTo = (id) => sent("sendMessage").filter((c) => String(c.body.chat_id) === String(id)).at(-1);
+
+await test("review: Instagram is required, the admin gets an active request", async () => {
+  await post(cb(user(900), "want"));
+  assert.match(lastTo(900).body.text, /Instagram/);
+  await post(msg(user(900), "не аккаунт, а текст"));
+  assert.match(lastTo(900).body.text, /Не похоже/);
+  assert.equal(await env.DB.get("req:900"), null);
+  await post(msg(user(900), "https://www.instagram.com/Some.User_1/?hl=ru"));
+  const r = JSON.parse(await env.DB.get("req:900"));
+  assert.equal(r.instagram, "some.user_1");
+  assert.equal(r.status, "pending");
+  const card = lastTo(ADMIN).body;
+  assert.match(card.text, /@some\.user_1/);
+  assert.match(card.text, /instagram\.com\/some\.user_1/);
+  assert.deepEqual(card.reply_markup.inline_keyboard[0].map((b) => b.callback_data), ["rv_ok:900", "rv_no:900"]);
+  await post(cb(user(900), "want"));
+  assert.match(lastTo(900).body.text, /уже у автора/);
+  await post(msg(user(ADMIN), "/requests"));
+  assert.ok(sent("sendMessage").some((c) => /@some\.user_1/.test(c.body.text)));
+});
+
+await test("review: only the admin can decide", async () => {
+  await post(cb(user(900), "rv_ok:900"));
+  assert.equal(JSON.parse(await env.DB.get("req:900")).status, "pending");
+  await post(cb(user(900), "adm:buy"));
+  assert.ok(!sent("sendMessage").length);
+});
+
+await test("review: rejected person is told and can apply again", async () => {
+  await post(cb(user(ADMIN), "rv_no:900"));
+  assert.equal(JSON.parse(await env.DB.get("req:900")).status, "rejected");
+  assert.match(lastTo(900).body.text, /не смог подтвердить/);
+  await post(cb(user(ADMIN), "rv_no:900"));
+  assert.match(lastTo(ADMIN).body.text, /уже обработана/);
+  await post(cb(user(900), "want"));
+  await post(msg(user(900), "@some.user_1"));
+  assert.equal(JSON.parse(await env.DB.get("req:900")).status, "pending");
+});
+
+await test("review: approval sends a one-time code; it gives the full kit once", async () => {
+  await post(cb(user(ADMIN), "rv_ok:900"));
+  const m = lastTo(900).body;
+  const code = /ISL-[A-Z2-9]{4}-[A-Z2-9]{4}/.exec(m.text)[0];
+  await post(msg(user(900), "/mypro"));
+  assert.ok(!JSON.stringify(calls).includes("ID_ISL-1_0.4.1"), "no files before redeeming");
+  await post(msg(user(900), "/promo " + code.toLowerCase()));
+  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_ISL-1_0.4.1.apk");
+  assert.ok(sent("sendMessage").some((c) => String(c.body.chat_id) === String(ADMIN) && c.body.text.includes(code)));
+  await post(msg(user(901), "/promo " + code));
+  assert.match(lastTo(901).body.text, /уже использован/);
+  assert.ok(!JSON.stringify(calls).includes("ID_ISL-1_0.4.1"));
+  await post(cb(user(900), "redeem:" + code));
+  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_ISL-1_0.4.1.apk");
+  await post(msg(user(900), "/mypro"));
+  assert.equal(sent("sendMediaGroup")[0].body.media[0].media, "ID_ISL-1_0.4.1.apk");
+  await post(cb(user(900), "want"));
+  assert.match(lastTo(900).body.text, /уже есть ISL-1/);
+  assert.equal(JSON.parse(await env.DB.get("reviewer:900")).instagram, "some.user_1");
+  assert.equal(await env.DB.get("buyer:900"), null, "not counted as a sale");
+});
+
+await test("unknown code is refused, ordinary promo code still works", async () => {
+  await post(msg(user(902), "/promo ISL-AAAA-BBBB"));
+  assert.match(lastTo(902).body.text, /Такого промокода нет/);
+  await post(msg(user(902), "/promo salychmusic"));
+  assert.match(lastTo(902).body.text, /\$7\.99/);
+});
+
+await test("/list shows people by category, admin only", async () => {
+  await post(msg(user(ADMIN), "/list review"));
+  assert.match(lastTo(ADMIN).body.text, /@user900/);
+  assert.match(lastTo(ADMIN).body.text, /IG @some\.user_1/);
+  await post(msg(user(ADMIN), "/list"));
+  assert.ok(lastTo(ADMIN).body.reply_markup.inline_keyboard.length >= 3);
+  await post(cb(user(ADMIN), "adm:try"));
+  assert.match(lastTo(ADMIN).body.text, /Скачали TRY/);
+  await post(msg(user(902), "/list review"));
+  assert.ok(!sent("sendMessage").some((c) => /@user900/.test(c.body.text)));
+});
+
+await test("stats show TRY and review counters", async () => {
+  await post(msg(user(ADMIN), "/stats"));
+  assert.match(texts(), /🎁 За отзыв: <b>1<\/b>/);
+});
+
+await test("the bot profile is ISL-1 and the sale conditions are unchanged", async () => {
+  await env.DB.delete("cmds_rev");
+  await post(msg(user(902), "/start"));
+  assert.ok(sent("setMyName").some((c) => c.body.name === "ISL-1 Sampler"));
+  assert.ok(sent("setMyCommands").some((c) => c.body.commands.some((x) => x.command === "want")));
+  assert.match(texts() + JSON.stringify(calls), /\$8\.99/);
 });
 
 await test("stats rebuild from recorded payments when the stats record is missing", async () => {

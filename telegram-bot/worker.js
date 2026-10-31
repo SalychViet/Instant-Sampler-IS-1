@@ -1,11 +1,14 @@
-// IS-1 Telegram bot — Cloudflare Worker (free plan).
+// ISL-1 Telegram bot — Cloudflare Worker (free plan).
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Salavat (SALYCH MUSIC).
 //
 // What it does:
-//   * IS-1 FREE: free download (APK + manuals) for everyone.
-//   * IS-1 PRO: sold for Telegram Stars (price in USD, converted automatically) and optionally USDT via @CryptoBot.
-//     Holiday sale until a date, promo codes. After payment the bot sends the PRO files; /mypro sends them again.
+//   * ISL-1 TRY: free 10-day version (APK + manuals) for everyone.
+//   * ISL-1: sold for Telegram Stars (price in USD, converted automatically) and optionally USDT via @CryptoBot.
+//     Holiday sale until a date, promo codes. After payment the bot sends the files; /mypro sends them again.
+//   * "Хочу бесплатно!": a video review in Instagram for a free ISL-1. The person leaves their Instagram, the admin
+//     approves or rejects the request, an approved person gets a one-time code (ISL-XXXX-XXXX) for /promo.
+//   * Contact lists for the admin: downloaded TRY, got ISL-1 for a review, bought.
 //   * Files and branding images live in Telegram itself: the admin sends them to the bot once.
 //
 // Secrets (Cloudflare → Worker → Settings → Variables and Secrets):
@@ -13,7 +16,7 @@
 //   WEBHOOK_SECRET    random string A–Z a–z 0–9 _ - (16+ chars); protects the webhook, /setup and /claim
 //   CRYPTO_PAY_TOKEN  (optional) token of your app in @CryptoBot → Crypto Pay; enables USDT
 // Variables (wrangler.toml [vars], editable in the dashboard):
-//   PRICE_USD        regular PRO price, e.g. 9.99
+//   PRICE_USD        regular ISL-1 price, e.g. 9.99
 //   SALE_PRICE_USD   sale price, e.g. 8.99 (empty = no sale)
 //   SALE_UNTIL       end of the sale, ISO time, e.g. 2027-01-01T00:00:00+03:00
 //   PROMO_CODES      code=price pairs, e.g. salychmusic=7.99,friend=5
@@ -24,23 +27,28 @@
 const SOURCE_URL = "https://github.com/SalychViet/Instant-Sampler-IS-1";
 const VERSION = "0.4.1";
 
-// Admin sends documents with exactly these names (as in the release folders on the Desktop).
+const TRIAL_DAYS = 10;
+const INSTAGRAM = "@salychmusic";
+
+// Admin sends documents with exactly these names (the folder "ISL-1 Bot" on the Desktop).
 const FILES = {
-  "IS-1_FREE_0.4.1.apk": "free_apk",
-  "IS-1_FREE_Install_RU.pdf": "free_install",
-  "IS-1_FREE_Manual.pdf": "free_manual_ru",
-  "IS-1_FREE_Manual_EN.pdf": "free_manual_en",
-  "IS-1_PRO_0.4.1.apk": "pro_apk",
-  "IS-1_PRO_Install_RU.pdf": "pro_install",
-  "IS-1_PRO_Manual.pdf": "pro_manual_ru",
-  "IS-1_PRO_Manual_EN.pdf": "pro_manual_en",
+  "ISL-1_TRY_0.4.1.apk": "try_apk",
+  "ISL-1_TRY_Install_RU.pdf": "try_install",
+  "ISL-1_0.4.1.apk": "isl_apk",
+  "ISL-1_Install_RU.pdf": "isl_install",
+  "ISL-1_Manual_RU.pdf": "isl_manual_ru",
+  "ISL-1_Manual_EN.pdf": "isl_manual_en",
+  "ISL-1_Looper_RU.pdf": "isl_looper_ru",
+  "ISL-1_Looper_EN.pdf": "isl_looper_en",
 };
 // Branding images (kept out of the public repo): sent to the bot once as files.
-const IMAGES = { "IS-1_bot_banner.jpg": "banner", "IS-1_bot_avatar.jpg": "avatar" };
+const IMAGES = { "ISL-1_bot_banner.jpg": "isl_banner", "ISL-1_bot_avatar.jpg": "isl_avatar" };
+const MANUALS = ["isl_manual_ru", "isl_manual_en", "isl_looper_ru", "isl_looper_en"];
 const KIT = {
-  free: ["free_apk", "free_install", "free_manual_ru", "free_manual_en"],
-  pro: ["pro_apk", "pro_install", "pro_manual_ru", "pro_manual_en"],
+  try: ["try_apk", "try_install", ...MANUALS],
+  full: ["isl_apk", "isl_install", ...MANUALS],
 };
+const KIT_NAME = { try: "ISL-1 TRY", full: "ISL-1" };
 
 // ------------------------------------------------------------------ pricing
 
@@ -56,7 +64,7 @@ function promoTable(env) {
   return t;
 }
 
-/** Current PRO price. code: promo code (any case) or empty. */
+/** Current ISL-1 price. code: promo code (any case) or empty. */
 function price(env, code, now = Date.now()) {
   const regular = cents(env.PRICE_USD || "9.99");
   const saleC = env.SALE_PRICE_USD ? cents(env.SALE_PRICE_USD) : 0;
@@ -103,7 +111,7 @@ function priceLine(p, lc) {
     s = ru ? `🔥 Скидка до ${saleDate(p, lc)}: <s>$${p.regularUsd}</s> <b>$${p.usd}</b> · <b>${p.stars} ⭐</b>`
            : `🔥 Sale until ${saleDate(p, lc)}: <s>$${p.regularUsd}</s> <b>$${p.usd}</b> · <b>${p.stars} ⭐</b>`;
   } else {
-    s = ru ? `Цена PRO: <b>$${p.usd}</b> · <b>${p.stars} ⭐</b>` : `PRO price: <b>$${p.usd}</b> · <b>${p.stars} ⭐</b>`;
+    s = ru ? `Цена ISL-1: <b>$${p.usd}</b> · <b>${p.stars} ⭐</b>` : `ISL-1 price: <b>$${p.usd}</b> · <b>${p.stars} ⭐</b>`;
   }
   return s;
 }
@@ -111,42 +119,68 @@ function priceLine(p, lc) {
 const T = {
   ru: {
     welcome: (p) =>
-      `🎛 <b>IS-1</b> — семплер, секвенсор и KAOSS-эффекты для Android 10+.\n\n` +
-      `<b>FREE</b> — бесплатно: 16 падов, запись семплов, секвенсор, 25 эффектов.\n` +
-      `<b>PRO</b> — 64 пада, 50 эффектов, Ableton Link, экспорт WAV/MP3 320, проекты и стартовый проект.\n\n` +
+      `🎛 <b>ISL-1</b> — семплер, секвенсор, лупер и KAOSS-эффекты для Android 10+.\n\n` +
+      `🔁 Лупы прямо на падах, запись с микрофона, из телефона и из самого приложения, 64 пада, 50 эффектов, Ableton Link, экспорт WAV/MP3 320.\n\n` +
+      `🚀 <b>ISL-1 TRY</b> — все функции бесплатно на ${TRIAL_DAYS} дней.\n` +
+      `🎁 Снимите видеоотзыв в Instagram — и получите полную версию бесплатно.\n\n` +
       priceLine(p, "ru") + `\nЕсть промокод? Отправьте <code>/promo КОД</code>`,
-    btnFree: "⬇️ Скачать IS-1 FREE",
-    btnBuy: "⭐ Купить IS-1 PRO",
-    btnMyPro: "📦 Мой IS-1 PRO",
+    btnTry: `🚀 Скачать ISL-1 TRY (${TRIAL_DAYS} дней)`,
+    btnBuy: "⭐ Купить ISL-1",
+    btnWant: "🎁 Хочу бесплатно!",
+    btnMyPro: "📦 Мой ISL-1",
     btnAbout: "ℹ️ О программе",
     btnSupport: "💬 Поддержка",
-    sendingFree: "Отправляю IS-1 FREE 👇 Начните с инструкции по установке.",
+    sendingTry: "Отправляю ISL-1 TRY 👇 Начните с инструкции по установке.",
+    tryOffer:
+      `⏳ <b>ISL-1 TRY работает ${TRIAL_DAYS} дней</b> с первого запуска, все функции открыты. Потом приложение перестанет работать.\n\n` +
+      `🎁 <b>Полная версия бесплатно!</b> Если за эти ${TRIAL_DAYS} дней вы запишете видеоотзыв со своими впечатлениями в Instagram ` +
+      `и отметите аккаунт <b>${INSTAGRAM}</b>, вы сможете получить полную версию бесплатно.\n` +
+      `В кадре должно быть видно приложение, либо это может быть запись с экрана.\n\n` +
+      `Записали? Нажмите кнопку ниже 👇`,
+    wantAsk:
+      `🎁 <b>Полная версия за видеоотзыв</b>\n\n` +
+      `1. Запишите видеоотзыв со своими впечатлениями в Instagram: в кадре приложение или запись с экрана.\n` +
+      `2. Отметьте аккаунт <b>${INSTAGRAM}</b>.\n` +
+      `3. Отправьте сюда свой Instagram-аккаунт одним сообщением, например <code>@your_name</code>.\n\n` +
+      `Автор проверит отзыв, и вам придёт одноразовый промокод.`,
+    igBad: "Не похоже на Instagram-аккаунт 🤔 Отправьте его так: <code>@your_name</code>",
+    wantSent: (ig) => `✅ Заявка принята, Instagram: <b>@${ig}</b>. Автор проверит отзыв, ответ придёт сюда.`,
+    wantPending: "Ваша заявка уже у автора на проверке ⏳ Ответ придёт сюда.",
+    wantHave: "У вас уже есть ISL-1 — отправить файлы ещё раз: /mypro",
+    wantApproved: (code) => `У вас уже есть промокод: <code>${code}</code>\nОтправьте <code>/promo ${code}</code>`,
+    reviewApproved: (code) =>
+      `🎉 <b>Отзыв принят, спасибо!</b>\n\nВаш одноразовый промокод: <code>${code}</code>\n` +
+      `Нажмите кнопку ниже или отправьте <code>/promo ${code}</code>`,
+    reviewRejected: "😔 Автор не смог подтвердить отзыв. Проверьте, что видео опубликовано, в кадре видно приложение и отмечен " + INSTAGRAM + ", и подайте заявку ещё раз.",
+    btnRedeem: "🎁 Получить ISL-1",
+    reviewThanks: "🎉 Промокод принят! Вот ваш ISL-1 👇 Начните с инструкции по установке. Новую версию ставьте поверх: файлы всегда здесь — /mypro",
+    codeUsed: "Этот промокод уже использован.",
     notReady: "Файлы ещё загружаются, попробуйте чуть позже 🙏",
     terms:
-      `<b>Условия покупки IS-1 PRO</b>\n\n` +
-      `• Вы покупаете файл приложения IS-1 PRO ${VERSION} для Android 10+ и руководства (RU/EN).\n` +
+      `<b>Условия покупки ISL-1</b>\n\n` +
+      `• Вы покупаете файл приложения ISL-1 ${VERSION} для Android 10+ и руководства (RU/EN).\n` +
       `• Файлы приходят сюда сразу после оплаты; повторно — командой /mypro.\n` +
-      `• Перед покупкой попробуйте бесплатную IS-1 FREE — она работает на том же движке.\n` +
-      `• Если PRO не запускается на вашем устройстве, напишите в /paysupport в течение 14 дней — вернём оплату.\n` +
+      `• Перед покупкой попробуйте бесплатную ISL-1 TRY: все функции на ${TRIAL_DAYS} дней.\n` +
+      `• Если ISL-1 не запускается на вашем устройстве, напишите в /paysupport в течение 14 дней — вернём оплату.\n` +
       `• Лицензия GNU GPL v3; исходный код: ${SOURCE_URL}\n` +
       `• Бот хранит ваш Telegram id, имя и username, чтобы выдавать покупку и вести статистику; эти данные никому не передаются.\n` +
       `• Продавец: Salavat (SALYCH MUSIC).`,
     choosePay: "Нажимая кнопку оплаты, вы соглашаетесь с условиями выше.",
     payStars: (p) => `⭐ Оплатить ${p.stars} Stars`,
     payUsdt: (p) => `💵 Оплатить ${p.usd} USDT`,
-    invoiceDesc: `IS-1 PRO ${VERSION}: 64 пада, 50 эффектов KAOSS, Ableton Link, WAV/MP3 320, проекты. APK для Android 10+ и руководства.`,
+    invoiceDesc: `ISL-1 ${VERSION}: лупер на падах, 64 пада, 50 эффектов KAOSS, Ableton Link, WAV/MP3 320, проекты. APK для Android 10+ и руководства.`,
     usdtInvoice: "Счёт в USDT создан. Оплатите в @CryptoBot по кнопке ниже, затем нажмите «Проверить оплату».",
     btnOpenInvoice: "💵 Оплатить в CryptoBot",
     btnCheck: "✅ Проверить оплату",
     notPaidYet: "Оплата ещё не пришла. Если вы уже оплатили — подождите минуту и нажмите ещё раз.",
     usdtOff: "Оплата в USDT сейчас недоступна, воспользуйтесь Stars ⭐",
-    thanks: "Спасибо за покупку! 🎉 Вот ваш IS-1 PRO 👇 Начните с инструкции по установке.",
-    alreadyBought: "У вас уже есть IS-1 PRO — отправляю файлы ещё раз 👇",
-    noPurchase: "Покупок IS-1 PRO на этом аккаунте не найдено. Купить: /buy",
+    thanks: "Спасибо за покупку! 🎉 Вот ваш ISL-1 👇 Начните с инструкции по установке.",
+    alreadyBought: "У вас уже есть ISL-1 — отправляю файлы ещё раз 👇",
+    noPurchase: "Покупок ISL-1 на этом аккаунте не найдено. Купить: /buy",
     about:
-      `<b>IS-1 ${VERSION}</b> · © 2026 Salavat (SALYCH MUSIC)\n` +
+      `<b>ISL-1 ${VERSION}</b> · © 2026 Salavat (SALYCH MUSIC)\n` +
       `Свободная программа: GNU GPL v3 или новее. Исходный код:\n${SOURCE_URL}\n\n` +
-      `Ableton Link — товарный знак Ableton AG; IS-1 не связан с Ableton.`,
+      `Ableton Link — товарный знак Ableton AG; ISL-1 не связан с Ableton.`,
     support: "Напишите вопрос одним сообщением так:\n<code>/support ваш текст</code>\nи я передам его автору.",
     paysupport: "Проблема с оплатой или файлами? Напишите одним сообщением:\n<code>/paysupport ваш текст</code>\nУкажите, чем оплачивали. Автор ответит здесь.",
     sentToAuthor: "Сообщение отправлено автору ✅ Ответ придёт сюда.",
@@ -167,42 +201,68 @@ const T = {
   },
   en: {
     welcome: (p) =>
-      `🎛 <b>IS-1</b> — a sampler, sequencer and KAOSS effects for Android 10+.\n\n` +
-      `<b>FREE</b> — free: 16 pads, sample recording, sequencer, 25 effects.\n` +
-      `<b>PRO</b> — 64 pads, 50 effects, Ableton Link, WAV/MP3 320 export, projects and a starter project.\n\n` +
+      `🎛 <b>ISL-1</b> — a sampler, sequencer, looper and KAOSS effects for Android 10+.\n\n` +
+      `🔁 Loops right on the pads, recording from the mic, the phone and the app itself, 64 pads, 50 effects, Ableton Link, WAV/MP3 320 export.\n\n` +
+      `🚀 <b>ISL-1 TRY</b> — all features free for ${TRIAL_DAYS} days.\n` +
+      `🎁 Post a video review on Instagram and get the full version for free.\n\n` +
       priceLine(p, "en") + `\nHave a promo code? Send <code>/promo CODE</code>`,
-    btnFree: "⬇️ Download IS-1 FREE",
-    btnBuy: "⭐ Buy IS-1 PRO",
-    btnMyPro: "📦 My IS-1 PRO",
+    btnTry: `🚀 Download ISL-1 TRY (${TRIAL_DAYS} days)`,
+    btnBuy: "⭐ Buy ISL-1",
+    btnWant: "🎁 I want it for free!",
+    btnMyPro: "📦 My ISL-1",
     btnAbout: "ℹ️ About",
     btnSupport: "💬 Support",
-    sendingFree: "Here is IS-1 FREE 👇 The install guide is in Russian; the manual is in English and Russian.",
+    sendingTry: "Here is ISL-1 TRY 👇 The install guide is in Russian; the manuals are in English and Russian.",
+    tryOffer:
+      `⏳ <b>ISL-1 TRY works for ${TRIAL_DAYS} days</b> from the first launch with all features on. After that the app stops working.\n\n` +
+      `🎁 <b>Get the full version for free!</b> If within these ${TRIAL_DAYS} days you post a video review with your impressions on Instagram ` +
+      `and tag <b>${INSTAGRAM}</b>, you can get the full version for free.\n` +
+      `The app must be visible in the video, or it can be a screen recording.\n\n` +
+      `Done? Tap the button below 👇`,
+    wantAsk:
+      `🎁 <b>Full version for a video review</b>\n\n` +
+      `1. Post a video review with your impressions on Instagram: the app in frame, or a screen recording.\n` +
+      `2. Tag <b>${INSTAGRAM}</b>.\n` +
+      `3. Send your Instagram account here in one message, e.g. <code>@your_name</code>.\n\n` +
+      `The author will check the review and you will get a one-time promo code.`,
+    igBad: "That doesn't look like an Instagram account 🤔 Send it like this: <code>@your_name</code>",
+    wantSent: (ig) => `✅ Request received, Instagram: <b>@${ig}</b>. The author will check the review; the answer will come here.`,
+    wantPending: "Your request is already with the author ⏳ The answer will come here.",
+    wantHave: "You already have ISL-1 — get the files again: /mypro",
+    wantApproved: (code) => `You already have a promo code: <code>${code}</code>\nSend <code>/promo ${code}</code>`,
+    reviewApproved: (code) =>
+      `🎉 <b>Review accepted, thank you!</b>\n\nYour one-time promo code: <code>${code}</code>\n` +
+      `Tap the button below or send <code>/promo ${code}</code>`,
+    reviewRejected: "😔 The author could not confirm your review. Check that the video is published, the app is visible and " + INSTAGRAM + " is tagged, then apply again.",
+    btnRedeem: "🎁 Get ISL-1",
+    reviewThanks: "🎉 Code accepted! Here is your ISL-1 👇 Files are always here: /mypro",
+    codeUsed: "This promo code has already been used.",
     notReady: "Files are still being uploaded, please try again a bit later 🙏",
     terms:
-      `<b>IS-1 PRO purchase terms</b>\n\n` +
-      `• You are buying the IS-1 PRO ${VERSION} app file for Android 10+ and the manuals (EN/RU).\n` +
+      `<b>ISL-1 purchase terms</b>\n\n` +
+      `• You are buying the ISL-1 ${VERSION} app file for Android 10+ and the manuals (EN/RU).\n` +
       `• The files arrive here right after payment; get them again any time with /mypro.\n` +
-      `• Please try the free IS-1 FREE first — it runs on the same engine.\n` +
-      `• If PRO does not run on your device, contact /paysupport within 14 days for a refund.\n` +
+      `• Please try the free ISL-1 TRY first: all features for ${TRIAL_DAYS} days.\n` +
+      `• If ISL-1 does not run on your device, contact /paysupport within 14 days for a refund.\n` +
       `• Licensed under the GNU GPL v3; source code: ${SOURCE_URL}\n` +
       `• The bot stores your Telegram id, name and username to deliver your purchase and keep statistics; they are not shared with anyone.\n` +
       `• Seller: Salavat (SALYCH MUSIC).`,
     choosePay: "By tapping a payment button you agree to the terms above.",
     payStars: (p) => `⭐ Pay ${p.stars} Stars`,
     payUsdt: (p) => `💵 Pay ${p.usd} USDT`,
-    invoiceDesc: `IS-1 PRO ${VERSION}: 64 pads, 50 KAOSS effects, Ableton Link, WAV/MP3 320, projects. APK for Android 10+ and manuals.`,
+    invoiceDesc: `ISL-1 ${VERSION}: looper on pads, 64 pads, 50 KAOSS effects, Ableton Link, WAV/MP3 320, projects. APK for Android 10+ and manuals.`,
     usdtInvoice: "USDT invoice created. Pay in @CryptoBot with the button below, then tap “Check payment”.",
     btnOpenInvoice: "💵 Pay in CryptoBot",
     btnCheck: "✅ Check payment",
     notPaidYet: "Payment has not arrived yet. If you have paid, wait a minute and tap again.",
     usdtOff: "USDT payment is not available right now, please use Stars ⭐",
-    thanks: "Thank you for your purchase! 🎉 Here is your IS-1 PRO 👇",
-    alreadyBought: "You already own IS-1 PRO — sending the files again 👇",
-    noPurchase: "No IS-1 PRO purchase found for this account. Buy: /buy",
+    thanks: "Thank you for your purchase! 🎉 Here is your ISL-1 👇",
+    alreadyBought: "You already own ISL-1 — sending the files again 👇",
+    noPurchase: "No ISL-1 purchase found for this account. Buy: /buy",
     about:
-      `<b>IS-1 ${VERSION}</b> · © 2026 Salavat (SALYCH MUSIC)\n` +
+      `<b>ISL-1 ${VERSION}</b> · © 2026 Salavat (SALYCH MUSIC)\n` +
       `Free software: GNU GPL v3 or later. Source code:\n${SOURCE_URL}\n\n` +
-      `Ableton Link is a trademark of Ableton AG; IS-1 is not affiliated with Ableton.`,
+      `Ableton Link is a trademark of Ableton AG; ISL-1 is not affiliated with Ableton.`,
     support: "Send your question in one message like this:\n<code>/support your text</code>\nand I will pass it to the author.",
     paysupport: "Problem with a payment or the files? Send one message:\n<code>/paysupport your text</code>\nSay how you paid. The author will reply here.",
     sentToAuthor: "Message sent to the author ✅ The reply will come here.",
@@ -257,8 +317,9 @@ const codeSuffix = (code) => (code ? ":" + code : "");
 
 function mainMenu(t, code) {
   return kb([
-    [{ text: t.btnFree, callback_data: "free" }],
+    [{ text: t.btnTry, callback_data: "try" }],
     [{ text: t.btnBuy, callback_data: "buy" + codeSuffix(code) }],
+    [{ text: t.btnWant, callback_data: "want" }],
     [{ text: t.btnMyPro, callback_data: "mypro" }, { text: t.btnAbout, callback_data: "about" }],
     [{ text: t.btnFaq, callback_data: "faq" }, { text: t.btnSupport, callback_data: "support" }],
   ]);
@@ -273,11 +334,11 @@ const FAQ = [
     kw: /установ|устанавл|поставит|install|\bapk\b|неизвестн\w* источник|unknown source/,
     q: { ru: "Как установить приложение?", en: "How do I install the app?" },
     a: {
-      ru: "📲 <b>Как установить</b>\n1. Скачайте APK в этом чате: FREE — кнопка «⬇️ Скачать IS-1 FREE», PRO — приходит после оплаты или по /mypro.\n" +
+      ru: "📲 <b>Как установить</b>\n1. Скачайте APK в этом чате: ISL-1 TRY — кнопка «🚀 Скачать ISL-1 TRY», ISL-1 — приходит после оплаты или по /mypro.\n" +
           "2. Откройте файл на телефоне.\n3. Android попросит разрешить установку из неизвестных источников для Telegram или файлового менеджера — разрешите.\n" +
           "4. Нажмите «Установить».\n\nЕсли Google Play Protect предупредит о неизвестном приложении: «Подробнее» → «Всё равно установить».\n" +
           "Пошагово с картинками — в PDF «Install_RU», он приходит вместе с APK.",
-      en: "📲 <b>How to install</b>\n1. Get the APK in this chat: FREE — the “⬇️ Download IS-1 FREE” button, PRO — sent after payment or via /mypro.\n" +
+      en: "📲 <b>How to install</b>\n1. Get the APK in this chat: ISL-1 TRY — the “🚀 Download ISL-1 TRY” button, ISL-1 — sent after payment or via /mypro.\n" +
           "2. Open the file on your phone.\n3. Android will ask to allow installing from unknown sources for Telegram or your file manager — allow it.\n" +
           "4. Tap “Install”.\n\nIf Google Play Protect warns about an unknown app: “More details” → “Install anyway”.",
     },
@@ -287,25 +348,23 @@ const FAQ = [
     kw: /iphone|айфон|\bios\b|ipad|айпад|apple|эппл|планшет|tablet|требован|requirement|совмест|compatib|подойд|пойд[её]т|поддерж\w* (мой|телефон|устройств)|android ?\d|андроид ?\d|верси\w* андроид|which (phone|device)/,
     q: { ru: "На каких устройствах работает?", en: "Which devices are supported?" },
     a: {
-      ru: "📱 IS-1 работает на <b>Android 10 и новее</b> — телефоны и планшеты. Для iPhone и iPad версии нет.\n\n" +
-          "Проще всего проверить своё устройство так: поставьте бесплатную IS-1 FREE — у неё тот же движок, что и у PRO.",
-      en: "📱 IS-1 runs on <b>Android 10 or newer</b> — phones and tablets. There is no iPhone/iPad version.\n\n" +
-          "The easiest way to check your device: install the free IS-1 FREE — it uses the same engine as PRO.",
+      ru: "📱 ISL-1 работает на <b>Android 10 и новее</b> — телефоны и планшеты. Для iPhone и iPad версии нет.\n\n" +
+          "Проще всего проверить своё устройство так: поставьте бесплатную ISL-1 TRY: это та же программа на 10 дней.",
+      en: "📱 ISL-1 runs on <b>Android 10 or newer</b> — phones and tablets. There is no iPhone/iPad version.\n\n" +
+          "The easiest way to check your device: install the free ISL-1 TRY: the same app for 10 days.",
     },
   },
   {
-    id: "freepro",
-    kw: /разниц|отлича|отличи|чем .*(pro|про|лучше)|free.*pro|pro.*free|фри|differen|compare|сравн|огранич|limit|что (есть|даёт|дает) (в )?(pro|про)/,
-    q: { ru: "Чем PRO отличается от FREE?", en: "What is the difference between FREE and PRO?" },
+    id: "try",
+    kw: /разниц|отлича|отличи|\btry\b|пробн|триал|trial|10 дн|бесплатн|\bfree\b|отзыв|review|инстаграм|instagram|истек|закончил\w* срок|перестал\w* работ/,
+    q: { ru: "Что такое TRY и как получить бесплатно?", en: "What is TRY and how do I get it for free?" },
     a: {
-      ru: "⚖️ <b>FREE</b>: 1 банк (16 падов) и 16 паттернов, паттерн до 2 тактов, песня до 4 паттернов, 25 эффектов KAOSS, 1 память MOTION, " +
-          "RESAMPLE до 10 с, экспорт MP3 128 кбит/с до 1 минуты. Без проектов .sal, сохранения банков и Ableton Link.\n\n" +
-          "<b>PRO</b>: 4 банка (64 пада) и 64 паттерна до 4 тактов, песни любой длины, все 50 эффектов, 4 памяти MOTION, запись эффектов, " +
-          "RESAMPLE до 30 с, экспорт WAV и MP3 320 до 10 минут, проекты .sal и банки, Ableton Link и стартовый проект с семплами.",
-      en: "⚖️ <b>FREE</b>: 1 bank (16 pads) and 16 patterns, patterns up to 2 bars, songs up to 4 patterns, 25 KAOSS effects, 1 MOTION memory, " +
-          "RESAMPLE up to 10 s, MP3 128 kbps export up to 1 minute. No .sal projects, bank saving or Ableton Link.\n\n" +
-          "<b>PRO</b>: 4 banks (64 pads) and 64 patterns up to 4 bars, songs of any length, all 50 effects, 4 MOTION memories, effect recording, " +
-          "RESAMPLE up to 30 s, WAV and MP3 320 export up to 10 minutes, .sal projects and banks, Ableton Link and a starter project with samples.",
+      ru: `🚀 <b>ISL-1 TRY</b> — та же программа со всеми функциями, но работает ${TRIAL_DAYS} дней с первого запуска, потом перестаёт работать.\n\n` +
+          `🎁 <b>Бесплатно за отзыв:</b> за эти ${TRIAL_DAYS} дней запишите видеоотзыв со своими впечатлениями в Instagram (в кадре приложение или запись с экрана), отметьте ${INSTAGRAM} и нажмите «🎁 Хочу бесплатно!» в меню. После проверки придёт одноразовый промокод.\n\n` +
+          `ISL-1 ставится отдельным приложением рядом с TRY. Чтобы перенести работу, сохраните проект: PRJCT → SAVE, потом LOAD.`,
+      en: `🚀 <b>ISL-1 TRY</b> is the same app with all features, but it works for ${TRIAL_DAYS} days from the first launch and then stops.\n\n` +
+          `🎁 <b>Free for a review:</b> within these ${TRIAL_DAYS} days post a video review with your impressions on Instagram (the app in frame or a screen recording), tag ${INSTAGRAM} and tap “🎁 I want it for free!” in the menu. After a check you get a one-time promo code.\n\n` +
+          `ISL-1 installs as a separate app next to TRY. To move your work, save the project: PRJCT → SAVE, then LOAD.`,
     },
   },
   {
@@ -313,10 +372,10 @@ const FAQ = [
     kw: /не приш|не получ|после оплат|не приход|не пришл|не отправ|где (мои )?файл|потерял|удалил|оплатил|заплатил|didn.?t (get|receive|come)|not (received|arrived)|where .*(file|apk)|lost|paid/,
     q: { ru: "Оплатил, но файлы не пришли", en: "I paid but did not get the files" },
     a: {
-      ru: "📦 Файлы PRO приходят в этот чат сразу после оплаты. Получить их ещё раз можно в любой момент: /mypro или кнопка «📦 Мой IS-1 PRO».\n\n" +
+      ru: "📦 Файлы ISL-1 приходят в этот чат сразу после оплаты. Получить их ещё раз можно в любой момент: /mypro или кнопка «📦 Мой ISL-1».\n\n" +
           "Платили в USDT — откройте сообщение со счётом и нажмите «✅ Проверить оплату».\n" +
           "Не помогло — напишите <code>/paysupport</code> и опишите, чем и когда платили.",
-      en: "📦 PRO files arrive in this chat right after payment. Get them again any time: /mypro or the “📦 My IS-1 PRO” button.\n\n" +
+      en: "📦 ISL-1 files arrive in this chat right after payment. Get them again any time: /mypro or the “📦 My ISL-1” button.\n\n" +
           "Paid in USDT — open the invoice message and tap “✅ Check payment”.\n" +
           "Still nothing — send <code>/paysupport</code> and say how and when you paid.",
     },
@@ -326,10 +385,10 @@ const FAQ = [
     kw: /оплат|заплат|купит|купить|покупк|звезд|звёзд|stars?\b|usdt|крипт|crypto|карт[аоуы]|card|цена|стоит|стоимост|сколько|price|cost|how much|pay|buy/,
     q: { ru: "Как оплатить и сколько стоит?", en: "How do I pay and how much is it?" },
     a: {
-      ru: (p) => "💳 <b>Как купить IS-1 PRO</b>\nКнопка «⭐ Купить IS-1 PRO» → выберите способ:\n" +
+      ru: (p) => "💳 <b>Как купить ISL-1</b>\nКнопка «⭐ Купить ISL-1» → выберите способ:\n" +
           "• <b>Telegram Stars</b> ⭐ — звёзды покупаются прямо в Telegram;\n• <b>USDT</b> через @CryptoBot.\n\n" +
           priceLine(p, "ru") + "\nЕсть промокод? <code>/promo КОД</code>",
-      en: (p) => "💳 <b>How to buy IS-1 PRO</b>\nTap “⭐ Buy IS-1 PRO” and choose:\n" +
+      en: (p) => "💳 <b>How to buy ISL-1</b>\nTap “⭐ Buy ISL-1” and choose:\n" +
           "• <b>Telegram Stars</b> ⭐ — buy Stars right in Telegram;\n• <b>USDT</b> via @CryptoBot.\n\n" +
           priceLine(p, "en") + "\nHave a promo code? <code>/promo CODE</code>",
     },
@@ -339,10 +398,10 @@ const FAQ = [
     kw: /обнов|нов\w* верси|update|upgrade|new version|переустан|reinstall|друг\w* (телефон|устройств)|нов\w* (телефон|устройств)|сменил телефон|another (phone|device)|new (phone|device)|перенес|перенос|transfer/,
     q: { ru: "Обновления и новый телефон", en: "Updates and a new phone" },
     a: {
-      ru: "🔄 Обновления для покупателей PRO бесплатны: /mypro всегда присылает последнюю версию.\n" +
+      ru: "🔄 Обновления для владельцев ISL-1 бесплатны: /mypro всегда присылает последнюю версию.\n" +
           "Новую версию ставьте поверх старой — пады, паттерны и настройки сохранятся.\n\n" +
           "Новый телефон: войдите в тот же Telegram-аккаунт → /mypro → установите APK. Проекты переносите файлами .sal (PRJCT → SAVE, потом LOAD на новом телефоне).",
-      en: "🔄 Updates are free for PRO buyers: /mypro always sends the latest version.\n" +
+      en: "🔄 Updates are free for ISL-1 owners: /mypro always sends the latest version.\n" +
           "Install the new version over the old one — pads, patterns and settings are kept.\n\n" +
           "New phone: use the same Telegram account → /mypro → install the APK. Move projects as .sal files (PRJCT → SAVE, then LOAD on the new phone).",
     },
@@ -352,10 +411,10 @@ const FAQ = [
     kw: /возврат|верн\w* (деньг|оплат|звезд|звёзд)|refund|money back/,
     q: { ru: "Можно ли вернуть оплату?", en: "Can I get a refund?" },
     a: {
-      ru: "↩️ Если IS-1 PRO не запускается на вашем устройстве, напишите в течение 14 дней после покупки: <code>/paysupport ваш текст</code> — оплату вернём.\n" +
-          "Перед покупкой советуем проверить бесплатную IS-1 FREE: движок тот же.",
-      en: "↩️ If IS-1 PRO does not run on your device, write within 14 days of purchase: <code>/paysupport your text</code> — we will refund you.\n" +
-          "Please try the free IS-1 FREE first: it uses the same engine.",
+      ru: "↩️ Если ISL-1 не запускается на вашем устройстве, напишите в течение 14 дней после покупки: <code>/paysupport ваш текст</code> — оплату вернём.\n" +
+          "Перед покупкой советуем проверить бесплатную ISL-1 TRY: это та же программа.",
+      en: "↩️ If ISL-1 does not run on your device, write within 14 days of purchase: <code>/paysupport your text</code> — we will refund you.\n" +
+          "Please try the free ISL-1 TRY first: it is the same app.",
     },
   },
   {
@@ -363,10 +422,10 @@ const FAQ = [
     kw: /ableton|абл?етон|\blink\b|линк|синхрон|sync|\blive\b/,
     q: { ru: "Как работает Ableton Link?", en: "How does Ableton Link work?" },
     a: {
-      ru: "🔗 Ableton Link есть в PRO: <b>SETUP → Ableton Link</b> → включить.\n" +
+      ru: "🔗 Ableton Link: <b>SETUP → Ableton Link</b> → включить.\n" +
           "Телефон и компьютер (или другие Link-приложения) должны быть в одной Wi-Fi сети; в Ableton Live включите LINK слева вверху.\n" +
           "Темп, такт и старт/стоп станут общими. Если звук спешит или отстаёт — подстройте сдвиг задержки там же, в SETUP.",
-      en: "🔗 Ableton Link is in PRO: <b>SETUP → Ableton Link</b> → turn it on.\n" +
+      en: "🔗 Ableton Link: <b>SETUP → Ableton Link</b> → turn it on.\n" +
           "The phone and the computer (or other Link apps) must be on the same Wi-Fi; in Ableton Live turn on LINK at the top left.\n" +
           "Tempo, bar and start/stop become shared. If the sound is early or late, adjust the latency offset in SETUP.",
     },
@@ -386,11 +445,11 @@ const FAQ = [
     q: { ru: "Какие форматы звука поддерживаются?", en: "Which audio formats are supported?" },
     a: {
       ru: "🎵 <b>Импорт</b>: WAV, AIFF, MP3, FLAC, OGG, AAC/M4A — кнопка IMPORT загружает файл прямо на выбранный пад.\n" +
-          "<b>Запись</b>: с микрофона и внутренний звук телефона (SAMPLE → SRC:MIC/INT, удерживайте пад).\n" +
-          "<b>Экспорт</b>: FREE — MP3 128 кбит/с до 1 минуты; PRO — WAV и MP3 320 кбит/с до 10 минут.",
+          "<b>Запись</b>: с микрофона и внутренний звук телефона (кнопка SRC, потом SAMPLE и удерживайте пад), а также звук самого приложения (SRC → SELF).\n" +
+          "<b>Экспорт</b>: WAV и MP3 320 кбит/с до 10 минут.",
       en: "🎵 <b>Import</b>: WAV, AIFF, MP3, FLAC, OGG, AAC/M4A — the IMPORT button loads a file straight onto the selected pad.\n" +
-          "<b>Recording</b>: microphone and the phone's internal audio (SAMPLE → SRC:MIC/INT, hold a pad).\n" +
-          "<b>Export</b>: FREE — MP3 128 kbps up to 1 minute; PRO — WAV and MP3 320 kbps up to 10 minutes.",
+          "<b>Recording</b>: microphone and the phone's internal audio (the SRC button, then SAMPLE and hold a pad), plus the app's own sound (SRC → SELF).\n" +
+          "<b>Export</b>: WAV and MP3 320 kbps up to 10 minutes.",
     },
   },
   {
@@ -398,10 +457,10 @@ const FAQ = [
     kw: /вирус|безопас|virus|malware|\bsafe\b|play protect|google play|play market|play store|плей ?маркет|гугл ?плей|магазин/,
     q: { ru: "Почему нет в Google Play? Это безопасно?", en: "Why not on Google Play? Is it safe?" },
     a: {
-      ru: "🛡 IS-1 распространяется файлом APK через этот бот, в Google Play его нет.\n" +
+      ru: "🛡 ISL-1 распространяется файлом APK через этот бот, в Google Play его нет.\n" +
           "Код приложения полностью открыт (GNU GPL v3), его может проверить любой: " + SOURCE_URL + "\n" +
           "Предупреждение Play Protect о «неизвестном приложении» — стандартное для любых APK не из магазина: «Подробнее» → «Всё равно установить».",
-      en: "🛡 IS-1 is distributed as an APK through this bot; it is not on Google Play.\n" +
+      en: "🛡 ISL-1 is distributed as an APK through this bot; it is not on Google Play.\n" +
           "The source code is fully open (GNU GPL v3) and anyone can check it: " + SOURCE_URL + "\n" +
           "Play Protect's “unknown app” warning is standard for any APK from outside the store: “More details” → “Install anyway”.",
     },
@@ -492,17 +551,17 @@ async function getFileIds(env, kind) {
 
 async function sendKit(env, chatId, kind, t) {
   const ids = await getFileIds(env, kind);
-  if (!ids[0]) {
+  if (!ids[0] || !ids[1]) {
     await send(env, chatId, t.notReady);
     const a = await adminChat(env);
-    if (a) await send(env, a, `⚠️ Нет файла ${KIT[kind][0]} — пришлите его боту.`);
+    if (a) await send(env, a, `⚠️ Нет файла для ${KIT_NAME[kind]} — пришлите его боту, список: /files`);
     return false;
   }
   const docs = ids.filter(Boolean);
   const media = docs.map((id, i) => ({
     type: "document",
     media: id,
-    ...(i === docs.length - 1 ? { caption: `IS-1 ${kind.toUpperCase()} ${VERSION} · ${SOURCE_URL}` } : {}),
+    ...(i === docs.length - 1 ? { caption: `${KIT_NAME[kind]} ${VERSION} · ${SOURCE_URL}` } : {}),
   }));
   if (media.length === 1) await tg(env, "sendDocument", { chat_id: chatId, document: media[0].media, caption: media[0].caption });
   else await tg(env, "sendMediaGroup", { chat_id: chatId, media });
@@ -519,7 +578,7 @@ async function completePurchase(env, user, chatId, method, ref, amount, promo = 
   const t = T[lang(user)];
   const refKey = "paid:" + method + ":" + ref;
   if (await env.DB.get(refKey)) {
-    if (resendIfDone && (await sendKit(env, chatId, "pro", t))) await trackProDownload(env, user);
+    if (resendIfDone && (await sendKit(env, chatId, "full", t))) await trackProDownload(env, user);
     return;
   }
   const rec = { ...contactOf(user), method, ref: String(ref), amount: String(amount), promo, date: new Date().toISOString() };
@@ -527,12 +586,12 @@ async function completePurchase(env, user, chatId, method, ref, amount, promo = 
   await env.DB.put("buyer:" + user.id, JSON.stringify(rec));
   await trackSale(env, method, amount);
   await send(env, chatId, t.thanks);
-  if (await sendKit(env, chatId, "pro", t)) await trackProDownload(env, user);
+  if (await sendKit(env, chatId, "full", t)) await trackProDownload(env, user);
   const a = await adminChat(env);
   if (a) {
     const who = user.username ? "@" + user.username : user.first_name || "";
     await send(env, a,
-      `💰 Продажа IS-1 PRO: ${escapeHtml(amount)} ${method === "stars" ? "⭐" : method === "usdt" ? "USDT" : ""}` +
+      `💰 Продажа ISL-1: ${escapeHtml(amount)} ${method === "stars" ? "⭐" : method === "usdt" ? "USDT" : ""}` +
       (promo ? ` · промокод ${escapeHtml(promo)}` : "") +
       ` от ${escapeHtml(who)} (<code>${user.id}</code>)\nref: <code>${escapeHtml(String(ref))}</code>`);
   }
@@ -543,12 +602,13 @@ function escapeHtml(s) {
 }
 
 // ------------------------------------------------------------------ statistics and contacts (admin only)
-// One KV record "stats" with totals and per-month numbers (Moscow time). Contacts: "free:<id>" for FREE downloads,
-// "buyer:<id>" for PRO buyers. The admin's own downloads are not counted.
+// One KV record "stats" with totals and per-month numbers (Moscow time). Contacts: "try:<id>" downloaded TRY,
+// "reviewer:<id>" got ISL-1 for a review, "buyer:<id>" bought ("free:<id>" are old IS-1 FREE downloads).
+// The admin's own downloads are not counted.
 const STAR_PAYOUT_USD = 0.013;   // ≈ what one Star brings on withdrawal via Fragment (override with env STAR_PAYOUT_USD)
 
 const monthKey = (d = new Date(Date.now())) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 7);
-const emptyBlock = () => ({ freeDl: 0, freeUsers: 0, proDl: 0, starsN: 0, starsSum: 0, usdtN: 0, usdtSum: 0, manualN: 0, refundN: 0, refundStars: 0 });
+const emptyBlock = () => ({ freeDl: 0, freeUsers: 0, tryDl: 0, tryUsers: 0, reviewN: 0, proDl: 0, starsN: 0, starsSum: 0, usdtN: 0, usdtSum: 0, manualN: 0, refundN: 0, refundStars: 0 });
 
 async function getStats(env) {
   const raw = await env.DB.get("stats");
@@ -600,19 +660,25 @@ const contactOf = (user) => ({
   language: user.language_code || "",
 });
 
-/** A FREE kit was delivered: count it and remember the contact. */
-async function trackFree(env, user) {
+/** A TRY kit was delivered: count it and remember the contact. */
+async function trackTry(env, user) {
   if (!user || (await isAdmin(env, user.id))) return;
-  const key = "free:" + user.id;
+  const key = "try:" + user.id;
   const old = JSON.parse((await env.DB.get(key)) || "null");
   const now = new Date(Date.now()).toISOString();
   await env.DB.put(key, JSON.stringify({ ...contactOf(user), first_date: old ? old.first_date : now, last_date: now, downloads: (old ? old.downloads : 0) + 1 }));
   const s = await getStats(env);
-  bump(s, (b) => { b.freeDl++; if (!old) b.freeUsers++; });
+  bump(s, (b) => { b.tryDl = (b.tryDl || 0) + 1; if (!old) b.tryUsers = (b.tryUsers || 0) + 1; });
   await saveStats(env, s);
 }
 
-/** A PRO kit was delivered (purchase or /mypro). */
+async function trackReview(env) {
+  const s = await getStats(env);
+  bump(s, (b) => { b.reviewN = (b.reviewN || 0) + 1; });
+  await saveStats(env, s);
+}
+
+/** A full ISL-1 kit was delivered (purchase, review or /mypro). */
 async function trackProDownload(env, user) {
   if (!user || (await isAdmin(env, user.id))) return;
   const s = await getStats(env);
@@ -640,8 +706,10 @@ function statsBlock(env, b) {
   const rate = Number(env.STAR_PAYOUT_USD) || STAR_PAYOUT_USD;
   const netStars = b.starsSum - b.refundStars;
   const starsUsd = netStars * rate;
-  return `⬇️ FREE — скачиваний: <b>${b.freeDl}</b> · людей: ${b.freeUsers}\n` +
-    `💎 PRO — продаж: <b>${b.starsN + b.usdtN}</b>` + (b.manualN ? ` · выдано вручную: ${b.manualN}` : "") + ` · выдач файлов: ${b.proDl}\n` +
+  return `🚀 TRY — скачиваний: <b>${b.tryDl || 0}</b> · людей: ${b.tryUsers || 0}\n` +
+    `🎁 За отзыв: <b>${b.reviewN || 0}</b>\n` +
+    (b.freeDl ? `⬇️ Старый FREE — скачиваний: ${b.freeDl} · людей: ${b.freeUsers}\n` : "") +
+    `💎 ISL-1 — продаж: <b>${b.starsN + b.usdtN}</b>` + (b.manualN ? ` · выдано вручную: ${b.manualN}` : "") + ` · выдач файлов: ${b.proDl}\n` +
     `⭐ Stars: <b>${netStars} ⭐</b> · продаж: ${b.starsN}` + (b.refundN ? ` · возвратов: ${b.refundN} (−${b.refundStars} ⭐)` : "") + ` · ≈ $${money(starsUsd)} к выводу\n` +
     `💵 USDT: <b>${money(b.usdtSum)}</b> · продаж: ${b.usdtN}\n` +
     `💰 Итого ≈ <b>$${money(starsUsd + b.usdtSum)}</b>`;
@@ -652,12 +720,13 @@ async function showStats(env, chat) {
   const m = monthKey();
   const cur = s.months[m] || emptyBlock();
   const [, mm] = m.split("-");
-  const freeContacts = (await listKeys(env, "free:")).length;
+  const tryContacts = (await listKeys(env, "try:")).length;
+  const reviewers = (await listKeys(env, "reviewer:")).length;
   const buyers = (await listKeys(env, "buyer:")).length;
   return send(env, chat,
-    `📊 <b>Статистика IS-1</b>\n\n<b>За всё время</b>\n${statsBlock(env, s.total)}\n\n` +
+    `📊 <b>Статистика ISL-1</b>\n\n<b>За всё время</b>\n${statsBlock(env, s.total)}\n\n` +
     `<b>За ${MONTHS_RU[Number(mm) - 1]}</b>\n${statsBlock(env, cur)}\n\n` +
-    `👥 Контакты: FREE — ${freeContacts}, PRO — ${buyers}. Скачать таблицы: /contacts\n` +
+    `👥 Контакты: скачали TRY — ${tryContacts}, за отзыв — ${reviewers}, купили — ${buyers}. Списки: /list, таблицы: /contacts\n` +
     `<i>Stars в долларах — примерно, по курсу вывода ~$${Number(env.STAR_PAYOUT_USD) || STAR_PAYOUT_USD} за ⭐; Stars можно вывести через 21 день после оплаты.</i>`);
 }
 
@@ -677,25 +746,166 @@ async function sendCsv(env, chat, name, text, caption) {
   return tgForm(env, "sendDocument", form);
 }
 
-/** /contacts [free|pro] — the contact lists as CSV files (open in Excel / Numbers / Google Sheets). */
+const LISTS = {
+  try: { prefix: "try:", title: "🚀 Скачали TRY", file: "ISL-1_TRY", date: "last_date",
+         cols: ["user_id", "username", "first_name", "last_name", "language", "first_date", "last_date", "downloads"] },
+  review: { prefix: "reviewer:", title: "🎁 Скачали за отзыв", file: "ISL-1_review", date: "date",
+            cols: ["user_id", "username", "first_name", "last_name", "language", "date", "instagram", "code"] },
+  buy: { prefix: "buyer:", title: "💎 Купили", file: "ISL-1_buyers", date: "date",
+         cols: ["user_id", "username", "first_name", "last_name", "language", "date", "method", "amount", "promo", "ref"] },
+  free: { prefix: "free:", title: "⬇️ Старый IS-1 FREE", file: "IS-1_FREE_old", date: "last_date",
+          cols: ["user_id", "username", "first_name", "last_name", "language", "first_date", "last_date", "downloads"] },
+};
+
+async function listRows(env, l) {
+  const rows = [];
+  for (const k of await listKeys(env, l.prefix)) { const v = await env.DB.get(k); if (v) rows.push(JSON.parse(v)); }
+  return rows.sort((a, b) => String(b[l.date]).localeCompare(String(a[l.date])));
+}
+
+/** /contacts [try|review|buy|free] — the contact lists as CSV files (open in Excel / Numbers / Google Sheets). */
 async function sendContacts(env, chat, which) {
   const day = new Date(Date.now()).toISOString().slice(0, 10);
-  if (which !== "pro") {
-    const rows = [];
-    for (const k of await listKeys(env, "free:")) { const v = await env.DB.get(k); if (v) rows.push(JSON.parse(v)); }
-    rows.sort((a, b) => String(b.last_date).localeCompare(String(a.last_date)));
-    await sendCsv(env, chat, `IS-1_FREE_contacts_${day}.csv`,
-      csv(rows, ["user_id", "username", "first_name", "last_name", "language", "first_date", "last_date", "downloads"]),
-      `⬇️ FREE: ${rows.length} контактов`);
+  const names = LISTS[which] ? [which] : ["try", "review", "buy"];
+  for (const n of names) {
+    const l = LISTS[n];
+    const rows = await listRows(env, l);
+    await sendCsv(env, chat, `${l.file}_${day}.csv`, csv(rows, l.cols), `${l.title}: ${rows.length}`);
   }
-  if (which !== "free") {
-    const rows = [];
-    for (const k of await listKeys(env, "buyer:")) { const v = await env.DB.get(k); if (v) rows.push(JSON.parse(v)); }
-    rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    await sendCsv(env, chat, `IS-1_PRO_buyers_${day}.csv`,
-      csv(rows, ["user_id", "username", "first_name", "last_name", "language", "date", "method", "amount", "promo", "ref"]),
-      `💎 PRO: ${rows.length} покупателей`);
+}
+
+/** /list [try|review|buy|free] — the latest people of a category right in the chat. */
+async function showList(env, chat, which) {
+  const l = LISTS[which];
+  if (!l) return send(env, chat, "Какой список показать?", listsMenu());
+  const rows = await listRows(env, l);
+  const line = (r) => {
+    const who = r.username ? "@" + escapeHtml(r.username) : escapeHtml([r.first_name, r.last_name].filter(Boolean).join(" ") || "без имени");
+    const ig = r.instagram ? ` · IG @${escapeHtml(r.instagram)}` : "";
+    return `${who} · <code>${r.user_id}</code> · ${String(r[l.date] || "").slice(0, 10)}${ig}`;
+  };
+  return send(env, chat,
+    `<b>${l.title}: ${rows.length}</b>\n` + (rows.slice(0, 50).map(line).join("\n") || "пока никого") +
+    (rows.length > 50 ? `\n… показаны последние 50, полный список: /contacts ${which}` : ""));
+}
+
+function listsMenu() {
+  return kb([
+    [{ text: LISTS.try.title, callback_data: "adm:try" }],
+    [{ text: LISTS.review.title, callback_data: "adm:review" }],
+    [{ text: LISTS.buy.title, callback_data: "adm:buy" }],
+    [{ text: "📬 Заявки на отзыв", callback_data: "adm:req" }],
+  ]);
+}
+
+// ------------------------------------------------------------------ free ISL-1 for a video review
+// "ig:<id>"  the bot waits for this person's Instagram (1 hour)
+// "req:<id>" request: status pending / approved / rejected
+// "code:<CODE>" one-time promo code; "reviewer:<id>" a person who redeemed one
+
+const parseInstagram = (text) => {
+  const s = String(text).trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").split(/[/?#]/)[0];
+  return /^[A-Za-z0-9._]{1,30}$/.test(s) ? s.toLowerCase() : "";
+};
+const normCode = (s) => String(s || "").trim().toUpperCase();
+const isReviewCode = (s) => /^ISL-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(normCode(s));
+
+function newCode() {
+  const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // no 0/O, 1/I
+  const b = crypto.getRandomValues(new Uint8Array(8));
+  const p = [...b].map((x) => abc[x % abc.length]).join("");
+  return `ISL-${p.slice(0, 4)}-${p.slice(4)}`;
+}
+
+const hasFull = async (env, id) => !!((await getPurchase(env, id)) || (await env.DB.get("reviewer:" + id)));
+
+async function getRequest(env, id) {
+  return JSON.parse((await env.DB.get("req:" + id)) || "null");
+}
+
+async function wantFree(env, user, chat, t) {
+  if (await hasFull(env, user.id)) return send(env, chat, t.wantHave);
+  const r = await getRequest(env, user.id);
+  if (r && r.status === "pending") return send(env, chat, t.wantPending);
+  if (r && r.status === "approved") return send(env, chat, t.wantApproved(r.code), kb([[{ text: t.btnRedeem, callback_data: "redeem:" + r.code }]]));
+  await env.DB.put("ig:" + user.id, "1", { expirationTtl: 3600 });
+  return send(env, chat, t.wantAsk);
+}
+
+function requestCard(r) {
+  const who = r.username ? "@" + escapeHtml(r.username) : escapeHtml(r.first_name || "без имени");
+  return {
+    text: `🎁 <b>Заявка на ISL-1 за отзыв</b>\nTelegram: ${who} (<code>${r.user_id}</code>)\nInstagram: <a href="https://instagram.com/${r.instagram}">@${r.instagram}</a>\nДата: ${r.date.slice(0, 10)}`,
+    keyboard: kb([[{ text: "✅ Одобрить", callback_data: "rv_ok:" + r.user_id }, { text: "❌ Отклонить", callback_data: "rv_no:" + r.user_id }]]),
+  };
+}
+
+async function onInstagram(env, m, t, text) {
+  const ig = parseInstagram(text);
+  if (!ig) return send(env, m.chat.id, t.igBad);
+  await env.DB.delete("ig:" + m.from.id);
+  const r = { ...contactOf(m.from), chat: m.chat.id, instagram: ig, status: "pending", date: new Date(Date.now()).toISOString() };
+  await env.DB.put("req:" + m.from.id, JSON.stringify(r));
+  await send(env, m.chat.id, t.wantSent(ig));
+  const a = await adminChat(env);
+  if (a) {
+    const c = requestCard(r);
+    await send(env, a, c.text, c.keyboard);
   }
+}
+
+/** /requests — all requests waiting for a decision. */
+async function showRequests(env, chat) {
+  const rows = [];
+  for (const k of await listKeys(env, "req:")) {
+    const r = JSON.parse((await env.DB.get(k)) || "null");
+    if (r && r.status === "pending") rows.push(r);
+  }
+  if (!rows.length) return send(env, chat, "Активных заявок нет ✅");
+  await send(env, chat, `📬 Активных заявок: <b>${rows.length}</b>`);
+  for (const r of rows.slice(0, 10)) {
+    const c = requestCard(r);
+    await send(env, chat, c.text, c.keyboard);
+  }
+}
+
+async function decideRequest(env, q, approve, uid) {
+  const chat = q.message ? q.message.chat.id : q.from.id;
+  const r = await getRequest(env, uid);
+  if (!r || r.status !== "pending") return send(env, chat, "Заявка уже обработана.");
+  const t = T[lang({ language_code: r.language })];
+  if (q.message) await tg(env, "editMessageReplyMarkup", { chat_id: chat, message_id: q.message.message_id, reply_markup: { inline_keyboard: [] } });
+  if (!approve) {
+    r.status = "rejected";
+    await env.DB.put("req:" + uid, JSON.stringify(r));
+    await send(env, r.chat, t.reviewRejected);
+    return send(env, chat, `❌ Заявка @${r.instagram} отклонена.`);
+  }
+  r.status = "approved";
+  r.code = newCode();
+  await env.DB.put("code:" + r.code, JSON.stringify({ for_user: r.user_id, instagram: r.instagram, used_by: 0, date: new Date(Date.now()).toISOString() }));
+  await env.DB.put("req:" + uid, JSON.stringify(r));
+  await send(env, r.chat, t.reviewApproved(r.code), kb([[{ text: t.btnRedeem, callback_data: "redeem:" + r.code }]]));
+  return send(env, chat, `✅ Заявка @${r.instagram} одобрена, промокод <code>${r.code}</code> отправлен.`);
+}
+
+async function redeemCode(env, user, chat, t, raw) {
+  const code = normCode(raw);
+  const rec = JSON.parse((await env.DB.get("code:" + code)) || "null");
+  if (!rec) return send(env, chat, t.promoBad);
+  if (rec.used_by) {
+    if (rec.used_by !== user.id) return send(env, chat, t.codeUsed);
+    return myPro(env, user, chat, t);
+  }
+  rec.used_by = user.id;
+  rec.used_date = new Date(Date.now()).toISOString();
+  await env.DB.put("code:" + code, JSON.stringify(rec));
+  await env.DB.put("reviewer:" + user.id, JSON.stringify({ ...contactOf(user), date: rec.used_date, instagram: rec.instagram, code }));
+  await trackReview(env);
+  await send(env, chat, t.reviewThanks);
+  if (await sendKit(env, chat, "full", t)) await trackProDownload(env, user);
+  const a = await adminChat(env);
+  if (a) await send(env, a, `🎁 Промокод <code>${code}</code> использован: ${user.username ? "@" + escapeHtml(user.username) : escapeHtml(user.first_name || "")} (<code>${user.id}</code>), Instagram @${rec.instagram}`);
 }
 
 // ------------------------------------------------------------------ Crypto Pay (USDT)
@@ -763,7 +973,7 @@ async function handleUpdate(upd, env) {
 
 async function welcome(env, chat, t, code) {
   const p = price(env, code);
-  const banner = await env.DB.get("img:banner");
+  const banner = await env.DB.get("img:isl_banner");
   if (banner) return tg(env, "sendPhoto", { chat_id: chat, photo: banner, caption: t.welcome(p), parse_mode: "HTML", ...mainMenu(t, p.promo) });
   return send(env, chat, t.welcome(p), mainMenu(t, p.promo));
 }
@@ -778,16 +988,22 @@ async function onText(m, env) {
 
   switch (cmd) {
     case "/start":
-      if (arg === "free") return sendFree(env, chat, t, m.from);
+      if (arg === "try" || arg === "free") return sendTry(env, chat, t, m.from);
       if (arg === "buy") return showTerms(env, chat, t, "");
+      if (arg === "want") return wantFree(env, m.from, chat, t);
+      if (isReviewCode(arg)) return redeemCode(env, m.from, chat, t, arg);
       if (arg && isPromo(env, arg)) return applyPromo(env, chat, t, arg);
       return welcome(env, chat, t, "");
+    case "/try":
     case "/free":
-      return sendFree(env, chat, t, m.from);
+      return sendTry(env, chat, t, m.from);
+    case "/want":
+      return wantFree(env, m.from, chat, t);
     case "/buy":
       return showTerms(env, chat, t, arg && isPromo(env, arg) ? arg : "");
     case "/promo":
       if (!arg) return send(env, chat, t.promoHow);
+      if (isReviewCode(arg)) return redeemCode(env, m.from, chat, t, arg);
       return applyPromo(env, chat, t, arg);
     case "/terms":
       return send(env, chat, t.terms);
@@ -807,6 +1023,7 @@ async function onText(m, env) {
       if (!arg) return send(env, chat, cmd === "/paysupport" ? t.paysupport : t.support);
       return forwardToAdmin(env, m.from, chat, cmd, arg, t);
   }
+  if (!cmd.startsWith("/") && (await env.DB.get("ig:" + m.from.id))) return onInstagram(env, m, t, text);
   if (await isAdmin(env, m.from.id)) return onAdminText(m, env, cmd, rest, arg);
   if (cmd.startsWith("/")) return welcome(env, chat, t, "");
   return onFreeText(env, m, t, text);
@@ -819,9 +1036,13 @@ async function applyPromo(env, chat, t, code) {
   return showTerms(env, chat, t, p.promo, t.promoOk(p) + "\n\n");
 }
 
-async function sendFree(env, chat, t, user) {
-  if ((await getFileIds(env, "free"))[0]) await send(env, chat, t.sendingFree);
-  if (await sendKit(env, chat, "free", t)) await trackFree(env, user);
+async function sendTry(env, chat, t, user) {
+  const ids = await getFileIds(env, "try");
+  if (ids[0] && ids[1]) await send(env, chat, t.sendingTry);
+  if (await sendKit(env, chat, "try", t)) {
+    await trackTry(env, user);
+    await send(env, chat, t.tryOffer, kb([[{ text: t.btnWant, callback_data: "want" }]]));
+  }
 }
 
 async function showTerms(env, chat, t, code, prefix = "") {
@@ -832,9 +1053,9 @@ async function showTerms(env, chat, t, code, prefix = "") {
 }
 
 async function myPro(env, user, chat, t) {
-  if (!(await getPurchase(env, user.id))) return send(env, chat, t.noPurchase);
+  if (!(await hasFull(env, user.id))) return send(env, chat, t.noPurchase);
   await send(env, chat, t.alreadyBought);
-  if (await sendKit(env, chat, "pro", t)) await trackProDownload(env, user);
+  if (await sendKit(env, chat, "full", t)) await trackProDownload(env, user);
 }
 
 async function forwardToAdmin(env, from, chat, cmd, text, t) {
@@ -844,7 +1065,7 @@ async function forwardToAdmin(env, from, chat, cmd, text, t) {
   const bought = await getPurchase(env, from.id);
   await send(env, a,
     `${cmd === "/paysupport" ? "🧾 PAYSUPPORT" : cmd === "ask" ? "❓ ВОПРОС (автоответ не помог)" : "💬 SUPPORT"} от ${escapeHtml(who)} (<code>${from.id}</code>)` +
-    (bought ? `\nPRO куплен: ${bought.method} ${escapeHtml(bought.amount)}, ref <code>${escapeHtml(bought.ref)}</code>` : "") +
+    (bought ? `\nISL-1 куплен: ${bought.method} ${escapeHtml(bought.amount)}, ref <code>${escapeHtml(bought.ref)}</code>` : "") +
     `\n\n${escapeHtml(text)}\n\nОтветить: <code>/reply ${from.id} текст</code>`);
   await send(env, chat, t.sentToAuthor);
 }
@@ -854,7 +1075,12 @@ async function onCallback(q, env) {
   const chat = q.message ? q.message.chat.id : q.from.id;
   await tg(env, "answerCallbackQuery", { callback_query_id: q.id });
   const [d, code = ""] = String(q.data || "").split(":");
-  if (d === "free") return sendFree(env, chat, t, q.from);
+  if (d === "try" || d === "free") return sendTry(env, chat, t, q.from);
+  if (d === "want") return wantFree(env, q.from, chat, t);
+  if (d === "redeem") return redeemCode(env, q.from, chat, t, code);
+  if ((d === "rv_ok" || d === "rv_no" || d === "adm") && !(await isAdmin(env, q.from.id))) return;
+  if (d === "rv_ok" || d === "rv_no") return decideRequest(env, q, d === "rv_ok", code);
+  if (d === "adm") return code === "req" ? showRequests(env, chat) : showList(env, chat, code);
   if (d === "buy") return showTerms(env, chat, t, code);
   if (d === "mypro") return myPro(env, q.from, chat, t);
   if (d === "about") return send(env, chat, t.about);
@@ -877,12 +1103,12 @@ async function onCallback(q, env) {
     const p = price(env, code);
     return tg(env, "sendInvoice", {
       chat_id: chat,
-      title: "IS-1 PRO",
+      title: "ISL-1",
       description: t.invoiceDesc,
       payload: `pro:${p.stars}:${p.promo}`,
       provider_token: "",
       currency: "XTR",
-      prices: [{ label: "IS-1 PRO", amount: p.stars }],
+      prices: [{ label: "ISL-1", amount: p.stars }],
     });
   }
   if (d === "pay_usdt") {
@@ -914,7 +1140,7 @@ async function onPreCheckout(q, env) {
   const t = T[lang(q.from)];
   const [tag, , code = ""] = String(q.invoice_payload).split(":");
   const p = price(env, code);
-  const haveFiles = !!(await getFileIds(env, "pro"))[0];
+  const haveFiles = !!(await getFileIds(env, "full"))[0];
   const ok = q.currency === "XTR" && tag === "pro" && q.total_amount === p.stars && haveFiles;
   return tg(env, "answerPreCheckoutQuery", ok
     ? { pre_checkout_query_id: q.id, ok: true }
@@ -935,8 +1161,7 @@ async function claimAdmin(env, m, secret) {
   if (!env.WEBHOOK_SECRET || secret !== env.WEBHOOK_SECRET) return send(env, m.chat.id, "Неверный ключ.");
   await env.DB.put("admin", String(m.from.id));
   return send(env, m.chat.id,
-    "✅ Вы администратор бота.\n\nТеперь отправьте боту <b>как файлы</b> 8 документов из папок «IS-1 FREE 0.4.1» и «IS-1 PRO 0.4.1» " +
-    "и 2 картинки из папки «IS-1 Telegram Bot/branding»: IS-1_bot_banner.jpg и IS-1_bot_avatar.jpg.\nСписок команд: /admin");
+    "✅ Вы администратор бота.\n\nТеперь отправьте боту <b>как файлы</b> 10 файлов из папки «ISL-1 Bot» на рабочем столе.\nСписок команд: /admin");
 }
 
 /** Download a file the bot received and return its bytes. */
@@ -970,7 +1195,7 @@ async function onAdminImage(m, env, kind) {
   const bytes = await downloadFile(env, m.document.file_id);
   if (!bytes) return send(env, m.chat.id, "Не удалось скачать картинку, пришлите ещё раз.");
   const blob = new Blob([bytes], { type: "image/jpeg" });
-  if (kind === "banner") {
+  if (kind === "isl_banner") {
     // re-upload as a photo once to get a photo file_id for welcome messages
     const form = new FormData();
     form.append("chat_id", String(m.chat.id));
@@ -979,16 +1204,16 @@ async function onAdminImage(m, env, kind) {
     const r = await tgForm(env, "sendPhoto", form);
     if (!r.ok) return send(env, m.chat.id, "Не удалось сохранить баннер ❌");
     const sizes = r.result.photo || [];
-    await env.DB.put("img:banner", sizes[sizes.length - 1].file_id);
+    await env.DB.put("img:isl_banner", sizes[sizes.length - 1].file_id);
   } else {
     const form = new FormData();
     form.append("photo", JSON.stringify({ type: "static", photo: "attach://avatar" }));
     form.append("avatar", blob, "avatar.jpg");
     const r = await tgForm(env, "setMyProfilePhoto", form);
     if (!r.ok) return send(env, m.chat.id, "Не удалось поставить аватар ❌ Поставьте его в @BotFather → /setuserpic.");
-    await env.DB.put("img:avatar", "set");
+    await env.DB.put("img:isl_avatar", "set");
   }
-  return send(env, m.chat.id, `✅ ${kind === "banner" ? "Баннер" : "Аватар бота"} сохранён.` + (await progress(env)));
+  return send(env, m.chat.id, `✅ ${kind === "isl_banner" ? "Баннер" : "Аватар бота"} сохранён.` + (await progress(env)));
 }
 
 async function onAdminText(m, env, cmd, rest, arg) {
@@ -998,17 +1223,22 @@ async function onAdminText(m, env, cmd, rest, arg) {
     return send(env, chat,
       `<b>Команды автора</b>\n` +
       `• пришлите файл из папки релиза — бот запомнит его\n` +
+      `/requests — активные заявки на ISL-1 за отзыв\n` +
+      `/list — люди по категориям: скачали TRY, за отзыв, купили\n` +
       `/stats — скачивания и полученные деньги\n` +
-      `/contacts — контакты FREE и PRO (таблицы CSV); /contacts free или /contacts pro — одну\n` +
+      `/contacts — те же списки таблицами CSV; /contacts try, review или buy — один; free — старый IS-1 FREE\n` +
       `/files — какие файлы загружены\n` +
       `/sales — последние продажи\n` +
       `/reply id текст — ответить покупателю\n` +
       `/refund id — вернуть Stars покупателю\n` +
-      `/grant id — выдать PRO вручную\n\n` +
+      `/grant id — выдать ISL-1 вручную\n\n` +
       `<b>Цены сейчас</b>\n${priceLine(p, "ru")}\n` +
-      Object.keys(pr).map((c) => `🎟 ${escapeHtml(c)}: $${fmt(pr[c])} · ${price(env, c).stars} ⭐ · ссылка t.me/${escapeHtml(me)}?start=${escapeHtml(c)}`).join("\n"));
+      Object.keys(pr).map((c) => `🎟 ${escapeHtml(c)}: $${fmt(pr[c])} · ${price(env, c).stars} ⭐ · ссылка t.me/${escapeHtml(me)}?start=${escapeHtml(c)}`).join("\n"),
+      listsMenu());
   }
   if (cmd === "/stats") return showStats(env, chat);
+  if (cmd === "/requests") return showRequests(env, chat);
+  if (cmd === "/list") return showList(env, chat, (rest[0] || "").toLowerCase());
   if (cmd === "/contacts") return sendContacts(env, chat, (rest[0] || "").toLowerCase());
   if (cmd === "/files") {
     const rows = await Promise.all([
@@ -1027,7 +1257,7 @@ async function onAdminText(m, env, cmd, rest, arg) {
   }
   if (cmd === "/reply" && rest.length >= 2) {
     const to = rest[0];
-    const r = await send(env, to, `💬 Ответ автора IS-1:\n\n${escapeHtml(arg.slice(to.length).trim())}`);
+    const r = await send(env, to, `💬 Ответ автора ISL-1:\n\n${escapeHtml(arg.slice(to.length).trim())}`);
     return send(env, chat, r.ok ? "Отправлено ✅" : "Не получилось отправить ❌");
   }
   if (cmd === "/refund" && rest[0]) {
@@ -1049,21 +1279,29 @@ async function onAdminText(m, env, cmd, rest, arg) {
 }
 
 // Bot menu commands. Bump COMMANDS_REV when the list changes — the bot updates Telegram by itself on the next message.
-const COMMANDS_REV = "2";
+const COMMANDS_REV = "3";
 async function setCommands(env) {
   const out = {};
   const cmds = {
-    ru: [["start", "Меню"], ["free", "Скачать IS-1 FREE"], ["buy", "Купить IS-1 PRO"], ["faq", "Частые вопросы"], ["promo", "Ввести промокод"],
-         ["mypro", "Получить купленный PRO ещё раз"], ["terms", "Условия покупки"], ["paysupport", "Помощь с оплатой"],
-         ["support", "Написать автору"], ["about", "О программе и исходный код"]],
-    en: [["start", "Menu"], ["free", "Download IS-1 FREE"], ["buy", "Buy IS-1 PRO"], ["faq", "Frequently asked questions"], ["promo", "Enter a promo code"],
-         ["mypro", "Get your PRO again"], ["terms", "Purchase terms"], ["paysupport", "Payment help"],
-         ["support", "Contact the author"], ["about", "About and source code"]],
+    ru: [["start", "Меню"], ["try", `Скачать ISL-1 TRY на ${TRIAL_DAYS} дней`], ["buy", "Купить ISL-1"], ["want", "Хочу бесплатно: ISL-1 за видеоотзыв"],
+         ["faq", "Частые вопросы"], ["promo", "Ввести промокод"], ["mypro", "Получить мой ISL-1 ещё раз"], ["terms", "Условия покупки"],
+         ["paysupport", "Помощь с оплатой"], ["support", "Написать автору"], ["about", "О программе и исходный код"]],
+    en: [["start", "Menu"], ["try", `Download ISL-1 TRY for ${TRIAL_DAYS} days`], ["buy", "Buy ISL-1"], ["want", "Free ISL-1 for a video review"],
+         ["faq", "Frequently asked questions"], ["promo", "Enter a promo code"], ["mypro", "Get your ISL-1 again"], ["terms", "Purchase terms"],
+         ["paysupport", "Payment help"], ["support", "Contact the author"], ["about", "About and source code"]],
   };
   for (const [lc, list] of Object.entries(cmds)) {
     const commands = list.map(([command, description]) => ({ command, description }));
     out["commands_" + lc] = await tg(env, "setMyCommands", lc === "en" ? { commands } : { commands, language_code: lc });
   }
+  // The bot's profile follows the same revision.
+  await tg(env, "setMyName", { name: "ISL-1 Sampler" });
+  await tg(env, "setMyDescription", { language_code: "ru",
+    description: `🎛 ISL-1 — семплер, секвенсор, лупер и KAOSS-эффекты для Android от SALYCH MUSIC. Скачайте ISL-1 TRY на ${TRIAL_DAYS} дней, купите полную версию или получите её бесплатно за видеоотзыв.` });
+  await tg(env, "setMyDescription", {
+    description: `🎛 ISL-1 — a sampler, sequencer, looper and KAOSS effects for Android by SALYCH MUSIC. Download ISL-1 TRY for ${TRIAL_DAYS} days, buy the full version or get it free for a video review.` });
+  await tg(env, "setMyShortDescription", { language_code: "ru", short_description: `Лупер-семплер ISL-1 для Android от SALYCH MUSIC: ${TRIAL_DAYS} дней бесплатно, полная версия за ⭐` });
+  await tg(env, "setMyShortDescription", { short_description: `ISL-1 looper sampler for Android by SALYCH MUSIC: ${TRIAL_DAYS} days free, full version for ⭐` });
   if (out.commands_ru.ok && out.commands_en.ok) await env.DB.put("cmds_rev", COMMANDS_REV);
   return out;
 }
@@ -1081,12 +1319,6 @@ async function setup(request, env) {
     drop_pending_updates: true,
   });
   Object.assign(out, await setCommands(env));
-  out.desc_ru = await tg(env, "setMyDescription", { language_code: "ru",
-    description: "🎛 IS-1 — семплер, секвенсор и KAOSS-эффекты для Android от SALYCH MUSIC. Скачайте бесплатную IS-1 FREE или купите IS-1 PRO с Ableton Link, 64 падами и 50 эффектами." });
-  out.desc_en = await tg(env, "setMyDescription", {
-    description: "🎛 IS-1 — a sampler, sequencer and KAOSS effects for Android by SALYCH MUSIC. Download IS-1 FREE for free or buy IS-1 PRO with Ableton Link, 64 pads and 50 effects." });
-  out.short_ru = await tg(env, "setMyShortDescription", { language_code: "ru", short_description: "Семплер IS-1 для Android от SALYCH MUSIC: FREE бесплатно, PRO за ⭐" });
-  out.short_en = await tg(env, "setMyShortDescription", { short_description: "IS-1 sampler for Android by SALYCH MUSIC: FREE for free, PRO for ⭐" });
   const me = await tg(env, "getMe", {});
   const ok = Object.values(out).every((r) => r && r.ok);
   const user = me.ok ? me.result.username : "";
@@ -1122,6 +1354,6 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/cryptopay") return handleCryptoWebhook(request, env);
     if (url.pathname === "/setup") return setup(request, env);
-    return new Response("IS-1 bot is running.");
+    return new Response("ISL-1 bot is running.");
   },
 };
