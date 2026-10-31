@@ -322,12 +322,12 @@ const codeSuffix = (code) => (code ? ":" + code : "");
 
 function mainMenu(t, code) {
   return kb([
+    [{ text: "🌐 Язык / Language", callback_data: "langask" }],
     [{ text: t.btnTry, callback_data: "try" }],
     [{ text: t.btnBuy, callback_data: "buy" + codeSuffix(code) }],
     [{ text: t.btnWant, callback_data: "want" }],
     [{ text: t.btnMyPro, callback_data: "mypro" }, { text: t.btnAbout, callback_data: "about" }],
     [{ text: t.btnFaq, callback_data: "faq" }, { text: t.btnSupport, callback_data: "support" }],
-    [{ text: "🌐 Язык / Language", callback_data: "langask" }],
   ]);
 }
 
@@ -1374,6 +1374,6 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/cryptopay") return handleCryptoWebhook(request, env);
     if (url.pathname === "/setup") return setup(request, env);
-    return new Response("ISL-1 bot is running.");
+    return new Response(`ISL-1 bot is running. rev ${COMMANDS_REV}`);
   },
 };

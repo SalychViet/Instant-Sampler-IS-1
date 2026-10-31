@@ -85,7 +85,7 @@ await test("/start shows RU menu with price", async () => {
   assert.match(m.body.text, /ISL-1 TRY/);
   assert.match(m.body.text, /<s>\$9\.99<\/s> <b>\$8\.99<\/b> · <b>450 ⭐<\/b>/);
   assert.match(m.body.text, /Скидка до/);
-  assert.equal(m.body.reply_markup.inline_keyboard[0][0].callback_data, "try");
+  assert.equal(m.body.reply_markup.inline_keyboard[1][0].callback_data, "try");
 });
 
 await test("/start in English for non-RU users", async () => {
