@@ -317,6 +317,9 @@ body.free .page::after { content: "IS-1 FREE · руководство поль�
 body.free.en .page::after { content: "IS-1 FREE · User Manual"; }
 body.free.install .page::after { content: "IS-1 FREE · установка на телефон"; }
 body.free .coverpage::after { content: none; }
-body.isl .page::after { content: "ISL-1 · дополнение к руководству"; }
-body.isl.en .page::after { content: "ISL-1 · manual addendum"; }
+body.isl .page::after { content: "ISL-1 · лупер"; }
+body.isl.en .page::after { content: "ISL-1 · looper guide"; }
 body.isl.install .page::after { content: "ISL-1 · установка на телефон"; }
+body.isl.man .page::after { content: "ISL-1 · руководство пользователя"; }
+body.isl.man.en .page::after { content: "ISL-1 · User Manual"; }
+body.isl.install.en .page::after { content: "ISL-1 · Install guide"; }

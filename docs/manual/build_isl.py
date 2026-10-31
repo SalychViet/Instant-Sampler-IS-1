@@ -14,9 +14,9 @@ def pages_ru():
     t = lambda s: tip(s, "Совет")
     return [
         page(f'''
-<h2>ISL-1: дополнение к руководству IS-1</h2>
-<p class="lead"><b>ISL-1</b> — полная версия IS-1 плюс лупер: петли записываются прямо на пады и играют вместе с секвенсором.
-Всё остальное работает как в руководстве IS-1. Здесь — только то, что отличается.</p>
+<h2>ISL-1: лупер и новые функции</h2>
+<p class="lead"><b>ISL-1</b> — семплер с лупером: петли записываются прямо на пады и играют вместе с секвенсором.
+Основные функции описаны в руководстве ISL-1. Здесь — лупер и всё, что с ним связано.</p>
 <div class="fig">{crop(0, 0, 2000, 900, MARKS, src="isl_panel.png")}</div>
 {legend([
     (1, "LOOPER", "включает режим лупера: пустой пад записывает петлю."),
@@ -123,9 +123,9 @@ def pages_en():
     t = lambda s: tip(s, "Tip")
     return [
         page(f'''
-<h2>ISL-1: addendum to the IS-1 manual</h2>
-<p class="lead"><b>ISL-1</b> is the full IS-1 plus a looper: loops are recorded straight onto pads and play along with the sequencer.
-Everything else works as in the IS-1 manual. This addendum covers only what is different.</p>
+<h2>ISL-1: the looper and new features</h2>
+<p class="lead"><b>ISL-1</b> is a sampler with a looper: loops are recorded straight onto pads and play along with the sequencer.
+The main features are in the ISL-1 manual. This guide covers the looper and everything around it.</p>
 <div class="fig">{crop(0, 0, 2000, 900, MARKS, src="isl_panel.png")}</div>
 {legend([
     (1, "LOOPER", "turns the looper on: an empty pad records a loop."),
@@ -228,5 +228,5 @@ The next tap closes the loop at once on the bar line just passed. It waits for t
     ]
 
 
-write("manual_isl.html", "ru", "ISL-1 — дополнение к руководству", "ru isl", pages_ru())
-write("manual_isl_en.html", "en", "ISL-1 — manual addendum", "en isl", pages_en())
+write("looper.html", "ru", "ISL-1 — лупер", "ru isl", pages_ru())
+write("looper_en.html", "en", "ISL-1 — looper guide", "en isl", pages_en())

@@ -54,8 +54,11 @@ const FUTURE = new Date(Date.now() + 30 * 864e5).toISOString();
 const env = { BOT_TOKEN: "123:abc", WEBHOOK_SECRET: SECRET + "\n", PRICE_USD: "9.99", SALE_PRICE_USD: "8.99", SALE_UNTIL: FUTURE,
               PROMO_CODES: "salychmusic=7.99", STARS_PER_USD: "50", CRYPTO_PAY_TOKEN: CP_TOKEN, DB: makeKV() };
 
+const FRESH = 950;   // the only user without a saved language
 async function post(update, secret = SECRET) {
   calls = [];
+  const from = (update.callback_query || update.message || update.pre_checkout_query || {}).from;
+  if (from && from.id !== FRESH && from.language_code) env.DB.m.set("lang:" + from.id, /^(ru|uk|be|kk)/.test(from.language_code) ? "ru" : "en");
   const res = await worker.fetch(new Request("https://bot.example.workers.dev/telegram", {
     method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": secret }, body: JSON.stringify(update),
   }), env);
@@ -112,14 +115,14 @@ await test("admin claim: wrong key refused, right key works once", async () => {
 });
 
 await test("admin uploads all release files", async () => {
-  const names = ["ISL-1_TRY_0.4.1.apk", "ISL-1_TRY_Install_RU.pdf", "ISL-1_0.4.1.apk", "ISL-1_Install_RU.pdf",
+  const names = ["ISL-1_TRY_0.4.1.apk", "ISL-1_TRY_Install_RU.pdf", "ISL-1_TRY_Install_EN.pdf", "ISL-1_0.4.1.apk", "ISL-1_Install_RU.pdf", "ISL-1_Install_EN.pdf",
                  "ISL-1_Manual_RU.pdf", "ISL-1_Manual_EN.pdf", "ISL-1_Looper_RU.pdf", "ISL-1_Looper_EN.pdf"];
   for (const n of names) await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: n, file_id: "ID_" + n } } });
   assert.match(texts(), /Осталось: 2/);
   await post({ message: { from: user(ADMIN), chat: { id: ADMIN }, document: { file_name: "random.zip", file_id: "X" } } });
   assert.match(texts(), /Не знаю файл/);
   await post(msg(user(ADMIN), "/files"));
-  assert.equal((texts().match(/✅/g) || []).length, 8 - 0);
+  assert.equal((texts().match(/✅/g) || []).length, 10);
 });
 
 await test("admin uploads banner and avatar → photo file_id stored, avatar set", async () => {
@@ -143,7 +146,7 @@ await test("welcome uses the banner photo once uploaded", async () => {
 await test("TRY download sends the TRY kit, the 10-day offer, no full APK", async () => {
   await post(cb(user(USER), "try"));
   const g = sent("sendMediaGroup")[0].body.media.map((x) => x.media);
-  assert.deepEqual(g, ["ID_ISL-1_TRY_0.4.1.apk", "ID_ISL-1_TRY_Install_RU.pdf", "ID_ISL-1_Manual_RU.pdf", "ID_ISL-1_Manual_EN.pdf", "ID_ISL-1_Looper_RU.pdf", "ID_ISL-1_Looper_EN.pdf"]);
+  assert.deepEqual(g, ["ID_ISL-1_TRY_0.4.1.apk", "ID_ISL-1_TRY_Install_RU.pdf", "ID_ISL-1_TRY_Install_EN.pdf", "ID_ISL-1_Manual_RU.pdf", "ID_ISL-1_Manual_EN.pdf", "ID_ISL-1_Looper_RU.pdf", "ID_ISL-1_Looper_EN.pdf"]);
   assert.ok(!JSON.stringify(calls).includes("ID_ISL-1_0.4.1"));
 });
 
@@ -414,6 +417,25 @@ await test("stats: Stars sale, PRO downloads, refund; /stats is admin-only", asy
   await post(msg(user(ADMIN), "/refund 666"));
   after = (await stats()).total;
   assert.equal(after.refundStars - before.refundStars, 450);
+});
+
+await test("language: first /start asks, the choice sticks, the menu can change it", async () => {
+  const u = { ...user(FRESH), language_code: "ru" };
+  await post(msg(u, "/start"));
+  assert.match(texts(), /Choose your language/);
+  await post(cb(u, "lang:en"));
+  assert.match(JSON.stringify(calls), /Download ISL-1 TRY/);
+  await post(msg({ ...user(FRESH), language_code: "ru" }, "/about"));
+  assert.match(texts(), /Free software/);
+  await post(msg(u, "/start"));
+  assert.ok(sent("sendPhoto").length + sent("sendMessage").length >= 1);
+  assert.doesNotMatch(texts(), /Choose your language/);
+  await post(msg(u, "/language"));
+  assert.equal(sent("sendMessage")[0].body.reply_markup.inline_keyboard[0].length, 2);
+  await post(cb(u, "lang:ru"));
+  assert.match(JSON.stringify(calls), /Скачать ISL-1 TRY/);
+  await post(cb(u, "lang:xx"));
+  assert.equal(await env.DB.get("lang:" + FRESH), "ru");
 });
 
 await test("/contacts sends three category tables as CSV files", async () => {

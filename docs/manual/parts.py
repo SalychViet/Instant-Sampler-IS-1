@@ -2,6 +2,7 @@
 # Координаты выносок — в пикселях скриншота, приведённого к 2000x900.
 import html
 import os
+import re
 
 # IS1_EDITION=free python3 build.py  ->  руководство для IS-1 FREE: скриншоты из free/ (без логотипов),
 # обложка без логотипа, файл *_free.html.
@@ -110,6 +111,68 @@ def cover_logo():
     return f'<div class="cover-logo">{crop(1638, 40, 300, 115)}</div>'
 
 
+# Руководство ISL-1 собирается из того же текста: IS1_EDITION=isl python3 build.py -> manual_isl.html.
+# Здесь только то, что в ISL-1 работает иначе. Лупер описан в отдельном дополнении (build_isl.py).
+ISL_TEXT = {
+    "ru": [
+        ("MAIN, CLICK, GAIN (или LOOP), TRIM.", "MAIN, SEQ, LOOPER, TRIM."),
+        ("<b>CLICK</b>", "<b>SEQ</b>"), ("<b>GAIN / LOOP</b>", "<b>LOOPER</b>"),
+        ("громкость метронома.", "громкость секвенсора."),
+        ("усиление записи (−12…+24 дБ). Если выбранный пад в режиме LOOP, фейдер становится <b>LOOP</b> — длина петли по темпу.", "громкость всех петель. Уровень входа и громкость метронома — в SETUP."),
+        ("готовность к записи: потом держите пад — пока держите, идёт запись. В KAOSS — кнопка <b>RESMP</b>.", "запись на пад: нажмите и держите пад, после записи кнопка гаснет сама. <b>Удерживайте SAMPLE</b> — можно записать несколько падов подряд. В KAOSS — кнопка <b>RESMP</b>."),
+        ("<b>SRC:MIC / SRC:INT</b>", "<b>SRC</b>"),
+        ("откуда писать: микрофон или звук других приложений телефона (на кнопке видно SRC:MI или SRC:IN).", "откуда писать. Значок на кнопке: микрофон — MIC, кассета — звук других приложений (INT), круг со стрелкой — звук самого приложения (SELF)."),
+        ("Выберите источник: <b>SRC:MIC</b> — микрофон, <b>SRC:INT</b> — звук телефона.", "Выберите источник по значку: микрофон — <b>MIC</b>, кассета — звук телефона (<b>INT</b>), круг со стрелкой — <b>SELF</b>."),
+        ("SRC:MIC", "SRC"),
+        ("Отпустили — звук уже на паде.", "Отпустили — звук на паде, <b>SAMPLE</b> погас."),
+        ("Где кончается «тишина»", "T-HEAD и T-TAIL срабатывают сразу после записи. Где кончается «тишина»"),
+        ("Громкость записи — фейдер <b>GAIN</b>. Во время записи уровень видно на экране.", "Уровень записи настраивается в <b>SETUP</b>. <b>Удерживайте SAMPLE</b>, чтобы записать несколько падов подряд."),
+        ("<em>0,7 с</em>", "<em>2 с</em>"),
+        ("В режиме PAD <b>удерживайте</b> пад со звуком ~1 секунду.", "В режиме PAD <b>удерживайте</b> пад со звуком 2 секунды и нажмите <b>COPY</b> в меню."),
+        ("<b>LOOP</b> — звук повторяется по кругу, пока держите. Фейдер <b>LOOP</b> задаёт длину петли по темпу: FREE, 1/32 … 1/4.", "<b>LOOP</b> — звук идёт по кругу; пад включается и выключается касанием, со следующего такта."),
+        ("громкость — фейдер CLICK", "громкость — в SETUP"),
+        ("в PAD держать пад ~1 с", "в PAD держать пад 2 с → COPY"),
+        ("удерживайте RESMP", "удерживайте RESMPL"),
+        ("IS-1_20261024", "ISL-1_20261024"),
+    ],
+    "en": [
+        ("MAIN, CLICK, GAIN (or LOOP), TRIM.", "MAIN, SEQ, LOOPER, TRIM."),
+        ("<b>CLICK</b>", "<b>SEQ</b>"), ("<b>GAIN / LOOP</b>", "<b>LOOPER</b>"),
+        ("metronome volume.", "sequencer volume."),
+        ("recording gain (−12…+24 dB). If the selected pad is in LOOP mode, the fader becomes <b>LOOP</b>: the loop length in tempo divisions.", "volume of all loops. Input level and metronome volume are in SETUP."),
+        ("arm recording, then hold a pad: it records while you hold. In KAOSS this button is <b>RESMP</b>.", "record to a pad: press it, then hold a pad; it turns off after the take. <b>Hold SAMPLE</b> to record several pads in a row. In KAOSS this button is <b>RESMP</b>."),
+        ("<b>SRC:MIC / SRC:INT</b>", "<b>SRC</b>"),
+        ("record from the microphone or from other apps on the phone (the button may read SRC:MI or SRC:IN).", "where to record from. The icon shows it: microphone is MIC, cassette is other apps (INT), circle with an arrow is the app itself (SELF)."),
+        ("Pick the source: <b>SRC:MIC</b> is the microphone, <b>SRC:INT</b> is the phone's own sound.", "Pick the source by its icon: microphone is <b>MIC</b>, cassette is the phone's sound (<b>INT</b>), circle with an arrow is <b>SELF</b>."),
+        ("SRC:MIC", "SRC"),
+        ("Let go and the sound is on the pad.", "Let go: the sound is on the pad and <b>SAMPLE</b> turns off."),
+        ("The <b>TRIM</b> fader decides", "T-HEAD and T-TAIL apply right after recording. The <b>TRIM</b> fader decides"),
+        ("Recording level is the <b>GAIN</b> fader. You can see the level on the display while recording.", "Set the recording level in <b>SETUP</b>. <b>Hold SAMPLE</b> to record several pads in a row."),
+        ("<em>0.7 s</em>", "<em>2 s</em>"),
+        ("In PAD mode, <b>hold</b> a pad with a sound for about a second.", "In PAD mode, <b>hold</b> a pad with a sound for 2 seconds and tap <b>COPY</b> in the menu."),
+        ("<b>LOOP</b>: the sound repeats while you hold. The <b>LOOP</b> fader sets the loop length in tempo divisions: FREE, 1/32 … 1/4.", "<b>LOOP</b>: the sound repeats; a tap switches the pad on or off on the next bar."),
+        ("volume on the CLICK fader", "volume in SETUP"),
+        ("in PAD hold the pad ~1 s", "in PAD hold the pad 2 s → COPY"),
+        ("hold RESMP", "hold RESMPL"),
+        ("IS-1_20261024", "ISL-1_20261024"),
+    ],
+}
+
+
+def isl_manual(pages, lang):
+    """Текст руководства IS-1 -> руководство ISL-1: без страницы о версиях FREE и Pro."""
+    out = []
+    for p in pages:
+        if re.search(r"</span>IS-1 FREE (и|and) IS-1 Pro</h2>", p):
+            continue
+        p = re.sub(r'<li><span class="tn">19</span>.*?</li>', "", p)
+        for a, b in ISL_TEXT[lang]:
+            p = p.replace(a, b)
+        p = p.replace("<b>RESMP</b>", "<b>RESMPL</b>").replace(">RESMP<", ">RESMPL<")
+        out.append(re.sub(r"(?<![/\w-])IS-1(?![\w-])", "ISL-1", p))
+    return out
+
+
 def write(path, lang, title, body_cls, pages):
     if FREE:
         path = path.replace(".html", "_free.html")
@@ -119,6 +182,9 @@ def write(path, lang, title, body_cls, pages):
         path = path.replace(".html", "_try.html" if TRY else "_isl.html")
         title = title.replace("IS-1", NAME, 1)
         body_cls += " isl"
+        if path.startswith("manual"):
+            pages = isl_manual(pages, lang)
+            body_cls += " man"
     css = open("style.css", encoding="utf-8").read()
     doc = (f'<!doctype html><html lang="{lang}"><head><meta charset="utf-8"><title>{title}</title>'
            f'<style>{css}</style></head><body class="{body_cls}">{"".join(pages)}</body></html>')

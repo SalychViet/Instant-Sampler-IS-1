@@ -34,8 +34,10 @@ const INSTAGRAM = "@salychmusic";
 const FILES = {
   "ISL-1_TRY_0.4.1.apk": "try_apk",
   "ISL-1_TRY_Install_RU.pdf": "try_install",
+  "ISL-1_TRY_Install_EN.pdf": "try_install_en",
   "ISL-1_0.4.1.apk": "isl_apk",
   "ISL-1_Install_RU.pdf": "isl_install",
+  "ISL-1_Install_EN.pdf": "isl_install_en",
   "ISL-1_Manual_RU.pdf": "isl_manual_ru",
   "ISL-1_Manual_EN.pdf": "isl_manual_en",
   "ISL-1_Looper_RU.pdf": "isl_looper_ru",
@@ -45,8 +47,8 @@ const FILES = {
 const IMAGES = { "ISL-1_bot_banner.jpg": "isl_banner", "ISL-1_bot_avatar.jpg": "isl_avatar" };
 const MANUALS = ["isl_manual_ru", "isl_manual_en", "isl_looper_ru", "isl_looper_en"];
 const KIT = {
-  try: ["try_apk", "try_install", ...MANUALS],
-  full: ["isl_apk", "isl_install", ...MANUALS],
+  try: ["try_apk", "try_install", "try_install_en", ...MANUALS],
+  full: ["isl_apk", "isl_install", "isl_install_en", ...MANUALS],
 };
 const KIT_NAME = { try: "ISL-1 TRY", full: "ISL-1" };
 
@@ -130,7 +132,7 @@ const T = {
     btnMyPro: "📦 Мой ISL-1",
     btnAbout: "ℹ️ О программе",
     btnSupport: "💬 Поддержка",
-    sendingTry: "Отправляю ISL-1 TRY 👇 Начните с инструкции по установке.",
+    sendingTry: "Отправляю ISL-1 TRY 👇 Инструкции и руководства — на русском и английском. Начните с инструкции по установке.",
     tryOffer:
       `⏳ <b>ISL-1 TRY работает ${TRIAL_DAYS} дней</b> с первого запуска, все функции открыты. Потом приложение перестанет работать.\n\n` +
       `🎁 <b>Полная версия бесплатно!</b> Если за эти ${TRIAL_DAYS} дней вы запишете видеоотзыв со своими впечатлениями в Instagram ` +
@@ -212,7 +214,7 @@ const T = {
     btnMyPro: "📦 My ISL-1",
     btnAbout: "ℹ️ About",
     btnSupport: "💬 Support",
-    sendingTry: "Here is ISL-1 TRY 👇 The install guide is in Russian; the manuals are in English and Russian.",
+    sendingTry: "Here is ISL-1 TRY 👇 The install guide and manuals are included in English and Russian.",
     tryOffer:
       `⏳ <b>ISL-1 TRY works for ${TRIAL_DAYS} days</b> from the first launch with all features on. After that the app stops working.\n\n` +
       `🎁 <b>Get the full version for free!</b> If within these ${TRIAL_DAYS} days you post a video review with your impressions on Instagram ` +
@@ -256,7 +258,7 @@ const T = {
     btnCheck: "✅ Check payment",
     notPaidYet: "Payment has not arrived yet. If you have paid, wait a minute and tap again.",
     usdtOff: "USDT payment is not available right now, please use Stars ⭐",
-    thanks: "Thank you for your purchase! 🎉 Here is your ISL-1 👇",
+    thanks: "Thank you for your purchase! 🎉 Here is your ISL-1 👇 Start with the install guide.",
     alreadyBought: "You already own ISL-1 — sending the files again 👇",
     noPurchase: "No ISL-1 purchase found for this account. Buy: /buy",
     about:
@@ -287,6 +289,9 @@ function lang(user) {
   const c = (user && user.language_code) || "";
   return /^(ru|uk|be|kk)/.test(c) ? "ru" : "en";
 }
+
+const langMenu = () => kb([[{ text: "🇷🇺 Русский", callback_data: "lang:ru" }, { text: "🇬🇧 English", callback_data: "lang:en" }]]);
+const LANG_ASK = "🌐 Выберите язык / Choose your language";
 
 // ------------------------------------------------------------------ Telegram API
 
@@ -322,6 +327,7 @@ function mainMenu(t, code) {
     [{ text: t.btnWant, callback_data: "want" }],
     [{ text: t.btnMyPro, callback_data: "mypro" }, { text: t.btnAbout, callback_data: "about" }],
     [{ text: t.btnFaq, callback_data: "faq" }, { text: t.btnSupport, callback_data: "support" }],
+    [{ text: "🌐 Язык / Language", callback_data: "langask" }],
   ]);
 }
 
@@ -337,10 +343,11 @@ const FAQ = [
       ru: "📲 <b>Как установить</b>\n1. Скачайте APK в этом чате: ISL-1 TRY — кнопка «🚀 Скачать ISL-1 TRY», ISL-1 — приходит после оплаты или по /mypro.\n" +
           "2. Откройте файл на телефоне.\n3. Android попросит разрешить установку из неизвестных источников для Telegram или файлового менеджера — разрешите.\n" +
           "4. Нажмите «Установить».\n\nЕсли Google Play Protect предупредит о неизвестном приложении: «Подробнее» → «Всё равно установить».\n" +
-          "Пошагово с картинками — в PDF «Install_RU», он приходит вместе с APK.",
+          "Пошагово с картинками — в PDF «Install», он приходит вместе с APK.",
       en: "📲 <b>How to install</b>\n1. Get the APK in this chat: ISL-1 TRY — the “🚀 Download ISL-1 TRY” button, ISL-1 — sent after payment or via /mypro.\n" +
           "2. Open the file on your phone.\n3. Android will ask to allow installing from unknown sources for Telegram or your file manager — allow it.\n" +
-          "4. Tap “Install”.\n\nIf Google Play Protect warns about an unknown app: “More details” → “Install anyway”.",
+          "4. Tap “Install”.\n\nIf Google Play Protect warns about an unknown app: “More details” → “Install anyway”.\n" +
+          "A step-by-step guide with pictures is in the “Install” PDF that comes with the APK.",
     },
   },
   {
@@ -485,8 +492,8 @@ const FAQ = [
     kw: /инструкц|руководств|мануал|manual|guide|как пользоват|как работает|как сдела|как записат|how to (use|make)|tutorial|обучени|язык|language|english|английск|русск/,
     q: { ru: "Где руководство? Какой язык?", en: "Where is the manual? Which language?" },
     a: {
-      ru: "📖 Руководство пользователя (RU и EN) и инструкция по установке приходят вместе с APK. Надписи на панели приложения — на английском.",
-      en: "📖 The user manual (EN and RU) and the install guide come with the APK. The app panel labels are in English.",
+      ru: "📖 Руководство пользователя и инструкция по установке приходят вместе с APK на русском и английском. Надписи на панели приложения — на английском.",
+      en: "📖 The user manual and the install guide come with the APK in English and Russian. The app panel labels are in English.",
     },
   },
 ];
@@ -603,12 +610,12 @@ function escapeHtml(s) {
 
 // ------------------------------------------------------------------ statistics and contacts (admin only)
 // One KV record "stats" with totals and per-month numbers (Moscow time). Contacts: "try:<id>" downloaded TRY,
-// "reviewer:<id>" got ISL-1 for a review, "buyer:<id>" bought ("free:<id>" are old IS-1 FREE downloads).
+// "reviewer:<id>" got ISL-1 for a review, "buyer:<id>" bought.
 // The admin's own downloads are not counted.
 const STAR_PAYOUT_USD = 0.013;   // ≈ what one Star brings on withdrawal via Fragment (override with env STAR_PAYOUT_USD)
 
 const monthKey = (d = new Date(Date.now())) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 7);
-const emptyBlock = () => ({ freeDl: 0, freeUsers: 0, tryDl: 0, tryUsers: 0, reviewN: 0, proDl: 0, starsN: 0, starsSum: 0, usdtN: 0, usdtSum: 0, manualN: 0, refundN: 0, refundStars: 0 });
+const emptyBlock = () => ({ tryDl: 0, tryUsers: 0, reviewN: 0, proDl: 0, starsN: 0, starsSum: 0, usdtN: 0, usdtSum: 0, manualN: 0, refundN: 0, refundStars: 0 });
 
 async function getStats(env) {
   const raw = await env.DB.get("stats");
@@ -708,7 +715,6 @@ function statsBlock(env, b) {
   const starsUsd = netStars * rate;
   return `🚀 TRY — скачиваний: <b>${b.tryDl || 0}</b> · людей: ${b.tryUsers || 0}\n` +
     `🎁 За отзыв: <b>${b.reviewN || 0}</b>\n` +
-    (b.freeDl ? `⬇️ Старый FREE — скачиваний: ${b.freeDl} · людей: ${b.freeUsers}\n` : "") +
     `💎 ISL-1 — продаж: <b>${b.starsN + b.usdtN}</b>` + (b.manualN ? ` · выдано вручную: ${b.manualN}` : "") + ` · выдач файлов: ${b.proDl}\n` +
     `⭐ Stars: <b>${netStars} ⭐</b> · продаж: ${b.starsN}` + (b.refundN ? ` · возвратов: ${b.refundN} (−${b.refundStars} ⭐)` : "") + ` · ≈ $${money(starsUsd)} к выводу\n` +
     `💵 USDT: <b>${money(b.usdtSum)}</b> · продаж: ${b.usdtN}\n` +
@@ -753,8 +759,6 @@ const LISTS = {
             cols: ["user_id", "username", "first_name", "last_name", "language", "date", "instagram", "code"] },
   buy: { prefix: "buyer:", title: "💎 Купили", file: "ISL-1_buyers", date: "date",
          cols: ["user_id", "username", "first_name", "last_name", "language", "date", "method", "amount", "promo", "ref"] },
-  free: { prefix: "free:", title: "⬇️ Старый IS-1 FREE", file: "IS-1_FREE_old", date: "last_date",
-          cols: ["user_id", "username", "first_name", "last_name", "language", "first_date", "last_date", "downloads"] },
 };
 
 async function listRows(env, l) {
@@ -763,7 +767,7 @@ async function listRows(env, l) {
   return rows.sort((a, b) => String(b[l.date]).localeCompare(String(a[l.date])));
 }
 
-/** /contacts [try|review|buy|free] — the contact lists as CSV files (open in Excel / Numbers / Google Sheets). */
+/** /contacts [try|review|buy] — the contact lists as CSV files (open in Excel / Numbers / Google Sheets). */
 async function sendContacts(env, chat, which) {
   const day = new Date(Date.now()).toISOString().slice(0, 10);
   const names = LISTS[which] ? [which] : ["try", "review", "buy"];
@@ -774,7 +778,7 @@ async function sendContacts(env, chat, which) {
   }
 }
 
-/** /list [try|review|buy|free] — the latest people of a category right in the chat. */
+/** /list [try|review|buy] — the latest people of a category right in the chat. */
 async function showList(env, chat, which) {
   const l = LISTS[which];
   if (!l) return send(env, chat, "Какой список показать?", listsMenu());
@@ -962,6 +966,13 @@ async function deliverIfInvoicePaid(env, inv, expectUserId, resendIfDone = true)
 
 async function handleUpdate(upd, env) {
   if ((await env.DB.get("cmds_rev")) !== COMMANDS_REV) await setCommands(env);
+  // The language chosen in the bot replaces the one from the Telegram app in every handler.
+  const from = (upd.pre_checkout_query || upd.callback_query || upd.message || {}).from;
+  if (from) {
+    const saved = await env.DB.get("lang:" + from.id);
+    if (saved) from.language_code = saved;
+    else from.langUnset = true;
+  }
   if (upd.pre_checkout_query) return onPreCheckout(upd.pre_checkout_query, env);
   if (upd.callback_query) return onCallback(upd.callback_query, env);
   const m = upd.message;
@@ -993,7 +1004,11 @@ async function onText(m, env) {
       if (arg === "want") return wantFree(env, m.from, chat, t);
       if (isReviewCode(arg)) return redeemCode(env, m.from, chat, t, arg);
       if (arg && isPromo(env, arg)) return applyPromo(env, chat, t, arg);
+      if (m.from.langUnset) return send(env, chat, LANG_ASK, langMenu());
       return welcome(env, chat, t, "");
+    case "/language":
+    case "/lang":
+      return send(env, chat, LANG_ASK, langMenu());
     case "/try":
     case "/free":
       return sendTry(env, chat, t, m.from);
@@ -1075,6 +1090,11 @@ async function onCallback(q, env) {
   const chat = q.message ? q.message.chat.id : q.from.id;
   await tg(env, "answerCallbackQuery", { callback_query_id: q.id });
   const [d, code = ""] = String(q.data || "").split(":");
+  if (d === "langask") return send(env, chat, LANG_ASK, langMenu());
+  if (d === "lang" && (code === "ru" || code === "en")) {
+    await env.DB.put("lang:" + q.from.id, code);
+    return welcome(env, chat, T[code], "");
+  }
   if (d === "try" || d === "free") return sendTry(env, chat, t, q.from);
   if (d === "want") return wantFree(env, q.from, chat, t);
   if (d === "redeem") return redeemCode(env, q.from, chat, t, code);
@@ -1161,7 +1181,7 @@ async function claimAdmin(env, m, secret) {
   if (!env.WEBHOOK_SECRET || secret !== env.WEBHOOK_SECRET) return send(env, m.chat.id, "Неверный ключ.");
   await env.DB.put("admin", String(m.from.id));
   return send(env, m.chat.id,
-    "✅ Вы администратор бота.\n\nТеперь отправьте боту <b>как файлы</b> 10 файлов из папки «ISL-1 Bot» на рабочем столе.\nСписок команд: /admin");
+    "✅ Вы администратор бота.\n\nТеперь отправьте боту <b>как файлы</b> 12 файлов из папки «ISL-1 Bot» на рабочем столе.\nСписок команд: /admin");
 }
 
 /** Download a file the bot received and return its bytes. */
@@ -1226,7 +1246,7 @@ async function onAdminText(m, env, cmd, rest, arg) {
       `/requests — активные заявки на ISL-1 за отзыв\n` +
       `/list — люди по категориям: скачали TRY, за отзыв, купили\n` +
       `/stats — скачивания и полученные деньги\n` +
-      `/contacts — те же списки таблицами CSV; /contacts try, review или buy — один; free — старый IS-1 FREE\n` +
+      `/contacts — те же списки таблицами CSV; /contacts try, review или buy — один\n` +
       `/files — какие файлы загружены\n` +
       `/sales — последние продажи\n` +
       `/reply id текст — ответить покупателю\n` +
@@ -1279,16 +1299,16 @@ async function onAdminText(m, env, cmd, rest, arg) {
 }
 
 // Bot menu commands. Bump COMMANDS_REV when the list changes — the bot updates Telegram by itself on the next message.
-const COMMANDS_REV = "3";
+const COMMANDS_REV = "4";
 async function setCommands(env) {
   const out = {};
   const cmds = {
     ru: [["start", "Меню"], ["try", `Скачать ISL-1 TRY на ${TRIAL_DAYS} дней`], ["buy", "Купить ISL-1"], ["want", "Хочу бесплатно: ISL-1 за видеоотзыв"],
          ["faq", "Частые вопросы"], ["promo", "Ввести промокод"], ["mypro", "Получить мой ISL-1 ещё раз"], ["terms", "Условия покупки"],
-         ["paysupport", "Помощь с оплатой"], ["support", "Написать автору"], ["about", "О программе и исходный код"]],
+         ["paysupport", "Помощь с оплатой"], ["support", "Написать автору"], ["about", "О программе и исходный код"], ["language", "Язык / Language"]],
     en: [["start", "Menu"], ["try", `Download ISL-1 TRY for ${TRIAL_DAYS} days`], ["buy", "Buy ISL-1"], ["want", "Free ISL-1 for a video review"],
          ["faq", "Frequently asked questions"], ["promo", "Enter a promo code"], ["mypro", "Get your ISL-1 again"], ["terms", "Purchase terms"],
-         ["paysupport", "Payment help"], ["support", "Contact the author"], ["about", "About and source code"]],
+         ["paysupport", "Payment help"], ["support", "Contact the author"], ["about", "About and source code"], ["language", "Язык / Language"]],
   };
   for (const [lc, list] of Object.entries(cmds)) {
     const commands = list.map(([command, description]) => ({ command, description }));

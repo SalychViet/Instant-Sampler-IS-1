@@ -1,5 +1,5 @@
 # Русское руководство IS-1: python3 build.py -> manual.html; PDF печатает headless Chrome.
-from parts import FREE, NAME, btn, cover_logo, crop, fx_tables, legend, mock_pads, page, pads_order, table, write
+from parts import FREE, ISL, NAME, btn, cover_logo, crop, fx_tables, legend, mock_pads, page, pads_order, table, write
 
 
 def tip(t, kind="tip"):
@@ -89,9 +89,9 @@ pages.append(page(f'''
 <div class="cover">
   {cover_logo()}
   <h1>{NAME}</h1>
-  <div class="cover-sub">Семплер · секвенсор · KAOSS-эффекты</div>
+  <div class="cover-sub">{"Семплер · лупер · секвенсор · KAOSS-эффекты" if ISL else "Семплер · секвенсор · KAOSS-эффекты"}</div>
   <div class="cover-img">{crop(0, 0, 2000, 900)}</div>
-  <div class="cover-foot">Руководство пользователя · версия от 24 октября 2026</div>
+  <div class="cover-foot">Руководство пользователя · версия от {"1 ноября 2026" if ISL else "24 октября 2026"}</div>
 </div>''', "coverpage"))
 
 # Содержание
@@ -117,8 +117,8 @@ pages.append(page(f'''
 <h2><span class="sn">1</span>Знакомство с панелью</h2>
 <p class="lead">IS-1 устроен как настоящий аппаратный семплер: экран слева, под ним ручки и кнопки, в центре — банки и 16 падов,
 справа — фейдеры. Держите телефон горизонтально.</p>
-<div class="fig">{crop(0, 0, 2000, 900, [(1, 420, 230), (2, 86, 482), (3, 86, 600), (4, 86, 760), (5, 742, 292),
-                                            (6, 742, 800), (7, 1120, 455), (8, 1632, 430), (9, 1632, 805)])}</div>
+<div class="fig">{crop(0, 0, 2000, 900, [(1, 420, 230), (2, 86, 482), (3, 86, 600), (4, 86, 760), (5, 748, 165 if ISL else 292),
+                                            (6, 748, 300 if ISL else 800), (7, 1120, 455), (8, 1632, 430), (9, 1632, 805)])}</div>
 {legend([
     (1, "Экран", "что выбрано, темп, волна звука, параметры и подсказки. В режиме KAOSS здесь появляется сенсорная площадка эффектов."),
     (2, "Клавиши 1–5", "переключают режимы: PAD, SEQ, STEP, EDIT, IMPORT. В KAOSS — наборы эффектов."),
@@ -225,7 +225,7 @@ pages.append(page(f'''
 pages.append(page(f'''
 <h2><span class="sn">6</span>Банки, фейдеры и правая колонка</h2>
 <div class="row2">
-  <div class="fig">{crop(678, 160, 135, 600, [(1, 700, 238), (2, 702, 318), (3, 702, 662)], "tall")}</div>
+  <div class="fig">{crop(678, 85, 135, 640, [(1, 700, 165), (2, 702, 262), (3, 702, 540)], "tall") if ISL else crop(678, 160, 135, 600, [(1, 700, 238), (2, 702, 318), (3, 702, 662)], "tall")}</div>
   <div>{legend([
     (1, "DRY/WET", "сколько эффекта KAOSS слышно. У каждого из 50 эффектов своё значение. <b>Три быстрых тапа</b> — все эффекты снова на 100 %."),
     (2, "A–D", "банки падов: 4 × 16 = 64 звука. Горит текущий банк."),
@@ -399,7 +399,7 @@ pages.append(page(f'''
 pages.append(page(f'''
 <h2><span class="sn">13</span>KAOSS: эффекты на весь микс</h2>
 <p class="lead">Нажмите <b>KAOSS</b> — вместо экрана появится сенсорная площадка эффектов, как у аппаратных X/Y-пэдов. Коснитесь её — эффект включится, ведите палец — меняются два параметра сразу: по горизонтали (X) и по вертикали (Y).</p>
-<div class="fig">{crop(70, 0, 1930, 900, [(1, 610, 80), (2, 545, 150), (3, 600, 300), (4, 662, 405), (5, 92, 482),
+<div class="fig">{crop(70, 0, 1560 if ISL else 1930, 900, [(1, 610, 80), (2, 545, 150), (3, 600, 300), (4, 662, 405), (5, 92, 482),
                                             (6, 224, 806), (7, 343, 733), (8, 756, 292), (9, 756, 792), (10, 343, 658)], src="kaoss.png", cls="small", overlays=[
     (118, 56, 450, 48, "3·REPEAT  8/10  R08", 33, "color:#29b6ff"),
     (118, 118, 400, 66, "SCRATCH LOOP", 50, "color:#b3e5fc;font-weight:700"),
