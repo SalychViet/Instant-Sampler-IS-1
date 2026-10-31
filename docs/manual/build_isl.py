@@ -16,13 +16,13 @@ def pages_ru():
         page(f'''
 <h2>ISL-1: дополнение к руководству IS-1</h2>
 <p class="lead"><b>ISL-1</b> — полная версия IS-1 плюс лупер: петли записываются прямо на пады и играют вместе с секвенсором.
-Всё остальное работает как в руководстве IS-1 (версия 31 октября 2026). Здесь — только то, что отличается.</p>
+Всё остальное работает как в руководстве IS-1. Здесь — только то, что отличается.</p>
 <div class="fig">{crop(0, 0, 2000, 900, MARKS, src="isl_panel.png")}</div>
 {legend([
     (1, "LOOPER", "включает режим лупера: пустой пад записывает петлю."),
     (2, "CAPTURE", "превращает сыгранное при остановленном воспроизведении в паттерн."),
     (3, "SRC", "источник записи: микрофон, кассета (INT) или круг со стрелкой (SELF)."),
-    (4, "SAMPL", "запись семпла на пад, как в IS-1."),
+    (4, "SAMPL", "запись семпла на пад; после записи кнопка гаснет сама (последняя страница)."),
     (5, "KAOSS", "экран эффектов. При входе SRC переключается с MIC на INT."),
     (6, "Фейдеры", "MAIN — общая громкость, SEQ — секвенсор, LOOPER — все петли, TRIM — порог тишины. Уровень входа — в SETUP."),
     (7, "SETUP", "настройки петель (последняя страница)."),
@@ -90,6 +90,13 @@ def pages_ru():
   <div class="fstep"><span class="fn">2</span>{btn("CAPTURE", on=True)}<p>Нажмите <b>CAPTURE</b> — последняя фраза станет паттерном длиной 1–4 такта и заиграет.</p></div>
 </div>
 <p>Темп определяется по сыгранному; если играют петли, темп остаётся их. Удержание <b>CAPTURE</b> 2 секунды очищает память.</p>
+<h2>Запись семплов и удаление</h2>
+{table(["Что", "Как в ISL-1"], [
+    ["<b>SAMPL</b>", "нажмите и держите пад; когда семпл готов, кнопка гаснет. Кнопка <b>PAD</b> тоже выключает SAMPL"],
+    ["Удержание <b>SAMPL</b>", "пока держите, записывайте пады один за другим; отпустили — запись выключена"],
+    ["<b>T-HEAD</b>, <b>T-TAIL</b>", "если включены, срабатывают сразу после записи"],
+    ["Удержание <b>ERASE</b>", "касание сразу удаляет пад, свайп — целый ряд или столбец"],
+], "plain")}
 <h2>SETUP: настройки петель</h2>
 {table(["Настройка", "Что делает"], [
     ["<b>LOOP OFFSET</b>", "сдвиг петель: запаздывают — вправо (+), спешат — влево (−). Задержка телефона учитывается сама"],
@@ -109,13 +116,13 @@ def pages_en():
         page(f'''
 <h2>ISL-1: addendum to the IS-1 manual</h2>
 <p class="lead"><b>ISL-1</b> is the full IS-1 plus a looper: loops are recorded straight onto pads and play along with the sequencer.
-Everything else works as in the IS-1 manual (31 October 2026). This addendum covers only what is different.</p>
+Everything else works as in the IS-1 manual. This addendum covers only what is different.</p>
 <div class="fig">{crop(0, 0, 2000, 900, MARKS, src="isl_panel.png")}</div>
 {legend([
     (1, "LOOPER", "turns the looper on: an empty pad records a loop."),
     (2, "CAPTURE", "turns what you played while stopped into a pattern."),
     (3, "SRC", "recording source: microphone, cassette (INT) or circle with an arrow (SELF)."),
-    (4, "SAMPL", "records a sample to a pad, as in IS-1."),
+    (4, "SAMPL", "records a sample to a pad and turns off after the take (last page)."),
     (5, "KAOSS", "the effects screen. Entering it switches SRC from MIC to INT."),
     (6, "Faders", "MAIN is the master, SEQ the sequencer, LOOPER all loops, TRIM the silence threshold. Input level is in SETUP."),
     (7, "SETUP", "loop settings (last page)."),
@@ -183,6 +190,13 @@ The next tap closes the loop at once on the bar line just passed. It waits for t
   <div class="fstep"><span class="fn">2</span>{btn("CAPTURE", on=True)}<p>Press <b>CAPTURE</b>: the last phrase becomes a pattern of 1–4 bars and starts playing.</p></div>
 </div>
 <p>The tempo is detected from your playing; if loops are playing, their tempo stays. Hold <b>CAPTURE</b> for 2 seconds to clear the memory.</p>
+<h2>Sampling and erasing</h2>
+{table(["What", "In ISL-1"], [
+    ["<b>SAMPL</b>", "press it and hold a pad; it turns off when the sample is ready. The <b>PAD</b> key turns SAMPL off too"],
+    ["Hold <b>SAMPL</b>", "record pads one after another while holding; release to stop"],
+    ["<b>T-HEAD</b>, <b>T-TAIL</b>", "when on, they apply right after recording"],
+    ["Hold <b>ERASE</b>", "a touch deletes a pad at once, a swipe clears a row or column"],
+], "plain")}
 <h2>SETUP: loop settings</h2>
 {table(["Setting", "What it does"], [
     ["<b>LOOP OFFSET</b>", "shifts loops: move right (+) if they lag, left (−) if they rush. Phone latency is handled automatically"],
