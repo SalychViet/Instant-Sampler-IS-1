@@ -28,7 +28,7 @@ const SOURCE_URL = "https://github.com/SalychViet/Instant-Sampler-IS-1";
 const VERSION = "0.4.1";
 
 const TRIAL_DAYS = 10;
-const INSTAGRAM = "@salychmusic";
+const INSTAGRAM = `<a href="https://www.instagram.com/salychmusic?obrf=aGpxZzN2NmlqYzVx&amp;utm_source=qr">@salychmusic</a>`;
 
 // Admin sends documents with exactly these names (the folder "ISL-1 Bot" on the Desktop).
 const FILES = {
@@ -1299,7 +1299,7 @@ async function onAdminText(m, env, cmd, rest, arg) {
 }
 
 // Bot menu commands. Bump COMMANDS_REV when the list changes — the bot updates Telegram by itself on the next message.
-const COMMANDS_REV = "4";
+const COMMANDS_REV = "5";
 async function setCommands(env) {
   const out = {};
   const cmds = {

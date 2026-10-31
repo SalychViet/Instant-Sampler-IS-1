@@ -463,7 +463,7 @@ await test("TRY offer: 10 days, Instagram rules and the button", async () => {
   await post(cb(user(802), "try"));
   const offer = sent("sendMessage").at(-1).body;
   assert.match(offer.text, /10 дней/);
-  assert.match(offer.text, /@salychmusic/);
+  assert.match(offer.text, /<a href="https:\/\/www\.instagram\.com\/salychmusic\?obrf=aGpxZzN2NmlqYzVx&amp;utm_source=qr">@salychmusic<\/a>/);
   assert.match(offer.text, /запись с экрана/);
   assert.equal(offer.reply_markup.inline_keyboard[0][0].callback_data, "want");
   assert.equal(offer.reply_markup.inline_keyboard[0][0].text, "🎁 Хочу бесплатно!");
