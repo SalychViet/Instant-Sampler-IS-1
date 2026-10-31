@@ -23,7 +23,7 @@ def pages_ru():
     (2, "CAPTURE", "превращает сыгранное при остановленном воспроизведении в паттерн."),
     (3, "SRC", "источник записи: микрофон, кассета (INT) или круг со стрелкой (SELF)."),
     (4, "SAMPL", "запись семпла на пад; после записи кнопка гаснет сама (последняя страница)."),
-    (5, "KAOSS", "экран эффектов. При входе SRC переключается с MIC на INT."),
+    (5, "KAOSS", "экран эффектов. При входе SRC переключается на SELF."),
     (6, "Фейдеры", "MAIN — общая громкость, SEQ — секвенсор, LOOPER — все петли, TRIM — порог тишины. Уровень входа — в SETUP."),
     (7, "SETUP", "настройки петель (последняя страница)."),
     (8, "Пады", "кольцо на паде показывает фазу петли, запись и ожидание такта."),
@@ -78,7 +78,7 @@ def pages_ru():
 <p>После такой записи другие петли выключаются: они уже звучат в новой. Включить их можно снова касанием.</p>
 <p>С <b>SAMPL</b> источник SELF тоже работает: держите пад — на него пишется звук приложения, а другие пады в это время играют.</p>
 <h4>KAOSS</h4>
-<p>При входе в KAOSS источник переключается с MIC на INT и обратно сам не возвращается. Выбранный SELF не меняется. Кнопка <b>RESMPL</b> в KAOSS при включённом лупере включает и выключает SELF.</p>
+<p>При входе в KAOSS источник переключается на SELF и обратно сам не возвращается: сменить его можно кнопкой <b>SRC</b>. Кнопка <b>RESMPL</b> в KAOSS при включённом лупере включает и выключает SELF.</p>
 {t("Если при записи с INT появилось сообщение о тишине, значит другие приложения ничего не играют. Для своего звука выберите SELF.")}
 <h2>Части звука и меню пада</h2>
 {table(["Действие", "Результат"], [
@@ -131,7 +131,7 @@ Everything else works as in the IS-1 manual. This addendum covers only what is d
     (2, "CAPTURE", "turns what you played while stopped into a pattern."),
     (3, "SRC", "recording source: microphone, cassette (INT) or circle with an arrow (SELF)."),
     (4, "SAMPL", "records a sample to a pad and turns off after the take (last page)."),
-    (5, "KAOSS", "the effects screen. Entering it switches SRC from MIC to INT."),
+    (5, "KAOSS", "the effects screen. Entering it switches SRC to SELF."),
     (6, "Faders", "MAIN is the master, SEQ the sequencer, LOOPER all loops, TRIM the silence threshold. Input level is in SETUP."),
     (7, "SETUP", "loop settings (last page)."),
     (8, "Pads", "the ring on a pad shows loop phase, recording and waiting for the bar."),
@@ -186,7 +186,7 @@ The next tap closes the loop at once on the bar line just passed. It waits for t
 <p>After such a recording the other loops switch off, because they are already in the new one. Tap them to switch them back on.</p>
 <p><b>SAMPL</b> works with SELF too: hold a pad and the app's sound records onto it while other pads keep playing.</p>
 <h4>KAOSS</h4>
-<p>Entering KAOSS switches the source from MIC to INT, and it does not switch back by itself. A selected SELF stays. With the looper on, <b>RESMPL</b> in KAOSS turns SELF on and off.</p>
+<p>Entering KAOSS switches the source to SELF, and it does not switch back by itself: use <b>SRC</b> to change it. With the looper on, <b>RESMPL</b> in KAOSS turns SELF on and off.</p>
 {t("If a recording from INT reports silence, no other app is playing. To record ISL-1's own sound, choose SELF.")}
 <h2>Sound parts and the pad menu</h2>
 {table(["Action", "Result"], [

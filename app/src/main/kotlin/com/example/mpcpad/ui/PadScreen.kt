@@ -1111,11 +1111,10 @@ fun MpcRoot(actions: SampleActions) {
                             app.motionRecording = -1
                             app.kTouch = false
                         }
-                        // ISL-1: KAOSS переключает SRC на INT (выбранный SELF не трогаем; дальше — вручную).
-                        val toInt = Edition.LOOPER && app.kaossMode && !app.srcSelf && app.loopRecPad < 0 &&
-                            app.sampleSource != CaptureSource.INTERNAL
-                        if (toInt) changeSource { app.sampleSource = CaptureSource.INTERNAL }
-                        flash(if (toInt) "KAOSS · SRC: INT" else if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
+                        // ISL-1: KAOSS переключает SRC на SELF — приложение слышит само себя (дальше — вручную).
+                        val toSelf = Edition.LOOPER && app.kaossMode && !app.srcSelf && app.loopRecPad < 0
+                        if (toSelf) changeSource { app.srcSelf = true }
+                        flash(if (toSelf) "KAOSS · SRC: SELF" else if (app.kaossMode) "KAOSS: TOUCH THE SCREEN" else "KAOSS OFF")
                     }
                     HwButton("LEN", Modifier.weight(1f), height = 28.dp) {
                         val bars = app.patternBars % Edition.maxBars + 1
