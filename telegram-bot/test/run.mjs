@@ -571,4 +571,43 @@ await test("stats rebuild from recorded payments when the stats record is missin
   assert.ok(t.usdtN >= 2);
 });
 
+await test("broadcast: preview for the admin only, then everyone who downloaded gets it once, in batches", async () => {
+  await post(msg(user(USER), "/broadcast"));
+  assert.ok(!/Получат/.test(texts()), "not for buyers");
+  await post(cb(user(USER), "bc:go"));
+  assert.equal(sent("sendMessage").length, 0, "non-admin can't send");
+
+  for (let i = 0; i < 40; i++) env.DB.m.set("try:" + (5000 + i), JSON.stringify({ user_id: 5000 + i, language: i % 2 ? "en" : "ru" }));
+  await post(msg(user(ADMIN), "/broadcast"));
+  const pre = sent("sendMessage");
+  assert.ok(pre.every((c) => c.body.chat_id === ADMIN), "preview goes to the admin only");
+  assert.match(pre[0].body.text, /Вышел ISL-1 0\.4\.2/);
+  assert.match(pre[1].body.text, /ISL-1 0\.4\.2 is out/);
+  assert.ok(pre[0].body.text.includes("https://youtu.be/NbsAly-ql-M"));
+  assert.equal(pre[0].body.disable_web_page_preview, false);
+  const total = Number(/Получат: <b>(\d+)<\/b>/.exec(pre[2].body.text)[1]);
+  assert.ok(total > 40);
+
+  await post(cb(user(ADMIN), "bc:go"));
+  const first = sent("sendMessage").filter((c) => c.body.chat_id !== ADMIN);
+  assert.equal(first.length, 35);
+  const buyer = first.find((c) => c.body.chat_id === "888");
+  if (buyer) assert.equal(buyer.body.reply_markup.inline_keyboard[0][0].callback_data, "mypro");
+  const tryEn = first.find((c) => c.body.chat_id === "5001");
+  if (tryEn) {
+    assert.equal(tryEn.body.reply_markup.inline_keyboard[0][0].callback_data, "try");
+    assert.match(tryEn.body.text, /is out/);
+  }
+  assert.match(texts(), /Отправлено: 35\. Осталось: \d+/);
+
+  let rounds = 0;
+  while (rounds++ < 10) {
+    await post(cb(user(ADMIN), "bc:go"));
+    if (/уже получили все/.test(texts())) break;
+  }
+  const got = [...env.DB.m.keys()].filter((k) => k.startsWith("news:0.4.2:")).length;
+  assert.equal(got, total, "everyone exactly once");
+  assert.ok(!env.DB.m.has("news:0.4.2:" + ADMIN));
+});
+
 console.log(`\n${passed} tests passed · KV writes used: ${env.DB.writes}`);

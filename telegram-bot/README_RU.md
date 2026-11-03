@@ -71,7 +71,7 @@ https://is1-bot.ВАШ-ПОДДОМЕН.workers.dev/setup?key=СТРОКА_ИЗ_
 
 ## Команды
 Покупатели: `/start`, `/try`, `/buy`, `/want`, `/promo КОД`, `/mypro`, `/faq`, `/terms`, `/paysupport`, `/support`, `/about`.
-Автор: `/admin` (цены, ссылки на промокоды, кнопки списков), `/requests`, `/list`, `/stats`, `/contacts`, `/files`, `/sales`, `/reply id текст`, `/refund id`, `/grant id`.
+Автор: `/admin` (цены, ссылки на промокоды, кнопки списков), `/requests`, `/list`, `/stats`, `/contacts`, `/files`, `/sales`, `/reply id текст`, `/refund id`, `/grant id`, `/broadcast` (сообщение о новой версии всем, кто скачивал: сначала предпросмотр, потом кнопка «Разослать»).
 
 ## Безопасность
 - Токены — только в Cloudflare как **Secret**. `webhook_secret.txt` и `branding/` в репозиторий не попадают.

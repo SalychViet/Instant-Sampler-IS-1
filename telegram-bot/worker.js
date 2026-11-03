@@ -802,6 +802,98 @@ function listsMenu() {
   ]);
 }
 
+// ------------------------------------------------------------------ new version announcement
+// /broadcast — preview of the message about the new version and a button that sends it to everyone who
+// downloaded any version (TRY, review, purchase), each in their language and once per version.
+// Telegram calls per run are limited, so it goes in batches: the admin presses «Дальше» until everyone has it.
+// "news:<VERSION>:<id>" — this person already got the announcement.
+const NEWS_VIDEO = "https://youtu.be/NbsAly-ql-M";
+const BC_BATCH = 35;
+const NEWS = {
+  ru: {
+    text: `🎛 <b>Вышел ISL-1 ${VERSION}!</b> Обновитесь — это бесплатно.\n\n` +
+      `• <b>iLOOPER</b> — записывает только новую партию, лупы продолжают играть\n` +
+      `• <b>LIVE REC</b> — запись всего выступления в WAV 24 бит\n` +
+      `• <b>EQ</b> на каждом пэде и <b>PreLC</b> — срез низа перед семплированием\n` +
+      `• без фазинга при дозаписи, барабаны не проседают под лупами\n\n` +
+      `🎬 Видео об обновлении: ${NEWS_VIDEO}\n\n` +
+      `Нажмите кнопку ниже и установите новую версию поверх старой — пады, паттерны и настройки сохранятся.`,
+    full: "📥 Получить ISL-1 " + VERSION,
+    try: "📥 Получить ISL-1 TRY " + VERSION,
+  },
+  en: {
+    text: `🎛 <b>ISL-1 ${VERSION} is out!</b> The update is free.\n\n` +
+      `• <b>iLOOPER</b> records only the new part while your loops keep playing\n` +
+      `• <b>LIVE REC</b> records your whole jam to 24-bit WAV\n` +
+      `• <b>EQ</b> on every pad and <b>PreLC</b>, a low cut before sampling\n` +
+      `• no phasing when you overdub, drums no longer dip under loops\n\n` +
+      `🎬 Video about the update: ${NEWS_VIDEO}\n\n` +
+      `Tap the button below and install the new version over the old one — pads, patterns and settings are kept.`,
+    full: "📥 Get ISL-1 " + VERSION,
+    try: "📥 Get ISL-1 TRY " + VERSION,
+  },
+};
+
+function newsMessage(lc, full) {
+  const n = NEWS[lc];
+  return [n.text, { disable_web_page_preview: false, ...kb([[{ text: full ? n.full : n.try, callback_data: full ? "mypro" : "try" }], [{ text: "🎬 YouTube", url: NEWS_VIDEO }]]) }];
+}
+
+/** Everyone who downloaded any version, minus the author: id → { full, record key }. */
+async function newsRecipients(env) {
+  const out = new Map();
+  for (const [prefix, full] of [["try:", false], ["reviewer:", true], ["buyer:", true]]) {
+    for (const k of await listKeys(env, prefix)) {
+      const id = k.slice(prefix.length);
+      if (!/^\d+$/.test(id) || (await isAdmin(env, id))) continue;
+      const old = out.get(id);
+      out.set(id, { full: full || (old ? old.full : false), key: old ? old.key : k });
+    }
+  }
+  return out;
+}
+
+async function newsPending(env) {
+  const all = await newsRecipients(env);
+  const left = [];
+  for (const [id, r] of all) if (!(await env.DB.get(`news:${VERSION}:${id}`))) left.push([id, r]);
+  return { all, left };
+}
+
+async function newsLang(env, id, key) {
+  const saved = await env.DB.get("lang:" + id);
+  if (saved === "ru" || saved === "en") return saved;
+  const rec = JSON.parse((await env.DB.get(key)) || "{}");
+  return lang({ language_code: rec.language });
+}
+
+/** /broadcast: both versions of the message as they will look, and the count. */
+async function newsPreview(env, chat) {
+  const { all, left } = await newsPending(env);
+  for (const lc of ["ru", "en"]) await send(env, chat, ...newsMessage(lc, true));
+  const full = left.filter(([, r]) => r.full).length;
+  return send(env, chat,
+    `Выше — сообщение о версии ${VERSION} (у скачавших TRY кнопка ведёт на TRY).\n` +
+    `Получат: <b>${left.length}</b> (полная версия: ${full}, TRY: ${left.length - full}). Уже получили: ${all.size - left.length}.`,
+    left.length ? kb([[{ text: `✅ Разослать ${left.length}`, callback_data: "bc:go" }]]) : {});
+}
+
+/** One batch of the announcement; the button continues with the next one. */
+async function newsSend(env, chat) {
+  const { left } = await newsPending(env);
+  if (!left.length) return send(env, chat, `Сообщение о версии ${VERSION} уже получили все ✅`);
+  let ok = 0, failed = 0;
+  for (const [id, r] of left.slice(0, BC_BATCH)) {
+    const res = await send(env, id, ...newsMessage(await newsLang(env, id, r.key), r.full));
+    if (res.ok) ok++; else failed++;   // заблокировал бота или удалил аккаунт — больше не пробуем
+    await env.DB.put(`news:${VERSION}:${id}`, res.ok ? "1" : "failed");
+  }
+  const rest = left.length - ok - failed;
+  return send(env, chat,
+    `Отправлено: ${ok}` + (failed ? `, не доставлено: ${failed} (заблокировали бота)` : "") + `. Осталось: ${rest}.`,
+    rest ? kb([[{ text: `▶ Дальше (${Math.min(rest, BC_BATCH)})`, callback_data: "bc:go" }]]) : {});
+}
+
 // ------------------------------------------------------------------ free ISL-1 for a video review
 // "ig:<id>"  the bot waits for this person's Instagram (1 hour)
 // "req:<id>" request: status pending / approved / rejected
@@ -1098,7 +1190,8 @@ async function onCallback(q, env) {
   if (d === "try" || d === "free") return sendTry(env, chat, t, q.from);
   if (d === "want") return wantFree(env, q.from, chat, t);
   if (d === "redeem") return redeemCode(env, q.from, chat, t, code);
-  if ((d === "rv_ok" || d === "rv_no" || d === "adm") && !(await isAdmin(env, q.from.id))) return;
+  if ((d === "rv_ok" || d === "rv_no" || d === "adm" || d === "bc") && !(await isAdmin(env, q.from.id))) return;
+  if (d === "bc") return newsSend(env, chat);
   if (d === "rv_ok" || d === "rv_no") return decideRequest(env, q, d === "rv_ok", code);
   if (d === "adm") return code === "req" ? showRequests(env, chat) : showList(env, chat, code);
   if (d === "buy") return showTerms(env, chat, t, code);
@@ -1251,12 +1344,14 @@ async function onAdminText(m, env, cmd, rest, arg) {
       `/sales — последние продажи\n` +
       `/reply id текст — ответить покупателю\n` +
       `/refund id — вернуть Stars покупателю\n` +
-      `/grant id — выдать ISL-1 вручную\n\n` +
+      `/grant id — выдать ISL-1 вручную\n` +
+      `/broadcast — сообщение о новой версии всем, кто скачивал\n\n` +
       `<b>Цены сейчас</b>\n${priceLine(p, "ru")}\n` +
       Object.keys(pr).map((c) => `🎟 ${escapeHtml(c)}: $${fmt(pr[c])} · ${price(env, c).stars} ⭐ · ссылка t.me/${escapeHtml(me)}?start=${escapeHtml(c)}`).join("\n"),
       listsMenu());
   }
   if (cmd === "/stats") return showStats(env, chat);
+  if (cmd === "/broadcast") return newsPreview(env, chat);
   if (cmd === "/requests") return showRequests(env, chat);
   if (cmd === "/list") return showList(env, chat, (rest[0] || "").toLowerCase());
   if (cmd === "/contacts") return sendContacts(env, chat, (rest[0] || "").toLowerCase());
