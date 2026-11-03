@@ -17,7 +17,6 @@ class MpcApp : Application() {
         DefaultProject.installIfFresh(this)   // при первом запуске — проект из коробки
         PadSampler.init(this)
         AudioEngine.create()
-        AudioEngine.setMasterVolume(Settings.master)
         AudioEngine.setSeqVolume(Settings.seqVolume)
         AudioEngine.setLoopVolume(Settings.loopVolume)
         AudioEngine.seqSetBpm(Settings.bpm)

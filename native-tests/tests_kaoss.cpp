@@ -66,6 +66,24 @@ TEST(KaossTest, NoTouchIsBitExactPassthrough) {
     }
 }
 
+TEST(KaossTest, NoTouchKeepsLevel) {
+    for (int p = 0; p < kKpCount; ++p) {
+        KaossFx fx;
+        fx.setSampleRate(48000);
+        fx.setProgram(p);
+        fx.setXY(0.5f, 1.0f);
+        fx.setMix(1.0f);
+        fx.setTouch(false);
+        std::vector<float> in(2 * 48000);
+        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.3f * std::sin(0.02f * static_cast<float>(i / 2));
+        auto buf = in;
+        run(fx, buf);
+        float a = 0.0f, b = 0.0f;
+        for (size_t i = in.size() / 2; i < in.size(); ++i) { a += in[i] * in[i]; b += buf[i] * buf[i]; }
+        EXPECT_NEAR(std::sqrt(b / a), 1.0f, 0.03f);
+    }
+}
+
 TEST(KaossTest, DelayEchoArrivesOnBeat) {
     KaossFx fx;
     fx.setSampleRate(kSr);

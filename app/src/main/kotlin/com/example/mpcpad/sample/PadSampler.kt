@@ -84,6 +84,7 @@ object PadSampler {
                 _events.emit(SamplerEvent.Rejected(pad, reason))
                 return@launch
             }
+            PreLowCut.apply(data, rate, channels)
             if (asLoop) {
                 _events.emit(SamplerEvent.LoopRecorded(pad, SampleClip(data, channels, rate), capped, preroll))
                 return@launch

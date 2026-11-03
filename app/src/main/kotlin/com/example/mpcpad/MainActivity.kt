@@ -98,8 +98,23 @@ class MainActivity : ComponentActivity(), SampleActions {
         }
 
     private val saveBankLauncher =
-        registerForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
             if (uri != null) appVm.saveBank(applicationContext, uri, pendingBank)
+        }
+
+    private val liveFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                    )
+                    com.example.mpcpad.Settings.liveFolder = uri.toString()
+                    appVm.flash("LIVE REC → " + com.example.mpcpad.audio.LiveRecorder.folderLabel(), 2500)
+                } catch (_: Exception) {
+                    appVm.flash("LIVE REC: FOLDER NOT ALLOWED", 2500)
+                }
+            }
         }
 
     private val importBankLauncher =
@@ -258,7 +273,12 @@ class MainActivity : ComponentActivity(), SampleActions {
     override fun saveBank(bank: Int) {
         pendingBank = bank
         val date = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
-        saveBankLauncher.launch("IS-1_BANK_${'A' + bank}_$date.zip")
+        // .isbank, а не .zip: окно выбора файла открывает zip как папку и не даёт выбрать его целиком.
+        saveBankLauncher.launch("IS-1_BANK_${'A' + bank}_$date.isbank")
+    }
+
+    override fun pickLiveFolder() {
+        liveFolderLauncher.launch(null)
     }
 
     override fun importBank(bank: Int) {

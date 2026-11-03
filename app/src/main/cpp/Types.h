@@ -29,6 +29,12 @@ enum ParamId : int {
     kParamPEnvX0,        // 5 точек: положение 0..1 в регионе START–END (X0..X4 подряд)
     kParamPEnvY0 = kParamPEnvX0 + 5,   // значения, полутоны -24..24 (Y0..Y4 подряд)
     kParamMute = kParamPEnvY0 + 5,     // ISL-1, MUTE: 0/1 — пад играет беззвучно, фаза петли не теряется
+    kParamEqHpOn,        // ISL-1, EQ пада: 0/1
+    kParamEqHpHz,        // 20..20000
+    kParamEqLpOn,        // 0/1
+    kParamEqLpHz,        // 20..20000
+    kParamEqBellHz,      // 20..20000
+    kParamEqBellDb,      // -18..18, 0 — bell выключен и не считается
     kParamCount
 };
 

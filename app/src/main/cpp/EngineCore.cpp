@@ -31,7 +31,9 @@ void EngineCore::setSampleRate(int sr) {
     fx_.setSampleRate(sampleRate_);
     resBuf_.assign(static_cast<size_t>(sampleRate_) * 30 * 2, 0.0f);   // до 30 с
     clickBuf_.assign(2 * 8192, 0.0f);
+    loopBuf_.assign(2 * 8192, 0.0f);
     limiter_.setSampleRate(static_cast<float>(sampleRate_));
+    ducker_.setSampleRate(static_cast<float>(sampleRate_));
 }
 
 // ------------------------- control side -------------------------
@@ -86,14 +88,6 @@ bool EngineCore::setParam(int pad, int paramId, float value) {
     return post(c);
 }
 
-bool EngineCore::setMasterVolume(float v) {
-    Command c;
-    c.type = CmdType::SetMaster;
-    c.value = std::clamp(v, 0.0f, 1.5f);
-    std::lock_guard<std::mutex> lk(producerMutex_);
-    return post(c);
-}
-
 bool EngineCore::setSeqVolume(float v) {
     Command c;
     c.type = CmdType::SetMaster;
@@ -108,6 +102,15 @@ bool EngineCore::setLoopVolume(float v) {
     c.type = CmdType::SetMaster;
     c.param = 2;
     c.value = std::clamp(v, 0.0f, 1.5f);
+    std::lock_guard<std::mutex> lk(producerMutex_);
+    return post(c);
+}
+
+bool EngineCore::setSeqDuck(bool on) {
+    Command c;
+    c.type = CmdType::SetMaster;
+    c.param = 3;
+    c.value = on ? 1.0f : 0.0f;
     std::lock_guard<std::mutex> lk(producerMutex_);
     return post(c);
 }
@@ -150,12 +153,17 @@ bool EngineCore::seq(SeqOp op, int pat, int pad, int a, int b, float f) {
 
 void EngineCore::apply(const Command& c) {
     switch (c.type) {
-        case CmdType::NoteOn:
-            voices_.noteOn(pads_[c.pad], c.pad, c.value, c.b * 1e-6);
-            seq_.onPadDown(c.pad, c.value);   // если идёт запись — нота попадёт в паттерн
+        case CmdType::NoteOn: {
+            const bool silenced = !voices_.seqDucked() && seq_.overdubSilences(c.pad);
+            liveSilenced_[c.pad] = silenced;
+            if (!silenced) voices_.noteOn(pads_[c.pad], c.pad, c.value, c.b * 1e-6);
+            seq_.onPadDown(c.pad, c.value, silenced);   // если идёт запись — нота попадёт в паттерн
             break;
+        }
         case CmdType::NoteOff:
-            voices_.noteOff(c.pad);
+            // Заглушённый удар не отпускает ноту, которую играет секвенсор.
+            if (!liveSilenced_[c.pad]) voices_.noteOff(c.pad);
+            liveSilenced_[c.pad] = false;
             seq_.onPadUp(c.pad);
             break;
         case CmdType::Seq:
@@ -187,7 +195,7 @@ void EngineCore::apply(const Command& c) {
         case CmdType::SetMaster:
             if (c.param == 1) voices_.setSeqVolume(c.value);         // SEQ VOL
             else if (c.param == 2) voices_.setLoopVolume(c.value);   // LOOPER
-            else master_ = c.value;
+            else if (c.param == 3) voices_.setSeqDuck(c.value > 0.5f);
             break;
         case CmdType::LoadSample: {
             Sample* old = const_cast<Sample*>(pads_[c.pad].sample);
@@ -208,6 +216,19 @@ void EngineCore::apply(const Command& c) {
             }
             if (c.param >= kParamPEnvX0 && c.param < kParamMute) {
                 p.pEnvX[c.param - kParamPEnvX0] = std::clamp(v, 0.0f, 1.0f);
+                break;
+            }
+            if (c.param >= kParamEqHpOn && c.param <= kParamEqBellDb) {
+                switch (c.param) {
+                    case kParamEqHpOn:   p.eq.hpOn = v > 0.5f; break;
+                    case kParamEqHpHz:   p.eq.hpHz = std::clamp(v, 20.0f, 20000.0f); break;
+                    case kParamEqLpOn:   p.eq.lpOn = v > 0.5f; break;
+                    case kParamEqLpHz:   p.eq.lpHz = std::clamp(v, 20.0f, 20000.0f); break;
+                    case kParamEqBellHz: p.eq.bellHz = std::clamp(v, 20.0f, 20000.0f); break;
+                    default:             p.eq.bellDb = std::clamp(v, -18.0f, 18.0f); break;
+                }
+                p.eq.update(sampleRate_);
+                voices_.updateEq(c.pad, p.eq);
                 break;
             }
             switch (c.param) {
@@ -257,19 +278,43 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
     // Метроном — в свой буфер: в эффекты, ресемплинг и экспорт он не попадает, только в выход.
     float* click = numFrames * 2 <= static_cast<int>(clickBuf_.size()) ? clickBuf_.data() : nullptr;
     if (click) std::memset(click, 0, sizeof(float) * 2 * static_cast<size_t>(numFrames));
-    seq_.render(out, numFrames, click);   // голоса (+ метроном, если буфера не хватило)
-    fx_.process(out, numFrames, seq_.bpm());   // KAOSS — на весь микс, до лимитера
-    const float peak = limiter_.process(out, numFrames, master_);
+    float* loops = numFrames * 2 <= static_cast<int>(loopBuf_.size()) ? loopBuf_.data() : nullptr;
+    if (loops) std::memset(loops, 0, sizeof(float) * 2 * static_cast<size_t>(numFrames));
+    seq_.render(out, numFrames, click, loops);   // голоса (+ метроном, если буфера не хватило)
 
-    if (resOn_.load(std::memory_order_acquire)) {
+    const bool taking = resOn_.load(std::memory_order_acquire);
+    // iLOOPER: запись берёт только новую партию (секвенсор и one-shot после KAOSS).
+    const bool isolated = taking && loops && resIsolated_.load(std::memory_order_relaxed);
+    const bool loopsDry = loops && (isolated || loopsDry_.load(std::memory_order_relaxed));
+    auto take = [&](const float* src) {
         const int cap = static_cast<int>(resBuf_.size() / 2);
         const int len = resLen_.load(std::memory_order_relaxed);
         const int k = std::min(numFrames, cap - len);
         if (k > 0) {
-            std::memcpy(resBuf_.data() + 2 * static_cast<size_t>(len), out, sizeof(float) * 2 * static_cast<size_t>(k));
+            float* dst = resBuf_.data() + 2 * static_cast<size_t>(len);
+            for (int i = 0; i < 2 * k; ++i) dst[i] = std::clamp(src[i], -1.0f, 1.0f);
             resLen_.store(len + k, std::memory_order_release);
         }
         if (len + k >= cap) resOn_.store(false, std::memory_order_release);   // буфер полон
+    };
+    if (loopsDry) {
+        fx_.process(out, numFrames, seq_.bpm());
+        if (isolated) take(out);
+        ducker_.mix(out, loops, numFrames);
+    } else {
+        if (loops) ducker_.mix(out, loops, numFrames);
+        fx_.process(out, numFrames, seq_.bpm());   // KAOSS — на весь микс, до лимитера
+    }
+    const float peak = limiter_.process(out, numFrames, 1.0f);
+    if (taking && !isolated) take(out);
+    if (liveOn_.load(std::memory_order_acquire)) {
+        const uint64_t w = liveW_.load(std::memory_order_relaxed);
+        for (int i = 0; i < numFrames; ++i) {
+            const size_t at = 2 * static_cast<size_t>((w + static_cast<uint64_t>(i)) & liveMask_);
+            liveRing_[at] = std::clamp(out[2 * i], -1.0f, 1.0f);
+            liveRing_[at + 1] = std::clamp(out[2 * i + 1], -1.0f, 1.0f);
+        }
+        liveW_.store(w + static_cast<uint64_t>(numFrames), std::memory_order_release);
     }
 
     if (exporting) {
@@ -291,7 +336,7 @@ void EngineCore::render(float* out, int numFrames, const LinkFrame* link) {
     }
 
     if (click) {
-        for (int i = 0; i < 2 * numFrames; ++i) out[i] = std::clamp(out[i] + click[i] * master_, -1.0f, 1.0f);
+        for (int i = 0; i < 2 * numFrames; ++i) out[i] = std::clamp(out[i] + click[i], -1.0f, 1.0f);
     }
 
     peak_.store(peak, std::memory_order_relaxed);
@@ -334,6 +379,23 @@ void EngineCore::exportFree() {
     if (expState_.load(std::memory_order_acquire) != 3) return;
     expState_.store(0, std::memory_order_release);
     std::vector<int16_t>().swap(expBuf_);
+}
+
+int EngineCore::liveRead(float* dst, int maxFrames) {
+    const uint64_t w = liveW_.load(std::memory_order_acquire);
+    const uint64_t cap = liveMask_ + 1;
+    if (w - liveR_ > cap) {   // аудио-поток обогнал на целое кольцо
+        liveR_ = w;
+        return -1;
+    }
+    const int n = static_cast<int>(std::min<uint64_t>(w - liveR_, static_cast<uint64_t>(std::max(0, maxFrames))));
+    for (int i = 0; i < n; ++i) {
+        const size_t at = 2 * static_cast<size_t>((liveR_ + static_cast<uint64_t>(i)) & liveMask_);
+        dst[2 * i] = liveRing_[at];
+        dst[2 * i + 1] = liveRing_[at + 1];
+    }
+    liveR_ += static_cast<uint64_t>(n);
+    return n;
 }
 
 int EngineCore::resampleRead(float* dst, int maxFrames) const {

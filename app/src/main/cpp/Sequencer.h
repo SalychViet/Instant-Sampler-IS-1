@@ -117,12 +117,16 @@ public:
     void setSampleRate(int sr);
 
     void apply(SeqOp op, int pat, int pad, int a, int b, float f);
-    void onPadDown(int pad, float velocity01);   // запись живой игры
+    // Дозапись: у пада рядом уже записана нота — живой удар глушим (иначе фазинг), нота звучит из паттерна.
+    bool overdubSilences(int pad) const;
+    // silenced — живой удар не звучал: записанная нота должна сыграть, её не пропускаем.
+    void onPadDown(int pad, float velocity01, bool silenced = false);   // запись живой игры
     void onPadUp(int pad);
 
     // Голоса + метроном. ДОБАВЛЯЕТ в out (interleaved stereo); блок режется по границам тиков.
     // clickOut (того же размера) — метроном отдельно: мимо эффектов и записи (как в Ableton).
-    void render(float* out, int numFrames, float* clickOut = nullptr);
+    // loopsOut (того же размера) — секция петель отдельно от секвенсора и one-shot.
+    void render(float* out, int numFrames, float* clickOut = nullptr, float* loopsOut = nullptr);
 
     // Перед render (аудио-поток): подстроить темп и фазу под Link, стартовать/остановиться вместе с сессией.
     void linkSync(const LinkFrame& lf, int numFrames);

@@ -41,7 +41,7 @@ object Settings {
     private val _stepVelocity = mutableFloatStateOf(0.8f)
 
     // ---- общее ----
-    private val _master = mutableFloatStateOf(0.8f)
+    private val _preLcHz = mutableFloatStateOf(0f)
     private val _fullLevel = mutableStateOf(false)
 
     // ---- синхронизация ----
@@ -51,6 +51,8 @@ object Settings {
     // ---- ISL-1 LOOPER ----
     private val _loopOffsetMs = mutableFloatStateOf(0f)
     private val _loopQuantize = mutableStateOf(false)
+    private val _loopTransportQuant = mutableStateOf(false)
+    private val _liveFolder = mutableStateOf("")
     private val _editSound = mutableStateOf(true)
     private val _loopQuantStrength = mutableFloatStateOf(0.6f)
     private val _loopQuantGrid = mutableIntStateOf(4)
@@ -73,7 +75,8 @@ object Settings {
     var metroLevel: Float get() = _metroLevel.floatValue; set(v) { _metroLevel.floatValue = v; putFloat("metroLevel", v) }
     var countInBars: Int get() = _countInBars.intValue; set(v) { _countInBars.intValue = v; putInt("countInBars", v) }
     var stepVelocity: Float get() = _stepVelocity.floatValue; set(v) { _stepVelocity.floatValue = v; putFloat("stepVelocity", v) }
-    var master: Float get() = _master.floatValue; set(v) { _master.floatValue = v; putFloat("master", v) }
+    /** ISL-1, фейдер PreLC: срез низа записываемого звука, Гц; 0 — выключен. */
+    var preLcHz: Float get() = _preLcHz.floatValue; set(v) { _preLcHz.floatValue = v; putFloat("preLcHz", v) }
     /** P-LOCK: параметры шагов (VOL/PAN/PITCH/…) играют и правятся удержанием шага в STEP. */
     var fullLevel: Boolean get() = _fullLevel.value; set(v) { _fullLevel.value = v; putBool("fullLevel", v) }
     var linkEnabled: Boolean get() = _linkEnabled.value; set(v) { _linkEnabled.value = v; putBool("linkEnabled", v) }
@@ -85,6 +88,9 @@ object Settings {
     var editSound: Boolean get() = _editSound.value; set(v) { _editSound.value = v; putBool("editSound", v) }
     /** ISL-1, SETUP → LOOP QUANTIZE: удары новой петли сдвигаются к сетке. */
     var loopQuantize: Boolean get() = _loopQuantize.value; set(v) { _loopQuantize.value = v; putBool("loopQuantize", v) }
+    /** LIVE REC: папка (URI дерева документов), пусто — «Музыка/ISL-1 LIVE». */
+    var liveFolder: String get() = _liveFolder.value; set(v) { _liveFolder.value = v; prefs?.edit()?.putString("liveFolder", v)?.apply() }
+    var loopTransportQuant: Boolean get() = _loopTransportQuant.value; set(v) { _loopTransportQuant.value = v; putBool("loopTransportQuant", v) }
     /** Сила: 0..1 — на какую часть расстояния до сетки сдвигается удар. */
     var loopQuantStrength: Float get() = _loopQuantStrength.floatValue; set(v) { _loopQuantStrength.floatValue = v; putFloat("loopQuantStrength", v) }
     /** Сетка: делений на долю (1 = 1/4, 2 = 1/8, 4 = 1/16, 8 = 1/32). */
@@ -108,12 +114,14 @@ object Settings {
         _metroLevel.floatValue = p.getFloat("metroLevel", 0.7f).coerceIn(0f, 1f)
         _countInBars.intValue = p.getInt("countInBars", 1).coerceIn(0, 4)
         _stepVelocity.floatValue = p.getFloat("stepVelocity", 0.8f).coerceIn(0.05f, 1f)
-        _master.floatValue = p.getFloat("master", 0.8f).coerceIn(0f, 1.2f)
+        _preLcHz.floatValue = p.getFloat("preLcHz", 0f).coerceIn(0f, 1000f)
         _fullLevel.value = p.getBoolean("fullLevel", false)
         _linkEnabled.value = p.getBoolean("linkEnabled", false)
         _latencyMs.floatValue = p.getFloat("latencyMs", 0f).coerceIn(-100f, 100f)
         _loopOffsetMs.floatValue = p.getFloat("loopOffsetMs", 0f).coerceIn(-150f, 150f)
         _loopQuantize.value = p.getBoolean("loopQuantize", false)
+        _loopTransportQuant.value = p.getBoolean("loopTransportQuant", false)
+        _liveFolder.value = p.getString("liveFolder", "") ?: ""
         _editSound.value = p.getBoolean("editSound", true)
         _loopQuantStrength.floatValue = p.getFloat("loopQuantStrength", 0.6f).coerceIn(0f, 1f)
         _loopQuantGrid.intValue = p.getInt("loopQuantGrid", 4).coerceIn(1, 8)

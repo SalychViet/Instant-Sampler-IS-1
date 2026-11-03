@@ -48,6 +48,7 @@ internal object Skin {
     val LedRed = Color(0xFFFF3B30)
     val LedGreen = Color(0xFF3DDC6B)
     val LedAmber = Color(0xFFFFB020)
+    val LedBlue = Color(0xFF4FC3F7)
 
     val PadHot = Color(0xFFFF7A1A)
     val PadHotGlow = Color(0x66FF7A1A)

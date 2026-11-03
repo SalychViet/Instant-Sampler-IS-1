@@ -32,12 +32,20 @@ const val LOOP_RING_STOPPED = -1f
 const val LOOP_RING_REC = -2f
 const val LOOP_RING_WAIT = -3f
 
+/** Подсветка падов 1–16 (верх и низ градиента): яркие цвета вразнобой, красный — только у записи. */
+private val PadLitColors = listOf(
+    28f, 185f, 305f, 85f,
+    225f, 52f, 150f, 340f,
+    130f, 285f, 40f, 205f,
+    325f, 165f, 245f, 65f,
+).map { hue -> listOf(Color.hsv(hue, 0.55f, 1f), Color.hsv(hue, 0.95f, 1f)) }
+
 /**
  * Сетка 4×4 (резиновые пады) в одном Canvas с мультитачем: каждый палец — по pointer id.
  * Раскладка как у MPC: пад 1 — слева внизу, пад 13 — слева вверху.
  *
  * Все маски — по глобальному номеру пада 0..63 и читаются только при рисовании (без рекомпозиции):
- *  [lit] — оранжевая подсветка (звучит/нажат), [marked] — зелёный светодиод в углу (есть семпл / непустой паттерн / шаг включён),
+ *  [lit] — цветная подсветка (звучит/нажат), [marked] — зелёный светодиод в углу (есть семпл / непустой паттерн / шаг включён),
  *  [cursor] — глобальный номер пада с синей рамкой (плейхед или играющий паттерн), -1 — нет;
  *  [recPad] — пад, на который сейчас идёт запись, -1 — нет.
  *
@@ -152,7 +160,7 @@ fun PadGrid(
                 drawRoundRect(Skin.RubberEdge, topLeft - Offset(2f, 2f), Size(sz.width + 4f, sz.height + 4f), radius)
                 val body = when {
                     isRec -> listOf(Skin.PadRec, Color(0xFF9C1A12))
-                    isLit -> listOf(Color(0xFFFFA45A), Skin.PadHot)
+                    isLit -> PadLitColors[padInBank]
                     else -> listOf(Skin.RubberTop, Skin.Rubber)
                 }
                 drawRoundRect(Brush.verticalGradient(body, startY = topLeft.y, endY = topLeft.y + sz.height), topLeft, sz, radius)

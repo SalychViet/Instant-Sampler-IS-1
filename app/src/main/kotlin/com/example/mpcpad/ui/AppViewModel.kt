@@ -58,6 +58,13 @@ data class PadUi(
     val attackMs: Float = 0f,
     /** LOOP: длина петли по темпу (индекс в [LOOP_DIVS]), -1 — свободная (END вручную). */
     val loopDiv: Int = -1,
+    /** EQ пада (ISL-1): срез низа, срез верха, колокол. Колокол на 0 дБ не считается. */
+    val eqHpOn: Boolean = false,
+    val eqHpHz: Float = 120f,
+    val eqLpOn: Boolean = false,
+    val eqLpHz: Float = 8000f,
+    val eqBellHz: Float = 1000f,
+    val eqBellDb: Float = 0f,
 )
 
 /** Длины петли в долях (четвертях): 1/32 … 1/4. T — триоль. */
@@ -67,7 +74,17 @@ val LOOP_DIVS = listOf(
 )
 
 /** Что лежит в буфере копирования семпла. */
-class SampleClipboard(val clip: SampleClip, val name: String, val ui: PadUi?, val fromResample: Boolean, val sourcePad: Int)
+class SampleClipboard(
+    val clip: SampleClip,
+    val name: String,
+    val ui: PadUi?,
+    val fromResample: Boolean,
+    val sourcePad: Int,
+    /** Части пада (SLICE): исходник целиком, включённые части и границы — копия правится сама по себе. */
+    val original: SampleClip? = null,
+    val parts: Int = 0b1111,
+    val bounds: List<Float>? = null,
+)
 
 /** Точка записанного движения KAOSS: время от начала (мс), X/Y и было ли касание. */
 class MotionPoint(val t: Long, val x: Float, val y: Float, val touch: Boolean)
@@ -88,6 +105,8 @@ fun patternName(global: Int): String = "${'A' + global / 16}${"%02d".format(glob
 const val STEPS_PER_BAR = 16
 const val STEP_TICKS = 24            // 1/16 при 96 PPQ
 const val MAX_UI_BARS = 4
+const val EQ_MIN_HZ = 20f
+const val EQ_MAX_HZ = 20000f
 
 /**
  * Общее состояние экрана устройства. Живёт, пока жива активити (переживает смену режимов).
@@ -112,6 +131,10 @@ class AppViewModel : ViewModel() {
     /** За это нажатие SAMPLE уже что-то записали. */
     var sampleTook = false
     var exportOpen by mutableStateOf(false)
+    /** LIVE REC: идёт запись всего, что слышно; белая вспышка экрана — метка начала для склейки с видео. */
+    var liveRec by mutableStateOf(false)
+    var liveFlash by mutableStateOf(false)
+    var liveStartNanos = 0L
     var bank by mutableIntStateOf(0)
     /** Выбранный «звук» (пад 0..63): его параметры правят ручки, его шаги видны в STEP. */
     var selected by mutableIntStateOf(0)
@@ -331,6 +354,7 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.PITCH, u.pitch)
         AudioEngine.setParam(pad, PadParam.DETUNE, u.detune)
         ProjectStore.applyPitchEnv(pad, u)
+        ProjectStore.applyEq(pad, u)
         AudioEngine.setParam(pad, PadParam.START, u.start)
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
@@ -338,6 +362,13 @@ class AppViewModel : ViewModel() {
         AudioEngine.setParam(pad, PadParam.CHOKE, chokeEngineValue(pad, u.choke))
         AudioEngine.setParam(pad, PadParam.ATTACK_MS, u.attackMs)
         AudioEngine.setParam(pad, PadParam.RELEASE_MS, u.releaseMs)
+    }
+
+    /** Новый звук на паде (запись, SELF, файл): настройки прошлого звука на него не переходят. */
+    fun resetPadForNewSound(pad: Int) {
+        loopStop(pad)
+        forgetLoop(pad)
+        applyPadUi(pad, PadUi())
     }
 
     /** ONE SHOT → GATE → LOOP по кругу для пада. */
@@ -377,6 +408,17 @@ class AppViewModel : ViewModel() {
     // ---- ISL-1 LOOPER: петли прямо на падах ----
     /** Режим LOOPER: касание пада — запись петли, второе касание — конец записи и воспроизведение. */
     var looperMode by mutableStateOf(false)
+    /** iLOOPER (третье положение кнопки): с SRC SELF пишется только новая партия, а играющие петли — нет; KAOSS петли не трогает. */
+    private val looperIndividualState = mutableStateOf(false)
+    var looperIndividual: Boolean
+        get() = looperIndividualState.value
+        set(v) {
+            looperIndividualState.value = v
+            AudioEngine.setLoopsDry(v)
+            if (v) unduckSeq()   // в iLOOPER секвенсор — источник новой партии: он должен звучать и идти через KAOSS
+        }
+    /** Текущая запись петли идёт без играющих петель. */
+    var loopRecIsolated = false
     /** Пад, на который сейчас пишется петля (-1 — нет), и когда началась запись (System.nanoTime). */
     var loopRecPad by mutableIntStateOf(-1)
     var loopRecStartNanos = 0L
@@ -406,11 +448,35 @@ class AppViewModel : ViewModel() {
 
     fun loopOriginal(pad: Int): SampleClip? = loopOriginals[pad]
 
+    /** Пады из [range] с изменёнными частями — для файла проекта или банка. */
+    private fun partsToSave(range: IntRange): List<com.example.mpcpad.sample.PadParts> = range.mapNotNull { p ->
+        val orig = loopOriginals[p] ?: return@mapNotNull null
+        val mask = loopParts[p] ?: 0b1111
+        val bounds = partBounds[p]
+        if (mask == 0b1111 && bounds == null) null
+        else com.example.mpcpad.sample.PadParts(p, orig, mask, bounds)
+    }
+
+    /** Части из файла — на пад [pad]. */
+    private fun restoreParts(pad: Int, p: com.example.mpcpad.sample.PadParts) {
+        loopOriginals[pad] = p.original
+        loopParts[pad] = p.mask
+        p.bounds?.let { partBounds[pad] = it }
+    }
+
+    /** Копия пада получает свой исходник и свои части: правки не затрагивают оригинал. */
+    fun adoptParts(pad: Int, cb: SampleClipboard) {
+        val orig = cb.original ?: return
+        loopOriginals[pad] = orig.copy()
+        loopParts[pad] = cb.parts
+        cb.bounds?.let { partBounds[pad] = it }
+    }
+
     /** Границы частей пада: 3 числа 0..1 по возрастанию. По умолчанию — 4 равные части. */
     val partBounds = mutableStateMapOf<Int, List<Float>>()
     /** В окне частей показана огибающая высоты (иначе — части). */
     var partsShowEnv by mutableStateOf(false)
-    /** Меню пада (удержание 2 с в PAD): номер пада, -1 — закрыто. */
+    /** Меню пада (удержание 1,5 с в PAD): номер пада, -1 — закрыто. */
     var padMenu by mutableIntStateOf(-1)
 
     fun boundsOf(pad: Int): List<Float> = partBounds[pad] ?: DEFAULT_BOUNDS
@@ -563,6 +629,62 @@ class AppViewModel : ViewModel() {
         partBounds.remove(pad)
         if (partsEditPad == pad) partsEditPad = -1
         AudioEngine.setParam(pad, PadParam.PENV_ON, 0f)
+        val d = PadUi()
+        update(pad) { it.copy(eqHpOn = false, eqHpHz = d.eqHpHz, eqLpOn = false, eqLpHz = d.eqLpHz, eqBellHz = d.eqBellHz, eqBellDb = 0f) }
+        ProjectStore.applyEq(pad, pads[pad])
+    }
+
+    // ---- ISL-1 EQ пада ----
+    /** Колокол работает между включёнными срезами, иначе — по всему диапазону. */
+    fun bellRange(u: PadUi): Pair<Float, Float> =
+        (if (u.eqHpOn) u.eqHpHz else EQ_MIN_HZ) to (if (u.eqLpOn) u.eqLpHz else EQ_MAX_HZ)
+
+    /** Новый EQ пада; частота колокола остаётся внутри срезов. */
+    fun setEq(pad: Int, f: (PadUi) -> PadUi) {
+        update(pad, f)
+        val (lo, hi) = bellRange(pads[pad])
+        if (pads[pad].eqBellHz !in lo..hi) update(pad) { it.copy(eqBellHz = it.eqBellHz.coerceIn(lo, hi)) }
+        ProjectStore.applyEq(pad, pads[pad])
+    }
+
+    // ---- SELF: секвенция уже в петле ----
+    /** Ноты секвенсора приглушены: паттерн записан в петлю с SRC SELF и играл бы с ней вместе (фазинг). */
+    var seqDucked by mutableStateOf(false)
+        private set
+    private var duckPattern = -1
+    private var duckPad = -1
+
+    private fun duckSeq(pad: Int) {
+        seqDucked = true
+        duckPattern = seqPattern
+        duckPad = pad
+        AudioEngine.setSeqDuck(true)
+    }
+
+    fun unduckSeq() {
+        if (!seqDucked) return
+        seqDucked = false
+        AudioEngine.setSeqDuck(false)
+    }
+
+    /** Выбрали другую секвенцию или петля больше не играет — громкость возвращается. */
+    fun checkSeqDuck() {
+        if (seqDucked && (seqPattern != duckPattern || duckPad !in loopsPlaying)) unduckSeq()
+    }
+
+    /** Длина петли на экране, в тактах: идущая запись, выбранная петля или самая длинная из играющих; 0 — нет. */
+    var lcdLoopBars by mutableIntStateOf(0)
+        private set
+
+    fun updateLcdLoopBars() {
+        val barNs = 4 * 60e9 / com.example.mpcpad.Settings.bpm
+        fun bars(pad: Int) = kotlin.math.round(loopLengthNanos(pad) / barNs).toInt().coerceAtLeast(1)
+        val now = System.nanoTime()
+        lcdLoopBars = when {
+            loopRecPad >= 0 -> if (now < loopRecStartNanos) 0 else ((now - loopRecStartNanos) / barNs).toInt() + 1
+            pads[selected].mode == PlayMode.LOOP && PadLibrary.infos[selected] != null -> bars(selected)
+            else -> loopsPlaying.keys.maxOfOrNull { bars(it) } ?: 0
+        }
     }
 
     /** Идёт сетка тактов петель (после первой петли и до STOP). */
@@ -570,6 +692,9 @@ class AppViewModel : ViewModel() {
 
     /** Петли, которые ждут первой доли следующего такта (квантизация запуска). */
     val loopsWaiting = mutableStateMapOf<Int, Job>()
+
+    /** SETUP → LOOP TRANSPORT QUANTIZE: петли, которые доигрывают до конца такта. */
+    val loopsStopping = mutableStateMapOf<Int, Job>()
 
     /**
      * Насколько записанное в петлю опаздывает относительно сетки: вы играете в такт тому, что слышите,
@@ -651,6 +776,7 @@ class AppViewModel : ViewModel() {
 
     fun loopStop(pad: Int) {
         loopsWaiting.remove(pad)?.cancel()
+        loopsStopping.remove(pad)?.cancel()
         if (loopsPlaying.remove(pad) != null) AudioEngine.noteOff(pad)
     }
 
@@ -659,6 +785,8 @@ class AppViewModel : ViewModel() {
         seqStartJob?.cancel()
         loopsWaiting.values.forEach { it.cancel() }
         loopsWaiting.clear()
+        loopsStopping.values.forEach { it.cancel() }
+        loopsStopping.clear()
         loopsPlaying.clear()
         loopGridNanos = 0L
     }
@@ -702,7 +830,22 @@ class AppViewModel : ViewModel() {
         }
     }
 
-    fun loopToggle(pad: Int) = if (pad in loopsPlaying) loopStop(pad) else loopLaunch(pad)
+    /** Выключить петлю касанием: сразу или, с LOOP TRANSPORT QUANTIZE, в конце такта. Повторное касание — отмена. */
+    private fun loopEnd(pad: Int) {
+        loopsStopping.remove(pad)?.let { it.cancel(); return }
+        val wait = if (com.example.mpcpad.Settings.loopTransportQuant) nanosToNextBar() else null
+        if (wait == null || wait <= 0L) {
+            loopStop(pad)
+            return
+        }
+        loopsStopping[pad] = viewModelScope.launch {
+            delay(wait / 1_000_000)
+            loopsStopping.remove(pad)
+            loopStop(pad)
+        }
+    }
+
+    fun loopToggle(pad: Int) = if (pad in loopsPlaying) loopEnd(pad) else loopLaunch(pad)
 
     /** Длина одного круга петли пада в наносекундах (с учётом START/END и высоты) — для круга на паде. */
     fun loopLengthNanos(pad: Int): Long {
@@ -726,6 +869,8 @@ class AppViewModel : ViewModel() {
         endNanos: Long,
         /** С выхода приложения (ресемплинг): без задержки выхода, остальные петли выключаются. */
         fromEngine: Boolean = false,
+        /** iLOOPER: играющих петель в записи нет — они продолжают играть. */
+        isolated: Boolean = false,
     ) {
         loopRecPad = -1
         loopClosing = false
@@ -792,15 +937,12 @@ class AppViewModel : ViewModel() {
             flash("LOOP ${padName(pad)}: FAILED", 2000)
             return
         }
-        AudioEngine.setParam(pad, PadParam.START, 0f)
-        AudioEngine.setParam(pad, PadParam.END, 1f)
-        AudioEngine.setParam(pad, PadParam.MODE, PlayMode.LOOP.toFloat())
-        AudioEngine.setParam(pad, PadParam.CHOKE, 0f)
-        update(pad) { it.copy(start = 0f, end = 1f, mode = PlayMode.LOOP, loopDiv = -1, choke = 0) }
+        // Новая петля играет в темпе записи: настройки прошлого звука пада на неё не переходят.
+        applyPadUi(pad, PadUi(mode = PlayMode.LOOP))
         val lenNs = target * 1e9 / sr
         val offset = (System.nanoTime() - loopStart).toDouble().mod(lenNs) / lenNs
         loopsWaiting.remove(pad)?.cancel()
-        if (fromEngine) {
+        if (fromEngine && !isolated) {
             // В новой петле уже звучат остальные — выключаем их (каждую можно снова включить касанием).
             for (other in loopsPlaying.keys.toList()) if (other != pad) loopStop(other)
         }
@@ -810,7 +952,10 @@ class AppViewModel : ViewModel() {
         loopParts[pad] = 0b1111
         partBounds.remove(pad)
         startSequencerOnBar()
-        flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm), 2500)
+        // В петле с SRC SELF уже звучит секвенция: играй она ещё и вживую, был бы фазинг.
+        val duck = fromEngine && seqPlaying && patternCounts[seqPattern] > 0
+        if (duck) duckSeq(pad)
+        flash(String.format("LOOP %s · %d BEATS · %.1f BPM", padName(pad), beats, bpm) + if (duck) " · SEQ DOWN" else "", 2500)
 
         val name = "LOOP_" + padName(pad)
         viewModelScope.launch {
@@ -833,10 +978,11 @@ class AppViewModel : ViewModel() {
         val prevName = projectName
         projectName = newName
         val json = ProjectStore.toJson(this)   // движок читаем здесь, в UI-потоке
+        val parts = partsToSave(0 until 64)
         projectBusy = true
         viewModelScope.launch {
             val n = try {
-                withContext(Dispatchers.IO) { ProjectFile.save(context, uri, json) }
+                withContext(Dispatchers.IO) { ProjectFile.save(context, uri, json, parts) }
             } catch (_: Exception) {
                 -1
             }
@@ -871,6 +1017,11 @@ class AppViewModel : ViewModel() {
             AudioEngine.songClear()
             AudioEngine.songEnable(false)
             ProjectStore.applyJson(bundle.json)
+            loopOriginals.clear()
+            loopParts.clear()
+            partBounds.clear()
+            partsEditPad = -1
+            bundle.parts.forEach { restoreParts(it.pad, it) }
 
             var n = 0
             for (pad in 0 until 64) {
@@ -1047,10 +1198,11 @@ class AppViewModel : ViewModel() {
     /** Сохранить 16 падов банка [bank] (звуки + параметры) в выбранный файл. */
     fun saveBank(context: Context, uri: Uri, bank: Int) {
         val snapshot = pads.toList()
+        val parts = partsToSave(bank * 16 until bank * 16 + 16)
         bankBusy = true
         viewModelScope.launch {
             val n = try {
-                withContext(Dispatchers.IO) { BankStore.save(context, uri, bank, snapshot) }
+                withContext(Dispatchers.IO) { BankStore.save(context, uri, bank, snapshot, parts) }
             } catch (_: Exception) {
                 -1
             }
@@ -1077,6 +1229,9 @@ class AppViewModel : ViewModel() {
             for ((slot, s) in slots.withIndex()) {
                 val pad = bank * 16 + slot
                 val clip = s.clip
+                loopStop(pad)
+                forgetLoop(pad)   // части прошлого звука пада к новому не относятся
+                s.parts?.let { restoreParts(pad, it) }
                 if (clip != null && AudioEngine.loadSample(pad, clip.data, clip.channels, clip.sampleRate)) {
                     PadLibrary.set(pad, s.name, clip)
                     withContext(Dispatchers.IO) { PadStore.save(context, pad, clip, s.name) }

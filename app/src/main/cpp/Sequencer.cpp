@@ -16,6 +16,7 @@ constexpr double kClickSeconds = 0.03;   // щелчок метронома
 constexpr double kClickTau = 0.008;
 constexpr float kClickDownbeatHz = 1760.0f;
 constexpr float kClickBeatHz = 1320.0f;
+constexpr double kOverdubWindowSec = 0.06;   // дальше двух ударов фазинга уже нет: слышно как отдельные ноты
 
 int velFrom01(float v) {
     if (!(v > 0.0f)) return 100;
@@ -450,7 +451,26 @@ void Sequencer::select(int pat, bool immediate) {
 
 // ------------------------------------------------------------ запись
 
-void Sequencer::onPadDown(int pad, float velocity01) {
+bool Sequencer::overdubSilences(int pad) const {
+    if (pad < 0 || pad >= kNumPads || !running_ || !recording_ || countingIn_) return false;
+    if (pads_[pad].mode == PlayMode::Loop) return false;
+    const int len = patternLenTicks(current_);
+    double exact = static_cast<double>(pos_) - static_cast<double>(nextTickFrame_ - absFrame_) / framesPerTick_;
+    if (exact < 0.0) exact += len;
+    double window = kOverdubWindowSec * sampleRate_ / framesPerTick_;
+    if (quantize_ > 0) window = std::min(window, quantize_ * 0.5);
+    const Pattern& p = patterns_[current_];
+    const int n = p.count.load(std::memory_order_relaxed);
+    for (int i = 0; i < n; ++i) {
+        const SeqEvent e = eventAt(p, i);
+        if (e.pad != pad) continue;
+        const double d = std::fabs(static_cast<double>(e.tick) - exact);
+        if (std::min(d, len - d) <= window) return true;   // по кругу: нота 0 рядом с концом паттерна
+    }
+    return false;
+}
+
+void Sequencer::onPadDown(int pad, float velocity01, bool silenced) {
     if (pad < 0 || pad >= kNumPads) return;
     if (!running_ || !recording_ || countingIn_) return;
     const int len = patternLenTicks(current_);
@@ -484,7 +504,9 @@ void Sequencer::onPadDown(int pad, float velocity01) {
     endWrite(p);
 
     // Живая нота уже прозвучала: тот же тик «впереди» в этом проходе пропускаем, чтобы не было флэма.
-    if (wrapped) {
+    if (silenced) {
+        // Живая нота не звучала — звучит записанная.
+    } else if (wrapped) {
         skipTick_[pad] = tick;
         skipPass_[pad] = pass_ + 1;
     } else if (tick >= pos_) {
@@ -595,7 +617,7 @@ void Sequencer::renderClick(float* out, int numFrames) {
     }
 }
 
-void Sequencer::render(float* out, int numFrames, float* clickOut) {
+void Sequencer::render(float* out, int numFrames, float* clickOut, float* loopsOut) {
     int pos = 0;
     while (pos < numFrames) {
         while (running_ && absFrame_ >= nextTickFrame_) {
@@ -604,7 +626,7 @@ void Sequencer::render(float* out, int numFrames, float* clickOut) {
         }
         int seg = numFrames - pos;
         if (running_) seg = static_cast<int>(std::min<int64_t>(seg, nextTickFrame_ - absFrame_));
-        voices_.render(out + 2 * pos, seg);
+        voices_.render(out + 2 * pos, seg, loopsOut ? loopsOut + 2 * pos : nullptr);
         renderClick((clickOut ? clickOut : out) + 2 * pos, seg);
         pos += seg;
         absFrame_ += seg;

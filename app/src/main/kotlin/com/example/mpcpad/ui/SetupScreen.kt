@@ -30,6 +30,7 @@ import com.example.mpcpad.BuildConfig
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.LinkNetwork
+import com.example.mpcpad.audio.LiveRecorder
 import com.example.mpcpad.sample.PadLibrary
 import kotlin.math.roundToInt
 
@@ -112,6 +113,20 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
                 color = TextDim,
                 fontSize = 12.sp,
             )
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("LOOP TRANSPORT QUANTIZE", color = TextMain, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Chip(if (Settings.loopTransportQuant) "ВКЛ" else "ВЫКЛ", active = Settings.loopTransportQuant) {
+                    Settings.loopTransportQuant = !Settings.loopTransportQuant
+                    app.flash("LOOP TRANSPORT QUANTIZE " + if (Settings.loopTransportQuant) "ON" else "OFF")
+                }
+            }
+            Text(
+                "Включено — выключенная касанием петля доигрывает до конца такта. " +
+                    "Выключено — останавливается сразу.",
+                color = TextDim,
+                fontSize = 12.sp,
+            )
             ParamSlider(
                 label = "СИЛА КВАНТИЗАЦИИ",
                 valueText = "%.0f %%".format(Settings.loopQuantStrength * 100),
@@ -134,6 +149,29 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
             )
         }
 
+        // LIVE REC: куда сохранять записи всего, что слышно
+        Column(
+            Modifier
+                .widthIn(max = 560.dp)
+                .background(Panel, RoundedCornerShape(12.dp))
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("LIVE REC — ПАПКА ДЛЯ ЗАПИСЕЙ", color = TextMain, fontSize = 14.sp)
+            Text(
+                "Сейчас: " + LiveRecorder.folderLabel() + ". Файл LIVE_дата_время.wav появляется там, когда запись остановлена.",
+                color = TextDim,
+                fontSize = 12.sp,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip("ВЫБРАТЬ ПАПКУ", enabled = !app.liveRec) { actions.pickLiveFolder() }
+                if (Settings.liveFolder.isNotEmpty()) Chip("ПО УМОЛЧАНИЮ", enabled = !app.liveRec) {
+                    Settings.liveFolder = ""
+                    app.flash("LIVE REC → " + LiveRecorder.folderLabel(), 2500)
+                }
+            }
+        }
+
         // 1. IMPORT BANK — 2. SAVE BANK: 16 семплов банка вместе с параметрами (громкость, пан, высота…)
         Column(
             Modifier
@@ -144,7 +182,7 @@ fun SetupScreen(app: AppViewModel, actions: SampleActions, modifier: Modifier = 
         ) {
             Text("1. IMPORT BANK", color = TextMain, fontSize = 14.sp)
             Text(
-                "Выберите банк, затем файл банка IS-1 (.zip): все 16 падов банка заменятся звуками и настройками из файла.",
+                "Выберите банк, затем файл банка (.isbank): все 16 падов банка заменятся звуками и настройками из файла.",
                 color = TextDim,
                 fontSize = 12.sp,
             )

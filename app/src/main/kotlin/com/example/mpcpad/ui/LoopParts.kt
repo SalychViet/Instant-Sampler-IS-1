@@ -106,6 +106,7 @@ fun LoopParts(app: AppViewModel, modifier: Modifier = Modifier) {
                         if (!ui.pEnvOn) app.setPitchEnvOn(pad, true)
                         app.partsShowEnv = true
                     }
+                    if (!oneShot) LcdKey("MENU") { app.padMenu = pad }   // COPY и EQ петли
                     LcdKey("DONE") { app.partsEditPad = -1 }
                 }
             }

@@ -19,7 +19,48 @@ inline float hermite(float ym1, float y0, float y1, float y2, float f) {
     return ((c3 * f + c2) * f + c1) * f + y0;
 }
 
+// Коэффициенты по Audio EQ Cookbook (Р. Бристоу-Джонсон). Q 0.707 — без подъёма у частоты среза.
+Biquad cookbook(double b0, double b1, double b2, double a0, double a1, double a2) {
+    Biquad c;
+    c.b0 = static_cast<float>(b0 / a0);
+    c.b1 = static_cast<float>(b1 / a0);
+    c.b2 = static_cast<float>(b2 / a0);
+    c.a1 = static_cast<float>(a1 / a0);
+    c.a2 = static_cast<float>(a2 / a0);
+    return c;
+}
+
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kPassQ = 0.70710678118;
+constexpr double kBellQ = 1.0;
+
+double omega(double hz, double sampleRate) { return 2.0 * kPi * std::clamp(hz, 10.0, 0.45 * sampleRate) / sampleRate; }
+
+// Transposed Direct Form II: устойчива к изменению коэффициентов на ходу.
+inline float tick(const Biquad& c, float* z, float x) {
+    const float y = c.b0 * x + z[0];
+    z[0] = c.b1 * x - c.a1 * y + z[1];
+    z[1] = c.b2 * x - c.a2 * y;
+    return y;
+}
+
 }  // namespace
+
+void PadEq::update(double sampleRate) {
+    {
+        const double w = omega(hpHz, sampleRate), cw = std::cos(w), al = std::sin(w) / (2.0 * kPassQ);
+        hp = cookbook((1.0 + cw) / 2.0, -(1.0 + cw), (1.0 + cw) / 2.0, 1.0 + al, -2.0 * cw, 1.0 - al);
+    }
+    {
+        const double w = omega(lpHz, sampleRate), cw = std::cos(w), al = std::sin(w) / (2.0 * kPassQ);
+        lp = cookbook((1.0 - cw) / 2.0, 1.0 - cw, (1.0 - cw) / 2.0, 1.0 + al, -2.0 * cw, 1.0 - al);
+    }
+    {
+        const double w = omega(bellHz, sampleRate), cw = std::cos(w), al = std::sin(w) / (2.0 * kBellQ);
+        const double A = std::pow(10.0, static_cast<double>(bellDb) / 40.0);
+        bell = cookbook(1.0 + al * A, -2.0 * cw, 1.0 - al * A, 1.0 + al / A, -2.0 * cw, 1.0 - al / A);
+    }
+}
 
 bool Voice::start(const PadParams& p, int padIndex, float velocity, double engineRate,
                   uint64_t age, double offset01, bool fromSeq) {
@@ -53,6 +94,8 @@ bool Voice::start(const PadParams& p, int padIndex, float velocity, double engin
             envY_[k] = p.pEnvY[k];
         }
     }
+    eq_ = p.eq;
+    std::fill(&eqZ_[0][0][0], &eqZ_[0][0][0] + 12, 0.0f);
     const double off = std::clamp(offset01, 0.0, 0.999999) * (en - st);
     pos_ = p.reverse ? en - 1e-6 - off : st + off;
 
@@ -106,6 +149,8 @@ bool Voice::render(float* out, int numFrames, float bus) {
     const int64_t last = sample_->frames - 1;
     const bool loop = (mode_ == PlayMode::Loop);
     const double len = endF_ - startF_;
+    const bool bell = eq_.bellOn();
+    const bool eqOn = bell || eq_.hpOn || eq_.lpOn;
 
     for (int i = 0; i < numFrames; ++i) {
         // --- огибающая высоты: X — место в регионе (для реверса — от конца) ---
@@ -154,8 +199,13 @@ bool Voice::render(float* out, int numFrames, float bus) {
             k = k < 0 ? 0 : (k > last ? last : k);
             return d[2 * k + c];
         };
-        const float l = hermite(tap(i0 - 1, 0), tap(i0, 0), tap(i0 + 1, 0), tap(i0 + 2, 0), f);
-        const float r = hermite(tap(i0 - 1, 1), tap(i0, 1), tap(i0 + 1, 1), tap(i0 + 2, 1), f);
+        float l = hermite(tap(i0 - 1, 0), tap(i0, 0), tap(i0 + 1, 0), tap(i0 + 2, 0), f);
+        float r = hermite(tap(i0 - 1, 1), tap(i0, 1), tap(i0 + 1, 1), tap(i0 + 2, 1), f);
+        if (eqOn) {
+            if (eq_.hpOn) { l = tick(eq_.hp, eqZ_[0][0], l); r = tick(eq_.hp, eqZ_[0][1], r); }
+            if (bell) { l = tick(eq_.bell, eqZ_[1][0], l); r = tick(eq_.bell, eqZ_[1][1], r); }
+            if (eq_.lpOn) { l = tick(eq_.lp, eqZ_[2][0], l); r = tick(eq_.lp, eqZ_[2][1], r); }
+        }
 
         if (gainL_ != targetL_ || gainR_ != targetR_) {
             gainL_ += (targetL_ - gainL_) * glide_;

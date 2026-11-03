@@ -58,6 +58,11 @@ void VoicePool::updateLevel(int pad, float volume, float pan) {
         if (v.active() && v.pad() == pad) v.setLevel(volume, pan);
 }
 
+void VoicePool::updateEq(int pad, const PadEq& eq) {
+    for (auto& v : voices_)
+        if (v.active() && v.pad() == pad) v.setEq(eq);
+}
+
 void VoicePool::noteOff(int pad) {
     for (auto& v : voices_) {
         if (v.active() && v.pad() == pad && !v.releasing() &&
@@ -75,13 +80,20 @@ void VoicePool::killSample(const Sample* s) {
     for (auto& v : dying_)  if (v.active() && v.sample() == s) v.kill();
 }
 
-void VoicePool::render(float* out, int numFrames) {
+void VoicePool::render(float* out, int numFrames, float* loops) {
     seqGain_ += (seqTarget_ - seqGain_) * 0.35f;   // ~несколько блоков — без щелчков при движении фейдера
     if (std::fabs(seqTarget_ - seqGain_) < 1e-4f) seqGain_ = seqTarget_;
     loopGain_ += (loopTarget_ - loopGain_) * 0.35f;
     if (std::fabs(loopTarget_ - loopGain_) < 1e-4f) loopGain_ = loopTarget_;
-    for (auto& v : voices_) if (v.active()) v.render(out, numFrames, v.loopSection() ? loopGain_ : seqGain_);
-    for (auto& v : dying_)  if (v.active()) v.render(out, numFrames, v.loopSection() ? loopGain_ : seqGain_);
+    duckGain_ += (duckTarget_ - duckGain_) * 0.35f;
+    if (std::fabs(duckTarget_ - duckGain_) < 1e-4f) duckGain_ = duckTarget_;
+    auto play = [&](Voice& v) {
+        if (!v.active()) return;
+        if (v.loopSection()) v.render(loops ? loops : out, numFrames, loopGain_);
+        else v.render(out, numFrames, v.fromSeq() ? seqGain_ * duckGain_ : seqGain_);
+    };
+    for (auto& v : voices_) play(v);
+    for (auto& v : dying_) play(v);
 }
 
 int VoicePool::activeCount() const {

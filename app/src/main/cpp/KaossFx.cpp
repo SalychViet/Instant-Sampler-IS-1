@@ -472,8 +472,10 @@ void KaossFx::process(float* io, int n, float bpm) {
                 const float room = touch ? 0.9985f : 0.8f;
                 float rl, rr;
                 reverb((l + r) * 0.5f * (touch ? 0.012f : 0.0f), room, 0.05f + (1.0f - x) * 0.6f, rl, rr);
-                ol = mix(l, l * 0.3f + rl * 2.0f, y);
-                orr = mix(r, r * 0.3f + rr * 2.0f, y);
+                // Сухой сигнал приглушается только под пальцем: без касания громкость не меняется.
+                const float dry = 1.0f - 0.7f * y * w;
+                ol = l * dry + rl * 2.0f * y;
+                orr = r * dry + rr * 2.0f * y;
                 break;
             }
             case kKpGateReverb: {

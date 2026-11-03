@@ -112,6 +112,7 @@ class Recorder(
         var writer: WavStreamWriter? = null
         var error: String? = null
         var lastPublish = 0L
+        val lowCut = com.example.mpcpad.sample.PreLowCut.current(rate, ch)
 
         try {
             val countIn = config.countInMs.toLong()
@@ -140,6 +141,7 @@ class Recorder(
                         break
                     }
                     if (n == 0) continue
+                    lowCut?.process(chunk, n)
                     var peak = 0
                     for (i in 0 until n) peak = maxOf(peak, abs(chunk[i].toInt()))
                     CaptureController.level = peak / 32768f

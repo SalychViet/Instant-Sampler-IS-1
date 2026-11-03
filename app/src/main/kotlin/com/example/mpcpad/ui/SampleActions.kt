@@ -22,4 +22,6 @@ interface SampleActions {
     fun saveProject()
     /** PRJCT: выбрать файл проекта .sal и открыть его. */
     fun openProject()
+    /** SETUP → LIVE REC: выбрать папку для записей. */
+    fun pickLiveFolder()
 }

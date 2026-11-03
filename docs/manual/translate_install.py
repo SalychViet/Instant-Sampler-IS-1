@@ -6,10 +6,10 @@ import re
 EN = {
     "Установка {N}": "Installing {N}",
     "Как поставить приложение на телефон Android": "How to put the app on your Android phone",
-    "{MB} МБ · версия 0.4.1 · Android 10 и новее": "{MB} MB · version 0.4.1 · Android 10 or newer",
+    "{MB} МБ · версия 0.4.2 · Android 10 и новее": "{MB} MB · version 0.4.2 · Android 10 or newer",
     "Перенести файл": "Move the file", "на телефон": "to your phone", "Разрешить": "Allow", "установку": "the install",
     "Установить": "Install", "и открыть": "and open",
-    "Займёт около 5 минут · версия инструкции от 1 ноября 2026": "Takes about 5 minutes · guide version of 1 November 2026",
+    "Займёт около 5 минут · версия инструкции от 3 ноября 2026": "Takes about 5 minutes · guide version of 3 November 2026",
     "Перед началом": "Before you start",
     "{N} не из Google Play, поэтому его ставят из файла": "{N} is not on Google Play, so you install it from an",
     "— это обычный «установщик» приложения для Android. Android попросит пару подтверждений: это нормально для любых приложений не из магазина.": "file, a normal app installer for Android. Android will ask for a couple of confirmations: that is usual for any app from outside the store.",
@@ -60,13 +60,13 @@ EN = {
     "Файл открывается как документ или архив": "The file opens as a document or archive", "Откройте его через приложение «Файлы» (Download) и выберите «Установщик пакетов».": "Open it from the Files app (Download) and choose “Package installer”.",
     "Кнопка «Установить» неактивна": "The “Install” button is greyed out", "Закройте плавающие окна и пузыри чатов поверх экрана (например, подсказки Telegram) и попробуйте снова.": "Close floating windows and chat bubbles on the screen (Telegram hints, for example) and try again.",
     "Нет кнопки «Всё равно установить»": "No “Install anyway” button", "Play Защита → ⋮ → Настройки → временно выключите «Проверять приложения», установите {N} и включите проверку обратно.": "Play Protect → ⋮ → Settings → briefly turn off “Scan apps”, install {N}, then turn scanning back on.",
-    "Нет звука": "No sound", "Проверьте громкость мультимедиа (кнопки громкости во время игры) и фейдер MAIN в приложении.": "Check the media volume (volume buttons while playing) and the MAIN fader in the app.",
+    "Нет звука": "No sound", "Проверьте громкость мультимедиа (кнопки громкости во время игры) и фейдеры SEQ и LOOPER в приложении.": "Check the media volume (volume buttons while playing) and the SEQ and LOOPER faders in the app.",
     "Запись с микрофона не идёт": "Microphone recording does not work", "Настройки → Приложения → {N} → Разрешения → Микрофон → «Разрешить при использовании».": "Settings → Apps → {N} → Permissions → Microphone → “Allow while using the app”.",
     "Не пишется звук других приложений": "Other apps are not recorded", "При записи SRC:INT Android каждый раз спрашивает разрешение на запись экрана — нажмите «Начать». Некоторые приложения (DRM) запись запрещают.": "For SRC INT, Android asks permission to capture the screen: tap “Start”. Some apps (DRM) forbid recording.",
     "Коротко": "In short", "Файл → «Избранное» в Telegram": "File → “Saved Messages” in Telegram", "Коснуться файла → «Настройки» → разрешить": "Tap the file → “Settings” → allow", "«Установить» → «Открыть»": "“Install” → “Open”",
 }
 
-for src, name, mb, out in (("install_isl.html", "ISL-1", "44,7", "install_isl_en.html"), ("install_try.html", "ISL-1 TRY", "44,5", "install_try_en.html")):
+for src, name, mb, out in (("install_isl.html", "ISL-1", "44,7", "install_isl_en.html"), ("install_try.html", "ISL-1 TRY", "44,7", "install_try_en.html")):
     doc = open(src, encoding="utf-8").read()
     head, body = doc.split("</head>", 1)
     missing = []

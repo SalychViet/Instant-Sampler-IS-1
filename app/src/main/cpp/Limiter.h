@@ -41,4 +41,34 @@ private:
     float releaseCoef_ = 0.001f;
 };
 
+// Петли уступают секвенсору: если сумма не влезает в потолок, тише становятся только петли,
+// а барабаны секвенсора остаются на своём уровне.
+class LoopDucker {
+public:
+    void setSampleRate(float sr) { releaseCoef_ = 1.0f - std::exp(-1.0f / (0.12f * sr)); }
+
+    // seq += loops × усиление (стерео, interleaved).
+    void mix(float* seq, const float* loops, int frames) {
+        for (int i = 0; i < frames; ++i) {
+            float target = 1.0f;
+            for (int c = 0; c < 2; ++c) {
+                const float s = seq[2 * i + c];
+                const float l = loops[2 * i + c];
+                if (std::fabs(s + l) > kCeiling) {
+                    target = std::min(target, std::max(0.0f, kCeiling - std::fabs(s)) / std::max(std::fabs(l), 1e-6f));
+                }
+            }
+            if (target < gain_) gain_ = target;
+            else gain_ += (target - gain_) * releaseCoef_;
+            seq[2 * i] += loops[2 * i] * gain_;
+            seq[2 * i + 1] += loops[2 * i + 1] * gain_;
+        }
+    }
+
+private:
+    static constexpr float kCeiling = 0.98f;
+    float gain_ = 1.0f;
+    float releaseCoef_ = 0.001f;
+};
+
 }  // namespace mpc

@@ -52,6 +52,7 @@ import com.example.mpcpad.R
 import com.example.mpcpad.Settings
 import com.example.mpcpad.audio.AudioEngine
 import com.example.mpcpad.audio.Kaoss
+import com.example.mpcpad.audio.LiveRecorder
 import com.example.mpcpad.audio.DefaultKit
 import com.example.mpcpad.audio.FxAutomation
 import com.example.mpcpad.audio.SampleOps
@@ -63,11 +64,14 @@ import com.example.mpcpad.capture.CaptureSource
 import com.example.mpcpad.capture.PadCapture
 import com.example.mpcpad.sample.PadLibrary
 import com.example.mpcpad.sample.PadSampler
+import com.example.mpcpad.sample.PreLowCut
 import com.example.mpcpad.sample.PadStore
 import com.example.mpcpad.sample.SampleClip
 import com.example.mpcpad.sample.SampleViewModel
 import com.example.mpcpad.sample.SamplerEvent
+import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import kotlinx.coroutines.Dispatchers
@@ -157,6 +161,7 @@ fun MpcRoot(actions: SampleActions) {
         app.resampling = false
         val data = AudioEngine.resampleRead()
         if (n > 0 && data.isNotEmpty()) {
+            PreLowCut.apply(data, AudioEngine.sampleRate(), 2)
             app.resampleClip = SampleClip(data, 2, AudioEngine.sampleRate())
             app.flash(String.format("RESAMPLE %.1f S · HOLD = COPY", n.toFloat() / AudioEngine.sampleRate()), 3000)
         } else {
@@ -189,6 +194,7 @@ fun MpcRoot(actions: SampleActions) {
                 app.seqCountIn = st.countIn
                 app.seqPattern = st.pattern
                 app.seqQueued = st.queued
+                app.checkSeqDuck()
                 app.seqLinkWaiting = st.linkWaiting
                 app.songIndex = st.songIndex
                 if (app.resampling && !AudioEngine.resampling()) finishResample()   // 30 с набралось
@@ -207,6 +213,7 @@ fun MpcRoot(actions: SampleActions) {
                     val counts = AudioEngine.seqPatternCounts()
                     if (!counts.contentEquals(app.patternCounts)) app.patternCounts = counts
                     app.patternBars = AudioEngine.seqPatternBars(st.pattern)
+                    app.updateLcdLoopBars()
                     if (!app.songRec) {
                         val s = AudioEngine.songList()
                         if (s != app.song) app.song = s
@@ -232,6 +239,7 @@ fun MpcRoot(actions: SampleActions) {
         PadSampler.events.collect { e ->
             when (e) {
                 is SamplerEvent.Assigned -> {
+                    app.resetPadForNewSound(e.pad)
                     app.resetRegion(e.pad)
                     if (Settings.trimStart) app.trimPad(e.pad, head = true, on = true)
                     if (Settings.trimEnd) app.trimPad(e.pad, head = false, on = true)
@@ -471,7 +479,12 @@ fun MpcRoot(actions: SampleActions) {
         val name = PadLibrary.infos[pad]?.name ?: "SAMPLE"
         val prev = app.pads[pad]
         app.pushUndo(label) {
-            if (clip != null) PadSampler.assignToPad(pad, clip, name) else if (!had) PadStore.delete(context, pad)
+            if (clip != null) {
+                PadSampler.assignToPad(pad, clip, name)
+            } else if (!had) {
+                PadStore.delete(context, pad)
+                app.forgetLoop(pad)
+            }
             app.applyPadUi(pad, prev)
         }
     }
@@ -490,13 +503,27 @@ fun MpcRoot(actions: SampleActions) {
         if (cb.fromResample) {
             PadSampler.importClip(global, cb.clip, cb.name, false)   // с автообрезкой тишины
         } else {
-            PadSampler.assignToPad(global, cb.clip, cb.name)
-            cb.ui?.let { app.applyPadUi(global, it) }
+            PadSampler.assignToPad(global, cb.clip.copy(), cb.name)
+            // Копия самостоятельна: и в группу CHOKE оригинала не входит.
+            cb.ui?.let { app.applyPadUi(global, it.copy(choke = 0)) }
+            app.adoptParts(global, cb)
         }
         app.pasteArmed = false
         app.selected = global
         app.flash("PASTED → ${padName(global)}", 1500)
         return true
+    }
+
+    /** Пад с петлёй: короткое касание — вкл/выкл (на отпускании), удержание — части петли, она играет дальше. */
+    fun loopPadDown(global: Int) {
+        route[global] = 5
+        partsHeld[global] = false
+        longPress[global] = scope.launch {
+            delay(1500)
+            partsHeld[global] = true
+            app.openLoopParts(global)
+            app.flash("LOOP ${padName(global)} · TAP PARTS TO MUTE", 2500)
+        }
     }
 
     /**
@@ -519,10 +546,11 @@ fun MpcRoot(actions: SampleActions) {
                 val start = if (app.loopGridRunning) app.nextBar(now) else now
                 app.loopRecPad = global
                 app.loopRecFromEngine = true
+                app.loopRecIsolated = app.looperIndividual
                 app.loopRecStartNanos = start
                 resampleLoopStart[0] = scope.launch {
                     delay(((start - now) / 1_000_000).coerceAtLeast(0))
-                    AudioEngine.resampleStart()
+                    AudioEngine.resampleStart(isolated = app.loopRecIsolated)
                 }
                 app.flash(
                     if (start > now) "RESAMPLE LOOP ${padName(global)} · STARTS ON THE BAR · TAP = CANCEL"
@@ -550,27 +578,24 @@ fun MpcRoot(actions: SampleActions) {
                     delay(((end - System.nanoTime()) / 1_000_000 + 10).coerceAtLeast(0))
                     AudioEngine.resampleStop()
                     val data = AudioEngine.resampleRead()
-                    if (data.isEmpty()) {
+                    val isolated = app.loopRecIsolated
+                    if (data.isEmpty() || (isolated && data.all { it == 0f })) {
                         app.loopRecPad = -1
                         app.loopClosing = false
                         app.loopRecFromEngine = false
-                        flash("RESAMPLE: EMPTY")
+                        flash(if (isolated) "iLOOPER: NOTHING PLAYED" else "RESAMPLE: EMPTY")
                     } else {
-                        app.finishLoop(pad, SampleClip(data, 2, AudioEngine.sampleRate()), 0, app.loopRecStartNanos, end, fromEngine = true)
+                        PreLowCut.apply(data, AudioEngine.sampleRate(), 2)
+                        app.finishLoop(
+                            pad, SampleClip(data, 2, AudioEngine.sampleRate()), 0, app.loopRecStartNanos, end,
+                            fromEngine = true, isolated = isolated,
+                        )
                     }
                 }
                 app.flash("● RESAMPLE LOOP ${padName(global)} · CLOSING ON THE BAR", 4000)
             }
             rec < 0 && hasLoop -> {
-                // Короткое касание — вкл/выкл (на отпускании), удержание — части петли на экране.
-                route[global] = 5
-                partsHeld[global] = false
-                longPress[global] = scope.launch {
-                    delay(500)
-                    partsHeld[global] = true
-                    app.openLoopParts(global)
-                    app.flash("LOOP ${padName(global)} · TAP PARTS TO MUTE", 2500)
-                }
+                loopPadDown(global)
             }
             !PadCapture.isArmed -> flash(if (PadCapture.isBusy) "LOOPER: PREPARING INPUT…" else "LOOPER: NO INPUT · PRESS LOOPER AGAIN")
             rec < 0 -> {
@@ -610,7 +635,12 @@ fun MpcRoot(actions: SampleActions) {
     /** Копия звука пада в буфер: следующее касание пустого пада вставит её. */
     suspend fun copyPad(global: Int) {
         val clip = withContext(Dispatchers.Default) { padClip(global) } ?: return
-        app.clipboard = SampleClipboard(clip, PadLibrary.infos[global]?.name ?: "SAMPLE", app.pads[global], false, global)
+        app.clipboard = SampleClipboard(
+            clip, PadLibrary.infos[global]?.name ?: "SAMPLE", app.pads[global], false, global,
+            original = app.loopOriginal(global)?.copy(),
+            parts = app.loopParts[global] ?: 0b1111,
+            bounds = app.partBounds[global],
+        )
         app.pasteArmed = true
         app.flash("COPY ${padName(global)} → TOUCH EMPTY PAD", 4000)
     }
@@ -622,12 +652,12 @@ fun MpcRoot(actions: SampleActions) {
         app.forgetLoop(global)
         undoPadSample(global, "DELETE ${padName(global)}")
         PadStore.delete(context, global)
-        app.update(global) { PadUi() }
+        app.applyPadUi(global, PadUi())   // и в движке: иначе новый звук пада заиграет со старым PITCH
         eraseHeld = true   // отпускание ERASE после удаления не включает «нажми пад — удалится»
         return true
     }
 
-    /** ERASE удерживается и палец проехал по падам: по горизонтали — весь ряд, по вертикали — столбец. */
+    /** Палец проехал по падам: с MUTE — ряд или столбец, с удерживаемым ERASE — удаляется только пройденный пад. */
     fun padSlide(from: Int, to: Int) {
         if (app.mode == Mode.PAD && app.muteHolding) {
             // MUTE удерживается: ряд или столбец получает то же состояние, что и первый пад.
@@ -645,24 +675,7 @@ fun MpcRoot(actions: SampleActions) {
             return
         }
         if (app.mode != Mode.PAD || !app.eraseHolding) return
-        val bank = to / 16
-        val fr = (from % 16) / 4
-        val fc = (from % 16) % 4
-        val tr = (to % 16) / 4
-        val tc = (to % 16) % 4
-        val pads = when {
-            fr == tr -> (0 until 4).map { bank * 16 + tr * 4 + it }   // ряд
-            fc == tc -> (0 until 4).map { bank * 16 + it * 4 + tc }   // столбец
-            else -> listOf(to)
-        }
-        val n = pads.count { quickErase(it) }
-        flash(
-            when {
-                pads.size == 1 -> if (n > 0) "${padName(to)} DELETED" else "${padName(to)} EMPTY"
-                fr == tr -> "ROW ${padName(pads.first())}–${padName(pads.last())}: $n DELETED"
-                else -> "COLUMN ${padName(pads.first())}–${padName(pads.last())}: $n DELETED"
-            }
-        )
+        flash(if (quickErase(to)) "${padName(to)} DELETED" else "${padName(to)} EMPTY")
     }
 
     fun padDown(global: Int, vel: Float) {
@@ -691,9 +704,9 @@ fun MpcRoot(actions: SampleActions) {
                 }
             }
             app.mode == Mode.PAD && app.eraseHolding -> {
-                // ERASE удерживается: касание пада — сразу удалить (свайп — ряд/столбец, см. padSlide).
+                // ERASE удерживается: касание пада — сразу удалить (свайп — пройденные пады, см. padSlide).
                 route[global] = 0
-                flash(if (quickErase(global)) "${padName(global)} DELETED · SWIPE = ROW / COLUMN" else "${padName(global)} EMPTY")
+                flash(if (quickErase(global)) "${padName(global)} DELETED" else "${padName(global)} EMPTY")
             }
             app.mode == Mode.PAD -> {
                 if (tryPaste(global)) return
@@ -706,7 +719,7 @@ fun MpcRoot(actions: SampleActions) {
                         app.forgetLoop(global)
                         undoPadSample(global, "DELETE ${padName(global)}")
                         PadStore.delete(context, global)
-                        app.update(global) { PadUi() }
+                        app.applyPadUi(global, PadUi())   // и в движке: иначе новый звук пада заиграет со старым PITCH
                         flash("SAMPLE ${padName(global)} DELETED")
                     }
                     // ISL-1 LOOPER: касание — запись, второе касание — конец записи и петля играет.
@@ -715,20 +728,7 @@ fun MpcRoot(actions: SampleActions) {
                         (PadLibrary.infos[global] == null || app.pads[global].mode == PlayMode.LOOP || global == app.loopRecPad) ->
                         looperTap(global)
                     // ISL-1: пад в режиме LOOP включается и выключается касанием (держать не нужно).
-                    app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> {
-                        longPress[global] = scope.launch {
-                            delay(2000)
-                            app.padMenu = global
-                        }
-                        app.loopToggle(global)
-                        flash(
-                            "LOOP ${padName(global)} " + when (global) {
-                                in app.loopsPlaying -> "▶"
-                                in app.loopsWaiting -> "▶ NEXT BAR"
-                                else -> "■"
-                            }
-                        )
-                    }
+                    app.pads[global].mode == PlayMode.LOOP && PadLibrary.infos[global] != null -> loopPadDown(global)
                     // SRC SELF: пока держат пад, пишется выход приложения; остальные пады в это время играют.
                     app.selfArmed && !app.looperMode && app.selfHoldPad < 0 && !app.resampling -> {
                         route[global] = 6
@@ -748,10 +748,10 @@ fun MpcRoot(actions: SampleActions) {
                         route[global] = 1
                         AudioEngine.noteOn(global, vel)
                         app.captureHit(global, vel)   // CAPTURE помнит сыгранное
-                        // Удержание 2 с — меню пада (COPY / SLICE / PTCH ENV).
+                        // Удержание 1,5 с — меню пада (COPY / SLICE / EQ / PTCH ENV).
                         if (PadLibrary.infos[global] != null) {
                             longPress[global] = scope.launch {
-                                delay(2000)
+                                delay(1500)
                                 app.padMenu = global
                             }
                         }
@@ -835,6 +835,7 @@ fun MpcRoot(actions: SampleActions) {
                 app.loopToggle(global)
                 flash(
                     "LOOP ${padName(global)} " + when (global) {
+                        in app.loopsStopping -> "■ BAR END"
                         in app.loopsPlaying -> "▶"
                         in app.loopsWaiting -> "▶ NEXT BAR"
                         else -> "■ · ERASE TO RE-RECORD"
@@ -852,7 +853,10 @@ fun MpcRoot(actions: SampleActions) {
                 scope.launch {
                     val data = withContext(Dispatchers.Default) { AudioEngine.resampleRead() }
                     if (data.isEmpty()) flash("RESAMPLE: EMPTY")
-                    else PadSampler.importClip(global, SampleClip(data, 2, AudioEngine.sampleRate()), "REC_" + padName(global), false)
+                    else {
+                        PreLowCut.apply(data, AudioEngine.sampleRate(), 2)
+                        PadSampler.importClip(global, SampleClip(data, 2, AudioEngine.sampleRate()), "REC_" + padName(global), false)
+                    }
                 }
             }
             3 -> {
@@ -909,14 +913,15 @@ fun MpcRoot(actions: SampleActions) {
                 Modifier.weight(1f).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (app.kaossMode) KaossPad(
+                // KAOSS выключается только своей кнопкой: окно частей петли лишь временно закрывает его экран.
+                if (app.partsEditPad >= 0) LoopParts(
+                    app = app,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                ) else if (app.kaossMode) KaossPad(
                     app = app,
                     shownX = { kShown[0] },
                     shownY = { kShown[1] },
                     shownTouch = { kShown[2] > 0.5f },
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                ) else if (app.partsEditPad >= 0) LoopParts(
-                    app = app,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) else Lcd(
                     app = app,
@@ -1277,6 +1282,7 @@ fun MpcRoot(actions: SampleActions) {
                                         flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
                                     } else {
                                         app.looperMode = false
+                                        app.looperIndividual = false
                                         if (app.srcSelf) {
                                             if (PadCapture.isBusy) actions.disarmPadCapture()
                                             app.selfArmed = true
@@ -1381,22 +1387,26 @@ fun MpcRoot(actions: SampleActions) {
                 }
                 // ISL-1: LOOPER — запись петель прямо на пады
                 HwButton(
-                    "LOOPER", Modifier.fillMaxWidth(),
+                    if (app.looperIndividual) "iLOOPER" else "LOOPER", Modifier.fillMaxWidth(),
                     led = app.looperMode,
-                    ledColor = if (app.loopRecPad >= 0) Skin.LedRed else Skin.LedAmber,
+                    ledColor = if (app.loopRecPad >= 0) Skin.LedRed else if (app.looperIndividual) Skin.LedBlue else Skin.LedAmber,
                     height = 30.dp,
                     labelSize = 7.5.sp,
                 ) {
                     when {
                         app.loopRecPad >= 0 -> flash("CLOSE THE LOOP ON ${padName(app.loopRecPad)} FIRST")
+                        app.looperMode && !app.looperIndividual -> {
+                            app.looperIndividual = true
+                            app.flash("iLOOPER · LOOPS DRY · SRC SELF: ONLY THE NEW PART IS RECORDED", 3000)
+                        }
                         app.looperMode -> {
                             app.looperMode = false
+                            app.looperIndividual = false
                             actions.disarmPadCapture()
                             app.flash("LOOPER OFF · TAP A LOOP PAD = PLAY / STOP", 2500)
                         }
                         else -> {
                             app.switchView(Mode.PAD, false)
-                            app.kaossMode = false
                             app.selfArmed = false
                             app.looperMode = true
                             app.flash("LOOPER ON · EMPTY PAD = REC · LOOP PAD = PLAY/STOP", 3000)
@@ -1489,7 +1499,7 @@ fun MpcRoot(actions: SampleActions) {
                         app.mode != Mode.PAD -> Float.NaN
                         g == app.loopRecPad ->
                             if (System.nanoTime() < app.loopRecStartNanos) LOOP_RING_WAIT else LOOP_RING_REC
-                        g in app.loopsWaiting -> LOOP_RING_WAIT
+                        g in app.loopsWaiting || g in app.loopsStopping -> LOOP_RING_WAIT
                         app.pads[g].mode != PlayMode.LOOP || PadLibrary.infos[g] == null -> Float.NaN
                         else -> app.loopsPlaying[g]?.let { t0 ->
                             val len = app.loopLengthNanos(g)
@@ -1545,15 +1555,16 @@ fun MpcRoot(actions: SampleActions) {
                     Modifier.weight(1f).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Fader("MAIN", Settings.master / 1.2f, { n ->
-                        val v = n * 1.2f
-                        Settings.master = v
-                        AudioEngine.setMasterVolume(v)
-                        app.flash("MASTER %.0f%%".format(v * 100), 900)
-                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0.8f / 1.2f)
+                    // PreLC: срез низа только для того, что будет записано. Внизу — выключен, вверху — 1000 Гц.
+                    Fader("PreLC", if (Settings.preLcHz <= 0f) 0f else ln(Settings.preLcHz / 20f) / ln(50f), { n ->
+                        val hz = if (n < 0.02f) 0f else 20f * 50f.pow(n)
+                        Settings.preLcHz = hz
+                        app.flash(if (hz <= 0f) "PRE LOW CUT OFF" else "PRE LOW CUT %.0f HZ".format(hz), 900)
+                    }, Modifier.weight(1f), trackWidth = 30.dp, capWidth = 30.dp, capHeight = 22.dp, defaultValue = 0f)
                     // ISL-1: SEQ — громкость секвенсора и one-shot отдельно от петель (клик — в SETUP).
-                    Fader("SEQ", Settings.seqVolume / 1.5f, { n ->
+                    Fader("SEQ", if (app.seqDucked) 0f else Settings.seqVolume / 1.5f, { n ->
                         val v = n * 1.5f
+                        app.unduckSeq()
                         Settings.seqVolume = v
                         AudioEngine.setSeqVolume(v)
                         app.flash("SEQ VOL %.0f%%".format(v * 100), 900)
@@ -1595,8 +1606,30 @@ fun MpcRoot(actions: SampleActions) {
                         app.setupOpen = true
                     }
                 }
-                HwButton("PRJCT", Modifier.fillMaxWidth(), led = app.projectOpen, height = 24.dp) {
-                    app.projectOpen = true
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    HwButton("PRJCT", Modifier.weight(1f), led = app.projectOpen, height = 24.dp) {
+                        app.projectOpen = true
+                    }
+                    // LIVE REC: всё, что слышно, — в WAV (Музыка/ISL-1 LIVE); начало отмечено белой вспышкой экрана.
+                    HwButton("LIVE REC", Modifier.weight(1f), led = app.liveRec, ledColor = Skin.LedRed, height = 24.dp, labelSize = 7.5.sp) {
+                        if (app.liveRec) {
+                            LiveRecorder.stop()
+                            app.liveRec = false
+                            val sec = (System.nanoTime() - app.liveStartNanos) / 1_000_000_000L
+                            app.flash(
+                                "LIVE REC ■ %d:%02d → %s".format(sec / 60, sec % 60, LiveRecorder.folderLabel().uppercase()) +
+                                    if (LiveRecorder.dropouts > 0) " · ${LiveRecorder.dropouts} GAPS" else "",
+                                3500,
+                            )
+                        } else if (LiveRecorder.start(context)) {
+                            app.liveRec = true
+                            app.liveStartNanos = System.nanoTime()
+                            app.liveFlash = true
+                            app.flash("● LIVE REC · PRESS AGAIN TO STOP", 3000)
+                        } else {
+                            flash("LIVE REC: CANNOT CREATE FILE")
+                        }
+                    }
                 }
             }
         }
@@ -1618,7 +1651,7 @@ fun MpcRoot(actions: SampleActions) {
         // ---- ввод темпа цифрами ----
         if (app.tempoEntry) TempoEntry(app, Modifier.fillMaxSize())
 
-        // ---- ISL-1: меню пада (удержание 2 с) ----
+        // ---- ISL-1: меню пада (удержание 1,5 с, у петли — кнопка MENU в окне частей) ----
         if (app.padMenu >= 0) {
             PadMenu(app, onCopy = { p -> scope.launch { copyPad(p) } }, Modifier.fillMaxSize())
         }
@@ -1632,6 +1665,15 @@ fun MpcRoot(actions: SampleActions) {
         // ---- настройки (Ableton Link, latency) ----
         if (app.setupOpen) {
             SetupScreen(app, actions, Modifier.fillMaxSize())
+        }
+
+        // ---- LIVE REC: белая вспышка — метка начала записи для склейки звука с видео экрана ----
+        if (app.liveFlash) {
+            Box(Modifier.fillMaxSize().background(Color.White))
+            LaunchedEffect(Unit) {
+                delay(300)
+                app.liveFlash = false
+            }
         }
 
         // ---- редактор семпла (waveform, маркеры, chop) поверх всего ----

@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -139,7 +141,7 @@ fun Lcd(
             )
             if (ui.choke > 0) append(" CHK${ui.choke}")
         }
-        Text(params, Modifier.fillMaxWidth(), style = small, maxLines = 1, overflow = TextOverflow.Clip)
+        val paramsLine = @Composable { Text(params, Modifier.fillMaxWidth(), style = small, maxLines = 1, overflow = TextOverflow.Clip) }
         val flags = buildString {
             if (Settings.trimStart || Settings.trimEnd) {
                 append(" T:")
@@ -151,6 +153,18 @@ fun Lcd(
         val bottom = app.readout
             ?: if (app.copySource >= 0) "COPY ${patternName(app.copySource)} → PAD?"
             else (if (info != null) info.name.take(10) else "---") + flags
-        Text(bottom, Modifier.fillMaxWidth(), style = Skin.Lcd, maxLines = 1, overflow = TextOverflow.Clip)
+        // Справа, на высоту двух строк: длина паттерна и петли в тактах.
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                paramsLine()
+                Text(bottom, Modifier.fillMaxWidth(), style = Skin.Lcd, maxLines = 1, overflow = TextOverflow.Clip)
+            }
+            Text(
+                "P${app.patternBars}" + if (app.lcdLoopBars > 0) " L${app.lcdLoopBars}" else "",
+                Modifier.padding(start = 6.dp),
+                style = Skin.Lcd.copy(fontSize = 24.sp, lineHeight = 24.sp, fontWeight = FontWeight.Black),
+                maxLines = 1,
+            )
+        }
     }
 }

@@ -25,17 +25,17 @@
 // KV binding: DB
 
 const SOURCE_URL = "https://github.com/SalychViet/Instant-Sampler-IS-1";
-const VERSION = "0.4.1";
+const VERSION = "0.4.2";
 
 const TRIAL_DAYS = 10;
 const INSTAGRAM = `<a href="https://www.instagram.com/salychmusic?obrf=aGpxZzN2NmlqYzVx&amp;utm_source=qr">@salychmusic</a>`;
 
 // Admin sends documents with exactly these names (the folder "ISL-1 Bot" on the Desktop).
 const FILES = {
-  "ISL-1_TRY_0.4.1.apk": "try_apk",
+  "ISL-1_TRY_0.4.2.apk": "try_apk",
   "ISL-1_TRY_Install_RU.pdf": "try_install",
   "ISL-1_TRY_Install_EN.pdf": "try_install_en",
-  "ISL-1_0.4.1.apk": "isl_apk",
+  "ISL-1_0.4.2.apk": "isl_apk",
   "ISL-1_Install_RU.pdf": "isl_install",
   "ISL-1_Install_EN.pdf": "isl_install_en",
   "ISL-1_Manual_RU.pdf": "isl_manual_ru",
@@ -478,11 +478,11 @@ const FAQ = [
     q: { ru: "Вылетает, нет звука или задержка", en: "Crashes, no sound or latency" },
     a: {
       ru: "🛠 Что проверить:\n1. Перезапустите приложение: смахните его из недавних и откройте снова.\n2. Нужен Android 10 или новее.\n" +
-          "3. Нет звука — громкость телефона, фейдер MAIN справа, и что на паде есть семпл.\n" +
+          "3. Нет звука — громкость телефона, фейдеры SEQ и LOOPER справа, и что на паде есть семпл.\n" +
           "4. Задержка — с проводными наушниками или динамиком она меньше; Bluetooth всегда добавляет задержку.\n\n" +
           "Не помогло — нажмите кнопку ниже и укажите модель телефона и версию Android.",
       en: "🛠 Things to check:\n1. Restart the app: swipe it away from recent apps and open it again.\n2. Android 10 or newer is required.\n" +
-          "3. No sound — phone volume, the MAIN fader on the right, and that the pad has a sample.\n" +
+          "3. No sound — phone volume, the SEQ and LOOPER faders on the right, and that the pad has a sample.\n" +
           "4. Latency — it is lower with wired headphones or the speaker; Bluetooth always adds delay.\n\n" +
           "Still stuck — tap the button below and include your phone model and Android version.",
     },

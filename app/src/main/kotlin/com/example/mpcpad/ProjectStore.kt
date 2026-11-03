@@ -186,6 +186,7 @@ object ProjectStore {
         AudioEngine.setParam(pad, PadParam.PITCH, u.pitch)
         AudioEngine.setParam(pad, PadParam.DETUNE, u.detune)
         applyPitchEnv(pad, u)
+        applyEq(pad, u)
         AudioEngine.setParam(pad, PadParam.START, u.start)
         AudioEngine.setParam(pad, PadParam.END, u.end)
         AudioEngine.setParam(pad, PadParam.MODE, u.mode.toFloat())
@@ -193,6 +194,16 @@ object ProjectStore {
         AudioEngine.setParam(pad, PadParam.CHOKE, com.example.mpcpad.ui.chokeEngineValue(pad, u.choke))
         AudioEngine.setParam(pad, PadParam.ATTACK_MS, u.attackMs)
         AudioEngine.setParam(pad, PadParam.RELEASE_MS, u.releaseMs)
+    }
+
+    /** EQ пада — в движок. */
+    fun applyEq(pad: Int, u: PadUi) {
+        AudioEngine.setParam(pad, PadParam.EQ_HP_HZ, u.eqHpHz)
+        AudioEngine.setParam(pad, PadParam.EQ_LP_HZ, u.eqLpHz)
+        AudioEngine.setParam(pad, PadParam.EQ_BELL_HZ, u.eqBellHz)
+        AudioEngine.setParam(pad, PadParam.EQ_BELL_DB, u.eqBellDb)
+        AudioEngine.setParam(pad, PadParam.EQ_HP_ON, if (u.eqHpOn) 1f else 0f)
+        AudioEngine.setParam(pad, PadParam.EQ_LP_ON, if (u.eqLpOn) 1f else 0f)
     }
 
     /** Огибающая высоты пада — в движок (точки только если она включена: очередь команд не резиновая). */
@@ -215,6 +226,8 @@ object ProjectStore {
                 put("penvX", JSONArray().apply { u.pEnvX.forEach { put(it.toDouble()) } })
                 put("penvY", JSONArray().apply { u.pEnvY.forEach { put(it.toDouble()) } })
             }
+            put("eqHpOn", u.eqHpOn).put("eqHpHz", u.eqHpHz.toDouble()).put("eqLpOn", u.eqLpOn).put("eqLpHz", u.eqLpHz.toDouble())
+            put("eqBellHz", u.eqBellHz.toDouble()).put("eqBellDb", u.eqBellDb.toDouble())
         }
 
     internal fun padFromJson(o: JSONObject) = PadUi(
@@ -233,5 +246,11 @@ object ProjectStore {
         releaseMs = o.optDouble("rel", 15.0).toFloat(),
         attackMs = o.optDouble("atk", 0.0).toFloat(),
         loopDiv = o.optInt("loopDiv", -1),
+        eqHpOn = o.optBoolean("eqHpOn", false),
+        eqHpHz = o.optDouble("eqHpHz", 120.0).toFloat(),
+        eqLpOn = o.optBoolean("eqLpOn", false),
+        eqLpHz = o.optDouble("eqLpHz", 8000.0).toFloat(),
+        eqBellHz = o.optDouble("eqBellHz", 1000.0).toFloat(),
+        eqBellDb = o.optDouble("eqBellDb", 0.0).toFloat(),
     )
 }

@@ -42,7 +42,7 @@ https://is1-bot.ВАШ-ПОДДОМЕН.workers.dev/setup?key=СТРОКА_ИЗ_
 ### 4. Станьте администратором и загрузите файлы
 1. Напишите боту: `/claim СТРОКА_ИЗ_webhook_secret.txt` → «Вы администратор».
 2. Отправьте боту **как файлы** (скрепка → Файл) все файлы из папки «ISL-1 Bot» на рабочем столе:
-   `ISL-1_TRY_0.4.1.apk`, `ISL-1_0.4.1.apk`, `ISL-1_TRY_Install_RU.pdf`, `ISL-1_Install_RU.pdf`, `ISL-1_Manual_RU.pdf`, `ISL-1_Manual_EN.pdf`,
+   `ISL-1_TRY_0.4.2.apk`, `ISL-1_0.4.2.apk`, `ISL-1_TRY_Install_RU.pdf`, `ISL-1_Install_RU.pdf`, `ISL-1_Manual_RU.pdf`, `ISL-1_Manual_EN.pdf`,
    `ISL-1_Looper_RU.pdf`, `ISL-1_Looper_EN.pdf`, `ISL-1_bot_banner.jpg` (баннер приветствия), `ISL-1_bot_avatar.jpg` (аватар бота)
 3. На последнем файле бот напишет «Всё на месте 🎉». Проверка: `/files`.
 

@@ -74,9 +74,13 @@ JNIEXPORT jboolean JNICALL JNI(nativeSetParam)(JNIEnv*, jobject, jlong h, jint p
     return o && o->core().setParam(pad, id, value);
 }
 
-JNIEXPORT jboolean JNICALL JNI(nativeSetMaster)(JNIEnv*, jobject, jlong h, jfloat v) {
+JNIEXPORT void JNICALL JNI(nativeSetLoopsDry)(JNIEnv*, jobject, jlong h, jboolean on) {
+    if (auto* o = get(h)) o->core().setLoopsDry(on);
+}
+
+JNIEXPORT jboolean JNICALL JNI(nativeSetSeqDuck)(JNIEnv*, jobject, jlong h, jboolean on) {
     auto* o = get(h);
-    return o && o->core().setMasterVolume(v);
+    return o && o->core().setSeqDuck(on);
 }
 
 // data: interleaved PCM float, channels = 1 или 2 (остальное: берутся первые два канала).
@@ -210,8 +214,8 @@ JNIEXPORT void JNICALL JNI(nativeSeqLoadPattern)(JNIEnv* env, jobject, jlong h, 
     o->core().seqLoadPatternDirect(pat, ev.data(), lk.data(), n, bars);
 }
 
-JNIEXPORT void JNICALL JNI(nativeResampleStart)(JNIEnv*, jobject, jlong h) {
-    if (auto* o = get(h)) o->core().resampleStart();
+JNIEXPORT void JNICALL JNI(nativeResampleStart)(JNIEnv*, jobject, jlong h, jboolean isolated) {
+    if (auto* o = get(h)) o->core().resampleStart(isolated);
 }
 
 JNIEXPORT jint JNICALL JNI(nativeResampleStop)(JNIEnv*, jobject, jlong h) {
@@ -236,6 +240,26 @@ JNIEXPORT jint JNICALL JNI(nativeResampleRead)(JNIEnv* env, jobject, jlong h, jf
     std::vector<float> tmp(static_cast<size_t>(maxFrames) * 2);
     const int n = o->core().resampleRead(tmp.data(), maxFrames);
     env->SetFloatArrayRegion(out, 0, n * 2, tmp.data());
+    return n;
+}
+
+// ---- LIVE REC ----
+
+JNIEXPORT void JNICALL JNI(nativeLiveStart)(JNIEnv*, jobject, jlong h) {
+    if (auto* o = get(h)) o->core().liveStart();
+}
+
+JNIEXPORT void JNICALL JNI(nativeLiveStop)(JNIEnv*, jobject, jlong h) {
+    if (auto* o = get(h)) o->core().liveStop();
+}
+
+JNIEXPORT jint JNICALL JNI(nativeLiveRead)(JNIEnv* env, jobject, jlong h, jfloatArray out) {
+    auto* o = get(h);
+    if (!o || !out) return 0;
+    const int maxFrames = env->GetArrayLength(out) / 2;
+    std::vector<float> tmp(static_cast<size_t>(maxFrames) * 2);
+    const int n = o->core().liveRead(tmp.data(), maxFrames);
+    if (n > 0) env->SetFloatArrayRegion(out, 0, n * 2, tmp.data());
     return n;
 }
 

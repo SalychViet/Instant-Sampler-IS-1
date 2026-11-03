@@ -229,7 +229,7 @@ pages.append(page(f'''
   ])}</div>
 </div>
 <div class="row2">
-  <div class="fig">{crop(1630, 150, 310, 720, [(1, 1680, 655), (2, 1750, 655), (3, 1820, 655), (4, 1890, 655), (5, 1652, 754), (6, 1795, 754), (7, 1652, 818), (8, 1795, 818)], "tall")}</div>
+  <div class="fig">{crop(1670, 130, 300, 750, [(1, 1713, 600), (2, 1783, 600), (3, 1853, 600), (4, 1922, 600), (5, 1690, 709), (6, 1834, 709), (7, 1690, 774), (8, 1834, 774), (9, 1834, 838)], "tall")}</div>
   <div>{legend([
     (1, "MAIN", "master volume."),
     (2, "CLICK", "metronome volume."),
@@ -239,6 +239,7 @@ pages.append(page(f'''
     (6, "EXPORT", "record your track to WAV/MP3 or onto a pad."),
     (7, "FULL", "every pad plays at full volume, however hard you touch."),
     (8, "SETUP", "Ableton Link, latency, count-in. Lit while Link is on."),
+    (9, "LIVE REC", "records everything you hear to WAV (see the ISL-1 addendum)."),
   ])}</div>
 </div>'''))
 

@@ -20,6 +20,12 @@ object PadParam {
     const val PENV_X0 = 12  // 5 точек: положение 0..1 (X0..X4 подряд)
     const val PENV_Y0 = 17  // значения, полутоны -24..24 (Y0..Y4 подряд)
     const val MUTE = 22     // ISL-1: 0/1
+    const val EQ_HP_ON = 23    // ISL-1, EQ пада: 0/1
+    const val EQ_HP_HZ = 24
+    const val EQ_LP_ON = 25    // 0/1
+    const val EQ_LP_HZ = 26
+    const val EQ_BELL_HZ = 27
+    const val EQ_BELL_DB = 28  // -18..18, 0 — выключен
 }
 
 /** Должны совпадать с PlayMode в Types.h. */
@@ -146,6 +152,10 @@ object AudioEngine {
     fun noteOn(pad: Int, velocity: Float) { if (handle != 0L) nativeNoteOn(handle, pad, velocity) }
     /** SEQ VOL (ISL-1): громкость всего, кроме петель лупера (секвенсор и one-shot), 0..1.5. */
     fun setSeqVolume(v: Float) { if (handle != 0L) nativeSetSeqVolume(handle, v) }
+    /** Ноты секвенсора беззвучны: они уже звучат в петле с SRC SELF. */
+    fun setSeqDuck(on: Boolean) { if (handle != 0L) nativeSetSeqDuck(handle, on) }
+    /** iLOOPER: петли идут мимо KAOSS. */
+    fun setLoopsDry(on: Boolean) { if (handle != 0L) nativeSetLoopsDry(handle, on) }
     /** LOOPER (ISL-1): громкость всех петель лупера, 0..1.5. */
     fun setLoopVolume(v: Float) { if (handle != 0L) nativeSetLoopVolume(handle, v) }
     /** Нота с места внутри региона START–END (0..1): петля ISL-1 подхватывается «на ходу». */
@@ -153,7 +163,6 @@ object AudioEngine {
     fun noteOff(pad: Int) { if (handle != 0L) nativeNoteOff(handle, pad) }
     fun allNotesOff() { if (handle != 0L) nativeAllNotesOff(handle) }
     fun setParam(pad: Int, id: Int, value: Float) { if (handle != 0L) nativeSetParam(handle, pad, id, value) }
-    fun setMasterVolume(v: Float) { if (handle != 0L) nativeSetMaster(handle, v) }
 
     /** Пад становится пустым. */
     fun clearSample(pad: Int): Boolean = handle != 0L && nativeClearSample(handle, pad)
@@ -213,7 +222,14 @@ object AudioEngine {
     }
 
     // ---- ресемплинг: запись выхода вместе с эффектами (до 30 с) ----
-    fun resampleStart() { if (handle != 0L) nativeResampleStart(handle) }
+    /** [isolated] (iLOOPER): пишется всё, кроме петель. */
+    /** LIVE REC: мастер (всё, что слышно) потоком; читать [liveRead] из одного потока. */
+    fun liveStart() { if (handle != 0L) nativeLiveStart(handle) }
+    fun liveStop() { if (handle != 0L) nativeLiveStop(handle) }
+    /** Кадров скопировано в [out] (interleaved stereo); -1 — часть звука потеряна (чтение отстало). */
+    fun liveRead(out: FloatArray): Int = if (handle != 0L) nativeLiveRead(handle, out) else 0
+
+    fun resampleStart(isolated: Boolean = false) { if (handle != 0L) nativeResampleStart(handle, isolated) }
     fun resampleStop(): Int = if (handle != 0L) nativeResampleStop(handle) else 0
     fun resampleFrames(): Int = if (handle != 0L) nativeResampleFrames(handle) else 0
     fun resampling(): Boolean = handle != 0L && nativeResampling(handle)
@@ -304,7 +320,8 @@ object AudioEngine {
     private external fun nativeNoteOff(h: Long, pad: Int): Boolean
     private external fun nativeAllNotesOff(h: Long)
     private external fun nativeSetParam(h: Long, pad: Int, id: Int, value: Float): Boolean
-    private external fun nativeSetMaster(h: Long, v: Float): Boolean
+    private external fun nativeSetSeqDuck(h: Long, on: Boolean): Boolean
+    private external fun nativeSetLoopsDry(h: Long, on: Boolean)
     private external fun nativeLoadSample(h: Long, pad: Int, data: FloatArray, channels: Int, rate: Int): Boolean
     private external fun nativeClearSample(h: Long, pad: Int): Boolean
     private external fun nativeActiveMask(h: Long): Long
@@ -317,7 +334,10 @@ object AudioEngine {
     private external fun nativeSeqPatternBars(h: Long, pat: Int): Int
     private external fun nativeSeqPatternCounts(h: Long, out: IntArray)
     private external fun nativeSeqLoadPattern(h: Long, pat: Int, events: LongArray, locks: LongArray, bars: Int)
-    private external fun nativeResampleStart(h: Long)
+    private external fun nativeResampleStart(h: Long, isolated: Boolean)
+    private external fun nativeLiveStart(h: Long)
+    private external fun nativeLiveStop(h: Long)
+    private external fun nativeLiveRead(h: Long, out: FloatArray): Int
     private external fun nativeResampleStop(h: Long): Int
     private external fun nativeResampleFrames(h: Long): Int
     private external fun nativeResampling(h: Long): Boolean
